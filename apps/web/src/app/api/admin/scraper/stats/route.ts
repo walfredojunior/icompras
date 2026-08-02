@@ -162,6 +162,31 @@ export async function GET(req: Request) {
     /* banco ainda sem a tabela */
   }
 
+  // Freios: quantas vezes a fonte mandou o coletor esperar.
+  // É o termômetro de quanto estamos incomodando — enquanto ficar em zero, o
+  // ritmo está confortável para ela.
+  let freios: any = null;
+  try {
+    const [f] = await pool.query(
+      `SELECT COUNT(*) total,
+              SUM(happened_at > NOW() - INTERVAL 24 HOUR) hoje,
+              SUM(happened_at > NOW() - INTERVAL 7 DAY)   semana,
+              COALESCE(SUM(CASE WHEN happened_at > NOW() - INTERVAL 24 HOUR THEN espera_ms END), 0) espera24h,
+              MAX(happened_at) ultimo
+         FROM crawl_freio`,
+    );
+    freios = {
+      total: Number(f?.total ?? 0),
+      hoje: Number(f?.hoje ?? 0),
+      semana: Number(f?.semana ?? 0),
+      // Quanto tempo o coletor passou parado por ordem da fonte, em segundos.
+      paradoSegundos24h: Math.round(Number(f?.espera24h ?? 0) / 1000),
+      ultimoAt: f?.ultimo ? new Date(f.ultimo).toISOString() : null,
+    };
+  } catch {
+    /* banco ainda sem a tabela */
+  }
+
   const watchdog = {
     enabled: w.last_check_at != null,
     lastCheckAt: w.last_check_at ? new Date(w.last_check_at).toISOString() : null,
@@ -171,6 +196,7 @@ export async function GET(req: Request) {
     checks: Number(w.checks ?? 0),
     audit: wAudit,
     coverage: cobertura,
+    brakes: freios,
     events: wEvents.map((e: any) => ({
       at: e.happened_at ? new Date(e.happened_at).toISOString() : null,
       target: e.target,

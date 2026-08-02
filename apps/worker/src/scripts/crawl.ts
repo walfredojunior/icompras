@@ -422,14 +422,138 @@ function parsePrice(s: string): number | null {
   return isFinite(n) && n > 0 ? n : null;
 }
 
-async function fetchText(url: string): Promise<string | null> {
+// ---------------------------------------------------------------------------
+// OUVIR A FONTE: freio quando ela pede, e robots.txt.
+//
+// Até 02/08/2026 o coletor fazia `if (!res.ok) return null` — ou seja,
+// **ignorava** o código 429, que é o site dizendo "você está pedindo rápido
+// demais, dê um tempo". Ele seguia no mesmo ritmo. É exatamente assim que um
+// aviso vira bloqueio definitivo.
+//
+// Isto aqui é o contrário de se esconder atrás de proxy: é escutar o que a
+// fonte está pedindo. Sai muito mais barato do que contornar bloqueio depois.
+// ---------------------------------------------------------------------------
+let freioAte = 0; // enquanto agora < isto, ninguém pede nada
+let atrasoExtra = 0; // pausa a mais, permanente, depois de 429 repetido
+let recusas429 = 0;
+const ATRASO_EXTRA_MAX = 5000;
+
+async function respeitarFreio(): Promise<void> {
+  const falta = freioAte - Date.now();
+  if (falta > 0) await sleep(falta);
+}
+
+/** Quanto esperar segundo o cabeçalho Retry-After (segundos ou data). */
+function esperaPedida(res: Response): number {
+  const h = res.headers.get("retry-after");
+  if (!h) return 60000;
+  const seg = Number(h);
+  if (isFinite(seg) && seg > 0) return Math.min(seg * 1000, 600000);
+  const quando = Date.parse(h);
+  return isFinite(quando) ? Math.max(0, Math.min(quando - Date.now(), 600000)) : 60000;
+}
+
+async function fetchText(url: string, tentativa = 0): Promise<string | null> {
+  if (!permitidoPeloRobots(url)) return null;
+  await respeitarFreio();
+  if (atrasoExtra) await sleep(atrasoExtra);
   try {
     const res = await fetch(url, { headers: { "User-Agent": UA, "Accept-Language": "es,pt;q=0.8" } });
+
+    // 429 = pedindo rápido demais · 503 = sobrecarregado. Nos dois casos a
+    // fonte está pedindo espaço, e a resposta certa é dar.
+    if (res.status === 429 || res.status === 503) {
+      const espera = esperaPedida(res);
+      freioAte = Date.now() + espera;
+      recusas429++;
+      // TODA recusa é registrada, não só as que aumentam a pausa: o número de
+      // freios é o termômetro de quanto estamos incomodando a fonte, e serve
+      // para decidir se o ritmo (CRAWL_RPS) precisa baixar.
+      await registrarFreio(res.status, espera, url);
+      // Recusa repetida não é acaso: o ritmo está alto demais. Aumenta a pausa
+      // de todas as próximas requisições, e não só desta.
+      if (recusas429 % 3 === 0 && atrasoExtra < ATRASO_EXTRA_MAX) {
+        atrasoExtra = Math.min(ATRASO_EXTRA_MAX, atrasoExtra + 500);
+        console.log(`  ⚠ ${recusas429}ª recusa da fonte — aumentando a pausa para +${atrasoExtra}ms`);
+      } else {
+        console.log(`  ⏸ fonte pediu ${Math.round(espera / 1000)}s de espera (${res.status})`);
+      }
+      // Duas chances depois de esperar; na terceira desiste e segue a vida.
+      return tentativa < 2 ? fetchText(url, tentativa + 1) : null;
+    }
+
     if (!res.ok) return null;
     return await res.text();
   } catch {
     return null;
   }
+}
+
+// Deixa registrado — freio que ninguém vê não serve de aviso.
+async function registrarFreio(status: number, esperaMs: number, url: string): Promise<void> {
+  try {
+    await pool.query(
+      "INSERT INTO crawl_freio (worker, status, espera_ms, url) VALUES (?, ?, ?, ?)",
+      [`r${WORKER_ID}`, status, esperaMs, url.slice(0, 400)],
+    );
+  } catch {
+    /* banco fora do ar: o freio em si já foi respeitado, que é o que importa */
+  }
+}
+
+// --- robots.txt -------------------------------------------------------------
+//
+// Cumpríamos por sorte: nunca chegamos perto das duas páginas que a fonte
+// proíbe. Mas ninguém conferia — se eles proibissem /marcas/ amanhã, o robô
+// continuaria pedindo, e essa é a pior forma de errar: desrespeitar um pedido
+// explícito sem saber que ele existe.
+let proibidos: string[] = [];
+
+async function carregarRobots(): Promise<void> {
+  try {
+    const res = await fetch(`${BASE}/robots.txt`, { headers: { "User-Agent": UA } });
+    if (!res.ok) return;
+    const txt = await res.text();
+    const regras: string[] = [];
+    let valeParaNos = false;
+    for (const linha of txt.split("\n")) {
+      const l = linha.split("#")[0].trim();
+      if (!l) continue;
+      const [chaveBruta, ...resto] = l.split(":");
+      const chave = chaveBruta.trim().toLowerCase();
+      const valor = resto.join(":").trim();
+      if (chave === "user-agent") {
+        // Só o bloco geral nos interessa: não nos apresentamos com nome próprio.
+        valeParaNos = valor === "*";
+      } else if (valeParaNos && chave === "disallow" && valor) {
+        regras.push(valor.replace(/\*+$/, ""));
+      } else if (valeParaNos && chave === "crawl-delay") {
+        const seg = Number(valor);
+        // Se a fonte pedir ritmo mais lento que o nosso, obedecer.
+        if (isFinite(seg) && seg * 1000 > DELAY) {
+          atrasoExtra = Math.max(atrasoExtra, seg * 1000 - DELAY);
+          console.log(`  robots.txt pede ${seg}s entre pedidos — respeitando`);
+        }
+      }
+    }
+    proibidos = regras;
+    console.log(`  robots.txt: ${proibidos.length} caminho(s) proibido(s)${proibidos.length ? " — " + proibidos.join(", ") : ""}`);
+  } catch {
+    /* sem robots.txt legível: segue como antes */
+  }
+}
+
+function permitidoPeloRobots(url: string): boolean {
+  if (!proibidos.length) return true;
+  let caminho = url;
+  try {
+    caminho = new URL(url).pathname;
+  } catch {
+    /* url relativa */
+  }
+  const bloqueado = proibidos.some((p) => caminho.startsWith(p));
+  if (bloqueado) console.log(`  ⛔ robots.txt proíbe ${caminho} — pulando`);
+  return !bloqueado;
 }
 // Todos os links de produto da página de listagem.
 //
@@ -1471,6 +1595,7 @@ async function main(): Promise<void> {
     await loadBrandIndex();
     await carregarLojasDaApi();
     await carregarDominiosDeLoja();
+    await carregarRobots();
     const n = SO_FILA ? await processarFilaLenta() : SO_MARCAS ? await varrerMarcas() : await varrerSitemap();
     if (n > 0) await refreshCatalog();
     await atualizarResumoDiario();
@@ -1488,6 +1613,7 @@ async function main(): Promise<void> {
         await loadBrandIndex();
         await carregarLojasDaApi();
         await carregarDominiosDeLoja();
+        await carregarRobots();
         storeCache.clear(); // a marca "é da API" fica no cache; recarrega junto
         if (CHEFE) await atualizarResumoDiario();
       }

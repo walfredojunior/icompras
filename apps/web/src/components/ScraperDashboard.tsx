@@ -35,7 +35,15 @@ interface Watchdog {
   checks: number;
   audit: { at: string | null; status: string; detail: string | null } | null;
   coverage: Coverage | null;
+  brakes: Brakes | null;
   events: WatchdogEvent[];
+}
+interface Brakes {
+  total: number;
+  hoje: number;
+  semana: number;
+  paradoSegundos24h: number;
+  ultimoAt: string | null;
 }
 interface Coverage {
   at: string;
@@ -143,6 +151,49 @@ function CycleBar({ c, locale }: { c?: Cycle | null; locale: string }) {
       </div>
       <p className="mt-2 text-xs text-slate-400">
         A cor muda a cada volta nova — se você voltar aqui e a cor estiver diferente, ele já recomeçou.
+      </p>
+    </div>
+  );
+}
+
+// Quantas vezes a fonte mandou o coletor esperar.
+//
+// Até 02/08/2026 o coletor IGNORAVA o pedido — seguia no mesmo ritmo, que é
+// como um aviso vira bloqueio. Agora ele obedece, e este número é o termômetro
+// de quanto estamos incomodando: enquanto ficar em zero, o ritmo está
+// confortável para a fonte. Se começar a subir, é hora de baixar o ritmo antes
+// que alguém do outro lado repare.
+function FreiosLinha({ b }: { b: Brakes | null }) {
+  if (!b || b.total === 0) {
+    return (
+      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <div className="flex flex-wrap items-baseline gap-x-2 text-xs">
+          <span className="font-medium text-slate-700">Freios da fonte</span>
+          <span className="font-medium text-brand-green-dark">nenhum</span>
+        </div>
+        <p className="mt-1 text-xs text-slate-500">
+          O Compras Paraguai nunca pediu para o coletor desacelerar. O ritmo está confortável para ele.
+        </p>
+      </div>
+    );
+  }
+  const parado =
+    b.paradoSegundos24h >= 60
+      ? `${Math.round(b.paradoSegundos24h / 60)} min`
+      : `${b.paradoSegundos24h}s`;
+  return (
+    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+      <div className="flex flex-wrap items-baseline gap-x-2 text-xs">
+        <span className="font-medium text-slate-700">Freios da fonte</span>
+        <span className="font-medium text-amber-700">
+          {b.hoje} nas últimas 24h
+        </span>
+        <span className="text-slate-400">{ago(b.ultimoAt)}</span>
+      </div>
+      <p className="mt-1 text-xs leading-relaxed text-amber-800">
+        A fonte pediu para o coletor esperar {b.hoje} vez{b.hoje === 1 ? "" : "es"} nas últimas 24h
+        {b.paradoSegundos24h > 0 ? `, somando ${parado} parado` : ""}. Na semana: {b.semana}. Total: {b.total}.
+        {b.hoje >= 10 ? " Convém baixar o ritmo do coletor." : ""}
       </p>
     </div>
   );
@@ -289,6 +340,7 @@ function WatchdogCard({ w }: { w?: Watchdog }) {
       {w.detail ? <p className="mt-2 text-xs text-slate-500">{w.detail}</p> : null}
 
       <CoberturaLinha c={w.coverage} />
+      <FreiosLinha b={w.brakes} />
       <AuditoriaLinha a={w.audit} />
 
       {w.events.length > 0 && (
