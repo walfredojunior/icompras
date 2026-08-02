@@ -11,7 +11,28 @@ const BASE = "https://www.comprasparaguai.com.br";
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36";
 
-const DELAY = Number(process.env.CRAWL_DELAY_MS ?? 1200);
+// ---------------------------------------------------------------------------
+// Robôs paralelos.
+//
+// CRAWL_WORKERS   quantos robôs existem ao todo
+// CRAWL_WORKER_ID qual é este (0, 1, 2…). O robô 0 é o "chefe de turma": só
+//                 ele mexe no controle da volta e roda as varreduras do fim.
+// CRAWL_RPS       teto de pedidos por segundo somando TODOS os robôs
+//
+// A pausa de cada robô sai da conta `workers / rps`, então acrescentar robô
+// NÃO aumenta a pressão sobre a fonte — só divide melhor o mesmo teto. Com 4
+// robôs e 2 pedidos/s, cada um espera 2 segundos entre páginas.
+// ---------------------------------------------------------------------------
+const WORKERS = Math.max(1, Number(process.env.CRAWL_WORKERS ?? 1));
+const WORKER_ID = Math.max(0, Number(process.env.CRAWL_WORKER_ID ?? 0));
+const CHEFE = WORKER_ID === 0;
+const RPS = Number(process.env.CRAWL_RPS ?? 2);
+// CRAWL_DELAY_MS ainda manda, se alguém quiser fixar na mão.
+const DELAY = Number(process.env.CRAWL_DELAY_MS ?? Math.round((1000 * WORKERS) / RPS));
+// Quanto tempo uma categoria fica reservada antes de outro robô poder assumir.
+// Tem que ser bem maior que a categoria mais demorada — hoje há categorias com
+// 16 páginas e centenas de produtos.
+const RESERVA_MIN = Number(process.env.CRAWL_RESERVA_MIN ?? 90);
 // Teto de espera pelo preço que o JavaScript escreve. Medido em 01/08/2026:
 // o preço aparece 62-220ms depois do HTML. 3s é folga larga; era 6000 fixos.
 const RENDER_WAIT = Number(process.env.CRAWL_RENDER_WAIT_MS ?? 3000);
@@ -132,8 +153,11 @@ async function ctlStart(): Promise<void> {
   );
 }
 async function ctlBeat(message: string, state = "running"): Promise<void> {
+  // Com vários robôs, o painel mostra quem escreveu por último. Sem o prefixo
+  // pareceria que o coletor fica pulando de categoria sem terminar nenhuma.
+  const texto = WORKERS > 1 ? `robô ${WORKER_ID + 1}/${WORKERS} · ${message}` : message;
   await pool.query("UPDATE scrape_control SET heartbeat_at = NOW(), message = ?, state = ? WHERE id = 1", [
-    message.slice(0, 250),
+    texto.slice(0, 250),
     state,
   ]);
 }
@@ -240,6 +264,52 @@ async function atualizarResumoDiario(): Promise<void> {
         offers  = VALUES(offers)`,
   );
   console.log(`  resumo de preços do dia atualizado (${res.affectedRows} produtos)`);
+}
+
+// Põe na tabela toda categoria descoberta, para a fila de trabalho existir
+// antes de qualquer robô começar a pedir serviço. Só o chefe faz isso.
+async function semearCategorias(cats: Cat[]): Promise<void> {
+  for (const c of cats) {
+    await pool.query(
+      "INSERT IGNORE INTO crawl_category (path, our_category) VALUES (?, ?)",
+      [c.path, c.our],
+    );
+  }
+}
+
+// Pede a próxima categoria para este robô.
+//
+// Duas coisas garantem que dois robôs não peguem a mesma:
+//   • a reserva é um UPDATE condicional — quem conseguir mudar a linha ganhou,
+//     e o banco resolve o empate; não existe janela entre "ver" e "pegar";
+//   • a reserva expira (RESERVA_MIN), então robô que morra no meio não trava
+//     a categoria para sempre.
+//
+// Devolve null quando não sobrou nada para esta volta.
+async function reivindicarCategoria(inicioDaVolta: string): Promise<Cat | null> {
+  // Candidatas: ainda não concluídas NESTA volta e sem dono ativo.
+  // Nunca visitadas primeiro; depois as mais antigas.
+  const candidatas = await pool.query(
+    `SELECT path, our_category FROM crawl_category
+      WHERE (last_finished_at IS NULL OR last_finished_at < ?)
+        AND (claimed_at IS NULL OR claimed_at < NOW() - INTERVAL ? MINUTE)
+      ORDER BY last_finished_at IS NOT NULL, last_finished_at
+      LIMIT 30`,
+    [inicioDaVolta, RESERVA_MIN],
+  );
+  for (const c of candidatas as Array<{ path: string; our_category: string | null }>) {
+    const r = await pool.query(
+      `UPDATE crawl_category
+          SET claimed_by = ?, claimed_at = NOW(), last_started_at = NOW()
+        WHERE path = ?
+          AND (last_finished_at IS NULL OR last_finished_at < ?)
+          AND (claimed_at IS NULL OR claimed_at < NOW() - INTERVAL ? MINUTE)`,
+      [`r${WORKER_ID}`, c.path, inicioDaVolta, RESERVA_MIN],
+    );
+    // affectedRows 1 = esta linha era minha. 0 = outro robô chegou primeiro.
+    if (Number(r.affectedRows) === 1) return { path: c.path, our: c.our_category || c.path };
+  }
+  return null;
 }
 
 async function orderCategories(cats: Cat[]): Promise<Cat[]> {
@@ -1383,8 +1453,9 @@ async function main(): Promise<void> {
   }
 
   console.log(
-    `Crawler iCompras (Playwright) — ${DRY ? "DRY" : MONITOR ? "MONITOR" : "passe único"} · ` +
-      `delay ${DELAY}ms · render ${RENDER_WAIT}ms · ${categories.length} categorias descobertas`,
+    `Coletor iCompras — robô ${WORKER_ID + 1} de ${WORKERS}${CHEFE ? " (chefe)" : ""} · ` +
+      `${DRY ? "DRY" : MONITOR ? "MONITOR" : "passe único"} · pausa ${DELAY}ms ` +
+      `(teto de ${RPS} pedidos/s somando todos) · ${categories.length} categorias`,
   );
 
   // O navegador NÃO é aberto de saída: a leitura rápida (sem Chromium) dá
@@ -1418,19 +1489,48 @@ async function main(): Promise<void> {
         await carregarLojasDaApi();
         await carregarDominiosDeLoja();
         storeCache.clear(); // a marca "é da API" fica no cache; recarrega junto
-        await atualizarResumoDiario();
+        if (CHEFE) await atualizarResumoDiario();
       }
-      if (!DRY) await cycleStart(categories.length);
-      const fila = DRY ? categories : await orderCategories(categories);
-      for (const cat of fila) {
-        if (!DRY) await catTouch(cat);
+      if (!DRY && CHEFE) {
+        await cycleStart(categories.length);
+        await semearCategorias(categories);
+      }
+
+      // MODO DE VÁRIOS ROBÔS: em vez de percorrer a lista inteira, cada robô
+      // pede uma categoria de cada vez e trabalha nela. Quem terminar primeiro
+      // pega a próxima — assim ninguém fica parado esperando o outro, e
+      // categoria gorda (16 páginas) não segura a fila.
+      //
+      // Com um robô só, o comportamento é o mesmo de antes.
+      const fila = DRY ? categories : [];
+      let inicioDaVolta = "1970-01-01";
+      if (!DRY) {
+        const [ctl] = await pool.query("SELECT cycle_started_at FROM scrape_control WHERE id = 1");
+        inicioDaVolta = ctl?.cycle_started_at
+          ? new Date(ctl.cycle_started_at).toISOString().slice(0, 19).replace("T", " ")
+          : "1970-01-01";
+      }
+
+      for (;;) {
+        let cat: Cat | null = null;
+        if (DRY) {
+          cat = fila.shift() ?? null;
+        } else {
+          cat = await reivindicarCategoria(inicioDaVolta);
+          if (!cat) break; // acabou o serviço desta volta
+        }
+        if (!cat) break;
+
         const n = await crawlCategory(cat);
         if (stopRequested) break;
         if (!DRY) {
           await catDone(cat, n);
-          // Ao fechar a volta, passa o pente-fino do mapa do site: pega o que
-          // as páginas de categoria não mostraram.
-          if (await cycleMaybeClose(categories.length)) {
+          // As varreduras de fim de volta são do CHEFE.
+          //
+          // Rodar em quatro seria quatro vezes o mesmo trabalho — e quatro
+          // varreduras do mapa do site ao mesmo tempo é justamente o tipo de
+          // rajada que a divisão do teto existe para evitar.
+          if (CHEFE && (await cycleMaybeClose(categories.length))) {
             await processarFilaLenta();
             await reverPendentes();
             // Varredura pelas marcas: é o ÚNICO caminho para os produtos que
@@ -1445,7 +1545,7 @@ async function main(): Promise<void> {
             await varrerMarcas();
             await varrerSitemap();
           }
-          if (n > 0) await refreshCatalog();
+          if (n > 0 && CHEFE) await refreshCatalog();
         }
       }
       if (stopRequested) break;

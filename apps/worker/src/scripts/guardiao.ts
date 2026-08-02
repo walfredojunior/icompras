@@ -36,6 +36,14 @@ const INTERVALO_MIN = num(process.env.GUARD_INTERVAL_MIN, 5);
 const SEM_SINAL_SEG = num(process.env.GUARD_STALE_SEC, 300);
 const MAX_RELIGADAS_HORA = num(process.env.GUARD_MAX_RESTARTS, 3);
 const SITE_URL = process.env.GUARD_SITE_URL ?? "http://127.0.0.1:3000/es";
+
+// Desde a v1.1 o coletor são QUATRO processos (icompras-crawler-0..3), não um.
+// O `/` do pm2 é busca por padrão, então isto religa os quatro de uma vez.
+//
+// Religar todos e não só o que travou é de propósito: eles dividem uma fila e
+// um teto de pedidos; subir um sozinho, sem saber em que estado os outros
+// estão, é mais arriscado do que reiniciar a turma inteira, que leva segundos.
+const NOME_DOS_COLETORES = process.env.GUARD_CRAWLER_APP ?? "/icompras-crawler-/";
 const UMA_VEZ = process.argv.includes("--uma-vez");
 
 // Auditoria semanal de cobertura do catálogo (ver auditoria.ts).
@@ -108,13 +116,13 @@ async function conferirColetor(): Promise<{ status: string; detail: string }> {
   }
 
   if (c.state === "idle") {
-    const r = await religar("icompras-crawler", "coletor", `estava desligado (${mensagem || "sem mensagem"})`);
+    const r = await religar(NOME_DOS_COLETORES, "coletor", `estava desligado (${mensagem || "sem mensagem"})`);
     return { status: "caido", detail: `desligado; ação: ${r}` };
   }
 
   if (idade == null || idade > SEM_SINAL_SEG) {
     const r = await religar(
-      "icompras-crawler",
+      NOME_DOS_COLETORES,
       "coletor",
       `sem sinal de vida há ${idade ?? "?"}s (última mensagem: ${mensagem})`,
     );
