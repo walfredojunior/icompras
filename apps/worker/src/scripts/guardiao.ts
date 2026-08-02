@@ -1,0 +1,224 @@
+// Guardião — vigia o robô coletor e o site, e religa o que travar.
+//
+// Motivo: o coletor já ficou horas "rodando" sem produzir nada porque o
+// navegador interno morria e o processo caía; ninguém percebeu por dias.
+// Este processo confere a cada poucos minutos e age sozinho em casos simples
+// e reversíveis (religar um serviço). Nunca mexe em código nem em dados.
+//
+//   npm run guardiao -w @icompras/worker
+//   npm run guardiao -w @icompras/worker -- --uma-vez   (uma verificação só)
+import "../env.js";
+import { exec, spawn } from "node:child_process";
+import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+import { pool } from "@icompras/db";
+
+const execAsync = promisify(exec);
+// .../apps/worker/src/scripts/guardiao.ts → raiz do projeto
+const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
+
+// Lê número do ambiente sem aceitar lixo.
+//
+// `Number(process.env.X ?? 300)` parece seguro mas não é: se a variável
+// existir vazia, Number("") dá 0 — e um limite de "0 segundos sem sinal"
+// faz o guardião religar o coletor a cada verificação. Já apareceu no
+// histórico um religamento com o motivo "sem sinal de vida há 2s", que é
+// exatamente essa cara. Aqui, valor inválido cai no padrão.
+function num(valor: string | undefined, padrao: number): number {
+  const n = Number(valor);
+  return valor != null && valor !== "" && isFinite(n) && n > 0 ? n : padrao;
+}
+
+const INTERVALO_MIN = num(process.env.GUARD_INTERVAL_MIN, 5);
+// Sem sinal de vida por este tempo = travado. O coletor bate o ponto a cada
+// produto e a cada 5s enquanto espera, então alguns minutos já é folga larga.
+const SEM_SINAL_SEG = num(process.env.GUARD_STALE_SEC, 300);
+const MAX_RELIGADAS_HORA = num(process.env.GUARD_MAX_RESTARTS, 3);
+const SITE_URL = process.env.GUARD_SITE_URL ?? "http://127.0.0.1:3000/es";
+const UMA_VEZ = process.argv.includes("--uma-vez");
+
+// Auditoria semanal de cobertura do catálogo (ver auditoria.ts).
+// ATENÇÃO AO FUSO: a VPS roda em UTC e o Paraguai/Brasil é UTC-3, então
+// 6h UTC = 3h da madrugada aqui. Domingo às 6h UTC ainda é domingo local,
+// não vira o dia. Se um dia a VPS mudar de fuso, ajustar GUARD_AUDIT_HOUR.
+// Aqui o zero é válido (domingo / meia-noite), então não dá para usar num().
+function numZeroOk(valor: string | undefined, padrao: number, max: number): number {
+  const n = Number(valor);
+  return valor != null && valor !== "" && Number.isInteger(n) && n >= 0 && n <= max ? n : padrao;
+}
+const AUDIT_DIA = numZeroOk(process.env.GUARD_AUDIT_DAY, 0, 6); // 0 = domingo
+const AUDIT_HORA = numZeroOk(process.env.GUARD_AUDIT_HOUR, 6, 23);
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function registrar(target: string, status: string, detail: string, action: string): Promise<void> {
+  await pool.query("INSERT INTO watchdog_log (target, status, detail, action) VALUES (?, ?, ?, ?)", [
+    target,
+    status,
+    detail.slice(0, 500),
+    action,
+  ]);
+  console.log(`[${new Date().toISOString()}] ${target}: ${status} — ${detail} (${action})`);
+}
+
+async function religadasNaUltimaHora(target: string): Promise<number> {
+  const [r] = await pool.query(
+    "SELECT COUNT(*) n FROM watchdog_log WHERE target = ? AND action = 'reiniciado' AND happened_at > NOW() - INTERVAL 1 HOUR",
+    [target],
+  );
+  return Number(r.n);
+}
+
+// Religa um app do PM2. É a única ação que o guardião toma, e ela é reversível.
+async function religar(app: string, target: string, motivo: string): Promise<string> {
+  if ((await religadasNaUltimaHora(target)) >= MAX_RELIGADAS_HORA) {
+    await registrar(target, "reiniciando-demais", `${motivo} — já religado ${MAX_RELIGADAS_HORA}x na última hora, parei de tentar`, "limite-atingido");
+    return "limite-atingido";
+  }
+  try {
+    await execAsync(`pm2 restart ${app}`, { timeout: 60000 });
+    await registrar(target, "religado", motivo, "reiniciado");
+    return "reiniciado";
+  } catch (e) {
+    await registrar(target, "falha-ao-religar", `${motivo} — ${(e as Error).message}`, "nenhuma");
+    return "falhou";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Verificações
+// ---------------------------------------------------------------------------
+
+async function conferirColetor(): Promise<{ status: string; detail: string }> {
+  const linhas = await pool.query(
+    `SELECT state, stop_requested, message, started_at,
+            TIMESTAMPDIFF(SECOND, heartbeat_at, NOW()) AS idade,
+            TIMESTAMPDIFF(MINUTE, started_at, NOW()) AS minutosLigado
+       FROM scrape_control WHERE id = 1`,
+  );
+  if (!linhas.length) return { status: "ok", detail: "coletor nunca foi iniciado" };
+  const c = linhas[0];
+  const idade = c.idade == null ? null : Number(c.idade);
+  const mensagem = String(c.message ?? "");
+
+  // Parado de propósito pelo painel: respeitar a decisão de quem parou.
+  if (c.state === "idle" && /parado pelo painel/i.test(mensagem)) {
+    return { status: "parado-pelo-usuario", detail: "parado pelo painel — não vou religar" };
+  }
+
+  if (c.state === "idle") {
+    const r = await religar("icompras-crawler", "coletor", `estava desligado (${mensagem || "sem mensagem"})`);
+    return { status: "caido", detail: `desligado; ação: ${r}` };
+  }
+
+  if (idade == null || idade > SEM_SINAL_SEG) {
+    const r = await religar(
+      "icompras-crawler",
+      "coletor",
+      `sem sinal de vida há ${idade ?? "?"}s (última mensagem: ${mensagem})`,
+    );
+    return { status: "travado", detail: `sem sinal há ${idade ?? "?"}s; ação: ${r}` };
+  }
+
+  // Vivo. Se está reiniciando toda hora, religar não resolve — só avisa.
+  const ligadoHa = Number(c.minutosLigado ?? 0);
+  if (ligadoHa < 15) {
+    const [q] = await pool.query(
+      "SELECT COUNT(*) n FROM watchdog_log WHERE target = 'coletor' AND status IN ('travado','caido') AND happened_at > NOW() - INTERVAL 2 HOUR",
+    );
+    if (Number(q.n) >= 3) {
+      await registrar("coletor", "instavel", `caiu ${q.n}x em 2h — precisa de olhada humana`, "nenhuma");
+      return { status: "instavel", detail: `caiu ${q.n}x nas últimas 2h` };
+    }
+  }
+
+  return { status: "ok", detail: mensagem };
+}
+
+async function conferirSite(): Promise<{ status: string; detail: string }> {
+  try {
+    const ctrl = AbortSignal.timeout(15000);
+    const res = await fetch(SITE_URL, { signal: ctrl });
+    if (res.ok) return { status: "ok", detail: `site respondeu ${res.status}` };
+    const r = await religar("icompras-web", "site", `site respondeu ${res.status}`);
+    return { status: "com-erro", detail: `HTTP ${res.status}; ação: ${r}` };
+  } catch (e) {
+    const r = await religar("icompras-web", "site", `site não respondeu (${(e as Error).message})`);
+    return { status: "fora-do-ar", detail: `sem resposta; ação: ${r}` };
+  }
+}
+
+// Auditoria de cobertura: confere se alguma categoria da fonte está rendendo
+// produto lá e nada aqui. Domingo de madrugada, uma vez por semana.
+//
+// Sai em processo separado DE PROPÓSITO: a auditoria leva uns 15 minutos e o
+// guardião não pode ficar esse tempo sem vigiar o coletor. O registro
+// "iniciada" entra no banco antes de soltar o processo, e é ele que impede
+// uma segunda largada — mesmo que a auditoria morra no meio, não repete.
+async function talvezAuditar(): Promise<void> {
+  const agora = new Date();
+  if (agora.getDay() !== AUDIT_DIA || agora.getHours() !== AUDIT_HORA) return;
+
+  // 12 horas, e não "3 dias": a janela só precisa cobrir a hora do gatilho
+  // (o guardião passa aqui a cada 5 min, então seriam 12 largadas na mesma
+  // hora sem isto). Uma janela de dias pareceria mais segura, mas cancelaria
+  // o domingo sempre que alguém tivesse rodado a auditoria na mão na véspera.
+  const [r] = await pool.query(
+    "SELECT COUNT(*) n FROM watchdog_log WHERE target = 'auditoria' AND happened_at > NOW() - INTERVAL 12 HOUR",
+  );
+  if (Number(r.n) > 0) return;
+
+  await registrar("auditoria", "iniciada", "auditoria semanal de cobertura do catálogo", "nenhuma");
+  try {
+    const filho = spawn("npm", ["run", "auditoria", "-w", "@icompras/worker"], {
+      cwd: RAIZ,
+      detached: true,
+      stdio: "ignore",
+      shell: process.platform === "win32",
+    });
+    filho.unref();
+  } catch (e) {
+    await registrar("auditoria", "erro", `não consegui iniciar: ${(e as Error).message}`, "nenhuma");
+  }
+}
+
+async function verificar(): Promise<void> {
+  const coletor = await conferirColetor();
+  const site = await conferirSite();
+  await talvezAuditar();
+
+  const problemas = [coletor, site].filter((v) => v.status !== "ok" && v.status !== "parado-pelo-usuario");
+  const status = problemas.length ? problemas[0].status : coletor.status === "ok" ? "ok" : coletor.status;
+  const detalhe = `coletor: ${coletor.detail} · site: ${site.detail}`;
+
+  await pool.query(
+    `UPDATE watchdog_state SET last_check_at = NOW(), status = ?, detail = ?, checks = checks + 1 WHERE id = 1`,
+    [status, detalhe.slice(0, 500)],
+  );
+  // Mantém o histórico enxuto.
+  await pool.query("DELETE FROM watchdog_log WHERE happened_at < NOW() - INTERVAL 30 DAY");
+}
+
+async function main(): Promise<void> {
+  console.log(
+    `Guardião iCompras — verifica a cada ${INTERVALO_MIN} min · ` +
+      `considera travado após ${SEM_SINAL_SEG}s sem sinal · no máximo ${MAX_RELIGADAS_HORA} religadas/hora · ` +
+      `auditoria de catálogo no dia ${AUDIT_DIA} (0=domingo) às ${AUDIT_HORA}h UTC`,
+  );
+  do {
+    try {
+      await verificar();
+    } catch (e) {
+      console.error("falha na verificação:", (e as Error).message);
+    }
+    if (UMA_VEZ) break;
+    await sleep(INTERVALO_MIN * 60 * 1000);
+  } while (true);
+  await pool.end();
+}
+
+main().catch(async (e) => {
+  console.error(e);
+  process.exit(1);
+});

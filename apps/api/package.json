@@ -1,0 +1,22 @@
+{
+  "name": "@icompras/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "create-store": "tsx src/scripts/create-store.ts"
+  },
+  "dependencies": {
+    "@icompras/core": "*",
+    "@icompras/db": "*",
+    "@icompras/queue": "*",
+    "dotenv": "^16.4.5",
+    "fastify": "^5.1.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "name": "@icompras/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "embed": "tsx src/scripts/embed.ts",
+    "dedup": "tsx src/scripts/dedup.ts",
+    "categorize": "tsx src/scripts/categorize.ts",
+    "scrape": "tsx src/scripts/scrape.ts",
+    "rates": "tsx src/scripts/rates.ts",
+    "crawl": "tsx src/scripts/crawl.ts",
+    "recategorize": "tsx src/scripts/recategorize.ts",
+    "taxonomia": "tsx src/scripts/taxonomia.ts",
+    "recategorizar": "tsx src/scripts/recategorizar.ts",
+    "guardiao": "tsx src/scripts/guardiao.ts",
+    "auditoria": "tsx src/scripts/auditoria.ts",
+    "marcas": "tsx src/scripts/marcas.ts"
+  },
+  "dependencies": {
+    "@icompras/core": "*",
+    "@icompras/db": "*",
+    "@icompras/queue": "*",
+    "@icompras/search": "*",
+    "bullmq": "^5.28.0",
+    "dotenv": "^16.4.5",
+    "node-html-parser": "^9.0.1",
+    "playwright": "^1.62.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "name": "icompras",
+  "version": "0.0.0",
+  "private": true,
+  "description": "iCompras — comparador de preços (Paraguai) com camada de IA",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "db:migrate": "npm run migrate -w @icompras/db",
+    "db:seed": "npm run seed -w @icompras/db",
+    "dev:api": "npm run dev -w @icompras/api",
+    "dev:web": "npm run dev -w @icompras/web",
+    "dev:worker": "npm run dev -w @icompras/worker",
+    "store:new": "npm run create-store -w @icompras/api --",
+    "search:sync": "npm run sync -w @icompras/search",
+    "ai:embed": "npm run embed -w @icompras/worker",
+    "ai:dedup": "npm run dedup -w @icompras/worker",
+    "ai:categorize": "npm run categorize -w @icompras/worker",
+    "seed:scrape": "npm run scrape -w @icompras/worker --",
+    "catalogo:atualizar": "npm run ai:embed && npm run ai:categorize && npm run search:sync",
+    "rates:update": "npm run rates -w @icompras/worker",
+    "scrape:crawl": "npm run crawl -w @icompras/worker --"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

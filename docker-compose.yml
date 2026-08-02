@@ -1,0 +1,21 @@
+# Infra local de desenvolvimento (fila + busca).
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: icompras-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.11
+    container_name: icompras-meili
+    ports:
+      - "7700:7700"
+    environment:
+      # Dev sem chave para simplificar. Em produção, defina MEILI_MASTER_KEY.
+      MEILI_ENV: development
+      MEILI_NO_ANALYTICS: "true"
+    volumes:
+      - ./data/meili:/meili_data
+    restart: unless-stopped

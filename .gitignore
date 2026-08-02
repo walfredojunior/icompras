@@ -1,0 +1,32 @@
+# deps
+node_modules/
+.pnp
+.pnp.js
+
+# env / segredos
+.env
+.env.local
+.env.*.local
+
+# builds
+dist/
+build/
+.next/
+out/
+
+# logs
+*.log
+npm-debug.log*
+
+# infra local
+data/
+*.tsbuildinfo
+
+# imagens otimizadas (geradas na ingestão)
+apps/web/public/media/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

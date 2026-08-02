@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+@theme {
+  /* Cores da marca iCompras */
+  --color-brand-navy: #123a5e;
+  --color-brand-navy-dark: #0e2d49;
+  --color-brand-green: #2fa043;
+  --color-brand-green-dark: #23842f;
+  --color-brand-green-light: #e9f6ec;
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: #f6f8fb;
+  color: #0f2233;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
