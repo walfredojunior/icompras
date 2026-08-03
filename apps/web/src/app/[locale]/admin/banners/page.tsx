@@ -2,7 +2,7 @@ import { setRequestLocale } from "next-intl/server";
 import { redirect } from "next/navigation";
 import { getCurrentAdmin } from "@/lib/adminauth";
 import { pool } from "@/lib/db";
-import { getAllBanners } from "@/lib/banners";
+import { getAllBanners, getMarcas } from "@/lib/banners";
 import { BannerManager } from "@/components/BannerManager";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -32,6 +32,9 @@ export default async function AdminBannersPage({ params }: { params: Promise<{ l
       LIMIT 500`,
   );
   const banners = await getAllBanners();
+  // Marcas do catálogo para o banner "todos os produtos da marca X". Vêm do
+  // banco porque o texto precisa bater exatamente com o que está indexado.
+  const marcas = await getMarcas();
 
   return (
     <div>
@@ -40,6 +43,7 @@ export default async function AdminBannersPage({ params }: { params: Promise<{ l
         banners={banners as any}
         categories={categories.map((c: any) => ({ slug: c.slug, name: c.name }))}
         stores={stores.map((s: any) => ({ id: Number(s.id), name: s.name }))}
+        marcas={marcas.map((m) => m.marca)}
       />
     </div>
   );

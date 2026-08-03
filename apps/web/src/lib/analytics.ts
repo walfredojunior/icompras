@@ -87,6 +87,26 @@ export async function registrarCliqueLoja(storeId: number, target: "site" | "wha
   }
 }
 
+// Registra um clique num banner.
+//
+// Diferente do clique de loja, este DESCARTA robô: é o número que vai ser
+// mostrado a quem pagou pelo banner, então inflar com visita de rastreador
+// seria vender fumaça. (A rota /ir/ já está fora do robots.txt, mas nem todo
+// robô obedece.)
+export async function registrarCliqueBanner(bannerId: number): Promise<void> {
+  try {
+    const v = await visitante();
+    if (v.robo) return;
+    await pool.query(
+      `INSERT INTO analytics_banner_click (day, banner_id, clicks) VALUES (CURDATE(), ?, 1)
+       ON DUPLICATE KEY UPDATE clicks = clicks + 1`,
+      [bannerId],
+    );
+  } catch {
+    /* idem */
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Leitura para o painel
 // ---------------------------------------------------------------------------

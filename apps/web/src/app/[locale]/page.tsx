@@ -71,7 +71,7 @@ export default async function HomePage({
       {/* Banners promocionais */}
       {heroBanners.length > 0 && (
         <div className="mt-4">
-          <BannerCarousel banners={heroBanners.map((b) => ({ id: b.id, image_url: b.image_url, link_url: b.link_url, title: b.title, is_paid: b.is_paid, store_slug: b.store_slug }))} />
+          <BannerCarousel banners={heroBanners} />
         </div>
       )}
 

@@ -11,8 +11,14 @@ export interface Banner {
   active: number;
   store_id?: number | null;
   store_name?: string | null;
-  /** Endereço da loja aqui no iCompras — vira o destino quando o banner não tem link próprio. */
+  /** Endereço da loja aqui no iCompras — vira o destino quando o banner aponta para ela. */
   store_slug?: string | null;
+  /** busca | marca | loja | link | nenhum | auto (ver lib/bannerDestino.ts). */
+  destino_tipo?: string | null;
+  /** Termo da busca pronta, ou o nome da marca. */
+  busca?: string | null;
+  /** Cliques nos últimos 30 dias (só no painel). */
+  cliques30?: number;
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -28,11 +34,11 @@ export async function getActiveBanners(placement: string, categorySlug?: string)
     where += " AND b.category_slug = ?";
     params.push(categorySlug ?? "");
   }
-  // O slug da loja vem junto: banner sem link próprio vai para a página da
-  // loja aqui no iCompras (ver BannerCarousel).
+  // O slug da loja vem junto: é o destino quando o banner aponta para a loja.
+  // destino_tipo e busca decidem o resto (ver lib/bannerDestino.ts).
   return pool.query(
-    `SELECT b.id, b.title, b.image_url, b.link_url, b.placement, b.category_slug, b.is_paid,
-            b.store_id, s.slug AS store_slug
+    `SELECT b.id, b.title, b.image_url, b.link_url, b.destino_tipo, b.busca,
+            b.placement, b.category_slug, b.is_paid, b.store_id, s.slug AS store_slug
        FROM banner b
        LEFT JOIN store s ON s.id = b.store_id
       WHERE ${where}
@@ -41,14 +47,41 @@ export async function getActiveBanners(placement: string, categorySlug?: string)
   );
 }
 
-// Todos os banners (para o admin), com o nome da loja quando for pago.
+// Todos os banners (para o admin), com o nome da loja e os cliques do mês.
 export async function getAllBanners(): Promise<Banner[]> {
   return pool.query(
-    `SELECT b.id, b.title, b.image_url, b.link_url, b.placement, b.category_slug, b.is_paid, b.active,
-            b.store_id, s.name AS store_name
-     FROM banner b LEFT JOIN store s ON s.id = b.store_id
+    `SELECT b.id, b.title, b.image_url, b.link_url, b.destino_tipo, b.busca,
+            b.placement, b.category_slug, b.is_paid, b.active,
+            b.store_id, s.name AS store_name, s.slug AS store_slug,
+            COALESCE(c.cliques, 0) AS cliques30
+     FROM banner b
+     LEFT JOIN store s ON s.id = b.store_id
+     LEFT JOIN (
+       SELECT banner_id, SUM(clicks) AS cliques
+         FROM analytics_banner_click
+        WHERE day > CURDATE() - INTERVAL 30 DAY
+        GROUP BY banner_id
+     ) c ON c.banner_id = b.id
      ORDER BY b.placement, b.position, b.id DESC`,
   );
+}
+
+// Marcas do catálogo, para a lista de sugestão do banner "por marca".
+//
+// Vêm do banco e não do Meilisearch de propósito: o valor precisa ser
+// EXATAMENTE o mesmo texto que está indexado, senão o filtro `brand IN [...]`
+// não casa e o banner leva a uma página vazia.
+export async function getMarcas(limite = 800): Promise<Array<{ marca: string; produtos: number }>> {
+  const rows = await pool.query(
+    `SELECT brand, COUNT(*) AS n
+       FROM product
+      WHERE brand IS NOT NULL AND brand <> ''
+      GROUP BY brand
+      ORDER BY n DESC
+      LIMIT ?`,
+    [limite],
+  );
+  return rows.map((r: any) => ({ marca: String(r.brand), produtos: Number(r.n) }));
 }
 
 export interface FeaturedProduct {

@@ -27,6 +27,8 @@ export default async function SearchPage({
     max?: string;
     sort?: string;
     page?: string;
+    /** "banner" quando a busca foi aberta por um clique em banner. */
+    de?: string;
   }>;
 }) {
   const { locale } = await params;
@@ -58,8 +60,14 @@ export default async function SearchPage({
 
   // Medição: a busca conta como visita e o termo é guardado com quantos
   // resultados devolveu — termo com zero resultado vira "buraco de catálogo".
+  //
+  // Busca aberta por BANNER não entra nessa conta. A visita é real (a pessoa
+  // viu a página), mas o termo não foi procurado por ninguém: contá-lo
+  // inventaria uma demanda que só existe porque um banner está no ar, bem no
+  // relatório que usamos para descobrir o que falta no catálogo.
+  const veioDeBanner = sp.de === "banner";
   void registrarVisita("busca", q || "(sem termo)");
-  if (q.trim()) void registrarBusca(q, res.total);
+  if (q.trim() && !veioDeBanner) void registrarBusca(q, res.total);
 
   const categoryBanners = category ? await getActiveBanners("category", category) : [];
   const rates = await getRates();
@@ -89,16 +97,9 @@ export default async function SearchPage({
     <div className="mx-auto max-w-6xl px-4 py-8">
       {categoryBanners.length > 0 && (
         <div className="mb-6">
-          <BannerCarousel
-            banners={categoryBanners.map((b) => ({
-              id: b.id,
-              image_url: b.image_url,
-              link_url: b.link_url,
-              title: b.title,
-              is_paid: b.is_paid,
-              store_slug: b.store_slug,
-            }))}
-          />
+          {/* A linha inteira vai para o carrossel: quando um campo novo entra
+              no destino do banner, não há três telas para lembrar de atualizar. */}
+          <BannerCarousel banners={categoryBanners} />
         </div>
       )}
       <SearchBox initial={q} />

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 import { getCurrentAdmin } from "@/lib/adminauth";
+import { normalizarDestino } from "@/lib/bannerDestino";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -55,14 +56,20 @@ async function mover(id: number, direcao: "up" | "down"): Promise<void> {
 async function editar(id: number, e: any): Promise<void> {
   const imagem = typeof e.image_url === "string" && e.image_url.trim() ? e.image_url.trim() : null;
   const lugar = e.placement === "category" ? "category" : "home_hero";
+  // Editar um banner antigo o converte de 'auto' para o destino escrito na
+  // tela — é o que tira a adivinhação do caminho, um banner por vez.
+  const d = normalizarDestino(e);
   await pool.query(
     `UPDATE banner
-        SET title = ?, link_url = ?, placement = ?, category_slug = ?, store_id = ?, is_paid = ?
+        SET title = ?, link_url = ?, destino_tipo = ?, busca = ?,
+            placement = ?, category_slug = ?, store_id = ?, is_paid = ?
             ${imagem ? ", image_url = ?" : ""}
       WHERE id = ?`,
     [
       e.title?.trim() || null,
-      e.link_url?.trim() || null,
+      d.link_url,
+      d.destino_tipo,
+      d.busca,
       lugar,
       lugar === "category" ? e.category_slug || null : null,
       e.store_id ? Number(e.store_id) : null,

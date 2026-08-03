@@ -51,7 +51,7 @@ export default async function CategoryPage({
         <div className="flex-1">
           {banners.length > 0 && (
             <div className="mb-5">
-              <BannerCarousel banners={banners.map((b) => ({ id: b.id, image_url: b.image_url, link_url: b.link_url, title: b.title, is_paid: b.is_paid, store_slug: b.store_slug }))} />
+              <BannerCarousel banners={banners} />
             </div>
           )}
 
