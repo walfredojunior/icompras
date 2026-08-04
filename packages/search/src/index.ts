@@ -60,6 +60,10 @@ const SYNONYMS: Record<string, string[]> = {
   relógio: ["reloj"], relogio: ["reloj"], feminino: ["mujer"], masculino: ["hombre"],
 };
 
+// Quanto esperar por uma tarefa do Meilisearch. O padrão da biblioteca é 5s,
+// que já não serve para um índice deste tamanho (ver comentário abaixo).
+const ESPERA_MS = 10 * 60 * 1000;
+
 export async function ensureIndex(): Promise<void> {
   const c = client();
   try {
@@ -92,29 +96,39 @@ export async function ensureIndex(): Promise<void> {
     // ("Memória … 16GB … Notebook", palavras coladas) antes dos notebooks
     // ("Notebook … Memória 16GB", palavras distantes).
     //
-    // `store_count:desc` LOGO DEPOIS de words/typo (2026-08-04, pedido do dono):
-    // entre produtos que casam com o que foi digitado, **quem é vendido por mais
-    // lojas vem primeiro**. Num comparador de preços isso é quase sempre o que a
-    // pessoa procura — produto de 45 lojas é o produto de verdade; o de 1 loja
-    // costuma ser acessório.
+    // `store_tier:desc` LOGO DEPOIS de words/typo (2026-08-04, pedido do dono):
+    // entre produtos que casam com o que foi digitado, **quem é vendido por
+    // mais lojas vem primeiro**. Num comparador de preços isso é quase sempre
+    // o que a pessoa procura — produto de 45 lojas é o produto de verdade; o
+    // de 1 loja costuma ser acessório.
     //
-    // MEDIDO ANTES: buscar "iphone" trazia 10 CAPINHAS de 1 loja, e nenhum
-    // iPhone aparecia. DEPOIS: iPhone 17 Pro Max (45 lojas), 17 Pro (40), 17
-    // Pro Max 512GB (34)…
+    // MEDIDO ANTES: buscar "iphone" trazia 10 CAPINHAS de 1 loja e nenhum
+    // iPhone. DEPOIS: iPhone 17 Pro Max (45 lojas), 17 Pro (40), 17 Pro Max
+    // 512GB (34)…
     //
-    // Por que não no FIM da lista (que seria o mais conservador): lá ele só
-    // desempata quem já está igual em tudo, e "iphone" passava a trazer
-    // BATERIAS de 2 lojas — melhor que capinha, mas ainda errado.
+    // É `store_tier` (faixa 0-4) e NÃO `store_count` (número cru) — ver o
+    // comentário do `faixaDeLojas` no sync. Com o número cru, "notebook"
+    // passou a trazer PENTES DE MEMÓRIA na frente dos notebooks, porque
+    // ganhavam o desempate por uma diferença mínima de lojas.
     //
-    // Por que não ANTES de `words`/`typo`: aí o nº de lojas passaria na frente
-    // do próprio acerto das palavras, e um campeão de vendas apareceria em
-    // buscas que não têm nada a ver com ele.
+    // A POSIÇÃO na lista foi achada por tentativa medida, não por palpite:
+    // - no FIM (o mais conservador): só desempata quem já está igual em tudo,
+    //   e "iphone" trazia BATERIAS de 2 lojas;
+    // - DEPOIS de wordPosition: "iphone" volta a trazer bateria, porque
+    //   "Bateria iPhone X" tem a palavra mais no começo que "Celular Apple
+    //   iPhone 17";
+    // - ANTES de attributeRank: "geladeira" passou a trazer uma CALCULADORA de
+    //   3 lojas na frente das geladeiras de 1 loja — ela casava por um caminho
+    //   fraco (ficha técnica) e a faixa a promovia mesmo assim;
+    // - ANTES de words/typo: o nº de lojas passaria na frente do próprio
+    //   acerto das palavras, e um campeão de vendas apareceria em buscas que
+    //   não têm nada a ver com ele.
+    // DEPOIS de attributeRank é o ponto certo: primeiro "casou bem e no lugar
+    // certo do texto", aí "é vendido por muitas lojas", aí o resto.
     //
-    // CONFERIDO que não estragou as buscas específicas: "notebook 16gb" segue
-    // trazendo notebooks (e não pentes de memória — o caso que motivou o
-    // wordPosition); "capa iphone" traz capas, não iPhones; e
-    // "iphone 17 pro max 256gb" traz o modelo exato em primeiro.
-    rankingRules: ["words", "typo", "store_count:desc", "attributeRank", "wordPosition", "proximity", "sort", "exactness"],
+    // CONFERIDO nestas 8 buscas: iphone · notebook · perfume · geladeira ·
+    // televisor · "capa iphone" · "notebook 16gb" · "iphone 17 pro max 256gb".
+    rankingRules: ["words", "typo", "attributeRank", "store_tier:desc", "wordPosition", "proximity", "sort", "exactness"],
     // Antes: 2 erros já a partir de 5 letras — chutava demais ("tenis" casava
     // com o monitor "Teros", "campera" com "câmera"). Agora 2 erros só em
     // palavras longas, e nenhum erro em números (para 128GB não virar 256GB).
@@ -125,7 +139,14 @@ export async function ensureIndex(): Promise<void> {
       disableOnNumbers: true,
     } as unknown as { enabled: boolean },
   });
-  await c.waitForTask(t.taskUid);
+  // 10 minutos, e não os 5 SEGUNDOS do padrão da biblioteca.
+  //
+  // Aplicar configuração num índice de 166 mil produtos leva bem mais que 5s, e
+  // o `search:sync` passou a morrer com "timeout of 5000ms has exceeded" ANTES
+  // de enviar qualquer produto — ou seja, o reindex inteiro deixou de funcionar
+  // silenciosamente, só porque o catálogo cresceu. Consulta a cada 1s em vez de
+  // 50ms para não martelar o Meilisearch durante a espera.
+  await c.waitForTask(t.taskUid, { timeOutMs: ESPERA_MS, intervalMs: 1000 });
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -171,6 +192,20 @@ export async function syncProducts(): Promise<number> {
     }
   };
 
+  // FAIXA de lojas (0 a 4), usada para ordenar a busca.
+  //
+  // Por que faixa e não o número cru: com o número, uma diferença ridícula
+  // decide a ordem. Buscando "notebook", um pente de memória de 25 lojas
+  // passava na frente de um notebook de 25 lojas por causa do desempate — e
+  // quem procura "notebook" quer notebook. Com faixas, 25 e 25 EMPATAM e a
+  // decisão volta para a relevância (a posição da palavra no nome).
+  //
+  // Mas a diferença GRANDE continua mandando, que é o objetivo: buscando
+  // "iphone", o celular de 45 lojas (faixa 4) passa na frente da capinha de 1
+  // loja (faixa 0), como o dono do site pediu em 04/08/2026.
+  const faixaDeLojas = (n: number): number =>
+    n >= 20 ? 4 : n >= 10 ? 3 : n >= 5 ? 2 : n >= 2 ? 1 : 0;
+
   const docs = rows.map((r: any) => ({
     id: Number(r.id),
     slug: r.slug,
@@ -181,11 +216,13 @@ export async function syncProducts(): Promise<number> {
     image_url: r.image_url ?? null,
     min_price: r.min_price != null ? Number(r.min_price) : null,
     store_count: Number(r.store_count ?? 0),
+    store_tier: faixaDeLojas(Number(r.store_count ?? 0)),
     colors: colorsById.get(Number(r.id)) ?? [],
   }));
 
   const task = await client().index(PRODUCTS_INDEX).addDocuments(docs);
-  await client().waitForTask(task.taskUid);
+  // Idem: indexar 166 mil produtos não cabe nos 5s do padrão.
+  await client().waitForTask(task.taskUid, { timeOutMs: ESPERA_MS, intervalMs: 1000 });
   return docs.length;
 }
 
