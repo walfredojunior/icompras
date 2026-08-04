@@ -18,14 +18,29 @@ import { destinoDoBanner, idiomaValido } from "@/lib/bannerDestino";
 // icompras.com.py, então parece confiável).
 //
 // Fica fora de [locale] de propósito: é um redirecionamento, não uma página.
+// Manda o visitante adiante.
+//
+// Endereço INTERNO vai RELATIVO ("/pt-BR/search?..."), e isso é importante: o
+// site roda atrás da Cloudflare e do nginx, então `req.url` mostra o endereço
+// que o app enxerga de dentro (127.0.0.1:3000) e NÃO o que a pessoa digitou.
+// Montar o destino com essa origem mandava todo mundo para
+// "https://localhost:3000/..." — foi exatamente o que quebrou em produção.
+// Endereço relativo o navegador resolve contra a barra de endereços, que é o
+// domínio de verdade; e não depende de nenhum cabeçalho de proxy estar certo.
+//
+// 302: passagem pontual, não deve ficar guardada pelo navegador — senão o
+// segundo clique não seria contado.
+function seguir(destino: string): NextResponse {
+  return new NextResponse(null, { status: 302, headers: { Location: destino } });
+}
+
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const bannerId = Number(id);
-  const url = new URL(req.url);
-  const origem = url.origin;
-  const locale = idiomaValido(url.searchParams.get("loc"));
+  const locale = idiomaValido(new URL(req.url).searchParams.get("loc"));
+  const casa = `/${locale}`;
 
-  if (!Number.isFinite(bannerId) || bannerId <= 0) return NextResponse.redirect(origem);
+  if (!Number.isFinite(bannerId) || bannerId <= 0) return seguir(casa);
 
   const rows = await pool.query(
     `SELECT b.link_url, b.destino_tipo, b.busca, s.slug AS store_slug
@@ -34,17 +49,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       LIMIT 1`,
     [bannerId],
   );
-  if (!rows.length) return NextResponse.redirect(`${origem}/${locale}`);
+  if (!rows.length) return seguir(casa);
 
   const destino = destinoDoBanner(rows[0] as any, locale);
-  if (!destino) return NextResponse.redirect(`${origem}/${locale}`);
+  if (!destino) return seguir(casa);
 
   await registrarCliqueBanner(bannerId);
-
-  // 302: passagem pontual, não deve ficar guardada pelo navegador — senão o
-  // segundo clique não seria contado.
-  return NextResponse.redirect(
-    destino.href.startsWith("http") ? destino.href : `${origem}${destino.href}`,
-    302,
-  );
+  return seguir(destino.href);
 }

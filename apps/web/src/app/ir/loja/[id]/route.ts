@@ -13,12 +13,20 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const { id } = await params;
   const storeId = Number(id);
   const alvo = new URL(req.url).searchParams.get("para") === "whatsapp" ? "whatsapp" : "site";
-  const origem = new URL(req.url).origin;
 
-  if (!Number.isFinite(storeId) || storeId <= 0) return NextResponse.redirect(origem);
+  // Volta para a home RELATIVA, não montada a partir de `req.url`.
+  //
+  // Atrás da Cloudflare + nginx o app se enxerga como 127.0.0.1:3000, então a
+  // origem daqui de dentro não é a que a pessoa está vendo — usá-la mandava o
+  // visitante para "localhost:3000". Aqui isso quase nunca aparecia (o destino
+  // costuma ser o site externo da loja), mas o caminho de volta tinha o mesmo
+  // defeito que quebrou o clique de banner em 04/08/2026.
+  const casa = new NextResponse(null, { status: 302, headers: { Location: "/" } });
+
+  if (!Number.isFinite(storeId) || storeId <= 0) return casa;
 
   const rows = await pool.query("SELECT external_url, phone FROM store WHERE id = ? LIMIT 1", [storeId]);
-  if (!rows.length) return NextResponse.redirect(origem);
+  if (!rows.length) return casa;
 
   const destino =
     alvo === "whatsapp"
@@ -27,7 +35,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         : null
       : rows[0].external_url || null;
 
-  if (!destino) return NextResponse.redirect(origem);
+  if (!destino) return casa;
 
   await registrarCliqueLoja(storeId, alvo);
   // 302: é uma saída pontual, não deve ficar guardada pelo navegador.
