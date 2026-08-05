@@ -422,6 +422,10 @@ const SEMELHANCA_MINIMA = 0.25;
 // suspeito, não como promoção.
 const FRACAO_SUSPEITA = 0.2;
 
+// Com 3+ lojas, oferta abaixo desta fração da MEDIANA é acessório/erro, não
+// promoção — ver o comentário da "terceira rede" em ingestProduct.
+const FRACAO_DISCREPANTE = 1 / 3;
+
 function tokens(s: string): string[] {
   return s
     .toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "")
@@ -1281,6 +1285,32 @@ async function ingestProduct(page: () => Promise<Page>, path: string, ourCategor
       if (!confirmada) {
         console.log(
           `  ⚠ preço suspeito ignorado: ${loja} US$ ${info.price} (${name.slice(0, 40)} vale ~US$ ${precoRef})`,
+        );
+        byStore.delete(loja);
+      }
+    }
+  }
+
+  // TERCEIRA REDE: preço muito fora da fila é acessório, não pechincha.
+  //
+  // Caso real (05/08/2026): o "Patinete Elétrico Xiaomi Scooter 5 Plus" tinha
+  // 10 lojas em ~US$ 430 e duas em US$ 76 — o título delas era "BANCO PARA
+  // Patinete Elétrico Xiaomi Electric Scooter". O assento, não o patinete.
+  //
+  // Nenhuma das redes anteriores pega isso: o título do acessório contém o nome
+  // INTEIRO do produto (semelhança altíssima), e as duas lojas eram do mesmo
+  // grupo ("Mega Eletro" e "Mega Eletrônicos"), então uma "confirmava" a outra.
+  //
+  // Esta rede não olha palavra nenhuma: com três ou mais lojas, a mediana já
+  // diz quanto o produto custa, e quem está abaixo de um terço dela não está
+  // vendendo a mesma coisa. Exige 3 lojas porque com duas não há maioria.
+  if (byStore.size >= 3) {
+    const precos = [...byStore.values()].map((v) => v.price).sort((a, b) => a - b);
+    const mediana = precos[Math.floor(precos.length / 2)];
+    for (const [loja, info] of [...byStore]) {
+      if (info.price < mediana * FRACAO_DISCREPANTE) {
+        console.log(
+          `  ⚠ fora da fila, ignorado: ${loja} US$ ${info.price} (as outras lojas pedem ~US$ ${mediana})`,
         );
         byStore.delete(loja);
       }
