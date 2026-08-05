@@ -98,6 +98,61 @@ async function religar(app: string, target: string, motivo: string): Promise<str
 // Verificações
 // ---------------------------------------------------------------------------
 
+// CONFERE CADA ROBÔ SEPARADAMENTE (05/08/2026).
+//
+// ⚠ O PONTO CEGO QUE ISTO FECHA: a checagem abaixo lê `scrape_control`, que é
+// UMA linha para os quatro robôs. Enquanto eles eram iguais isso bastava — se
+// um caía, os outros cobriam o trabalho. Depois que passaram a ter PAPEL (um só
+// para produtos quentes, outro só para novos), o arranjo virou perigoso: o robô
+// dos quentes podia travar e, como os outros continuavam batendo na mesma
+// linha, o guardião lia "sinal fresco" e concluía que estava tudo bem — com os
+// preços que MAIS importam envelhecendo sem ninguém perceber.
+//
+// Aqui cada robô é julgado por DOIS critérios:
+//   · batimento — está vivo?
+//   · produção  — fechou uma volta dentro do tempo esperado do papel dele?
+// O segundo é o que pega "vivo mas parado", que o primeiro nunca pegaria.
+const TETO_POR_PAPEL: Record<string, number> = {
+  quentes: num(process.env.GUARD_CICLO_QUENTES_MIN, 180), // volta de ~1h; 3h é folga
+  novos: num(process.env.GUARD_CICLO_NOVOS_MIN, 240), // varre de 30 em 30 min
+  normal: num(process.env.GUARD_CICLO_NORMAL_MIN, 10080), // uma volta leva dias
+};
+
+async function conferirRobos(): Promise<{ status: string; detail: string }> {
+  const robos = await pool.query(
+    `SELECT worker_id, papel, message,
+            TIMESTAMPDIFF(SECOND, heartbeat_at, NOW()) AS idade,
+            TIMESTAMPDIFF(MINUTE, COALESCE(ciclo_fechado_em, ciclo_aberto_em, heartbeat_at), NOW()) AS desdeCiclo
+       FROM crawl_robo`,
+  );
+  if (!robos.length) return { status: "ok", detail: "nenhum robô registrado ainda" };
+
+  const problemas: string[] = [];
+  for (const r of robos) {
+    const papel = String(r.papel ?? "normal");
+    const idade = r.idade == null ? null : Number(r.idade);
+    const desdeCiclo = r.desdeCiclo == null ? null : Number(r.desdeCiclo);
+    const nome = `robô ${r.worker_id} (${papel})`;
+
+    if (idade == null || idade > SEM_SINAL_SEG) {
+      problemas.push(`${nome}: sem sinal há ${idade ?? "?"}s`);
+      continue;
+    }
+    const teto = TETO_POR_PAPEL[papel] ?? TETO_POR_PAPEL.normal;
+    if (desdeCiclo != null && desdeCiclo > teto) {
+      problemas.push(`${nome}: vivo mas sem fechar volta há ${desdeCiclo} min (teto ${teto})`);
+    }
+  }
+
+  if (!problemas.length) return { status: "ok", detail: `${robos.length} robô(s) trabalhando` };
+
+  // Religar a turma inteira continua sendo a ação certa: eles dividem uma fila
+  // e um teto de pedidos, e subir um sozinho sem saber o estado dos outros é
+  // mais arriscado do que reiniciar todos, o que leva segundos.
+  const acao = await religar(NOME_DOS_COLETORES, "robos", problemas.join(" · "));
+  return { status: "travado", detail: `${problemas.join(" · ")}; ação: ${acao}` };
+}
+
 async function conferirColetor(): Promise<{ status: string; detail: string }> {
   const linhas = await pool.query(
     `SELECT state, stop_requested, message, started_at,
@@ -193,12 +248,20 @@ async function talvezAuditar(): Promise<void> {
 
 async function verificar(): Promise<void> {
   const coletor = await conferirColetor();
+  // Só vale conferir robô por robô se o coletor não estiver parado de
+  // propósito — senão o guardião religaria o que o dono desligou no painel.
+  const robos =
+    coletor.status === "parado-pelo-usuario"
+      ? { status: "ok", detail: "parado pelo painel" }
+      : await conferirRobos();
   const site = await conferirSite();
   await talvezAuditar();
 
-  const problemas = [coletor, site].filter((v) => v.status !== "ok" && v.status !== "parado-pelo-usuario");
+  const problemas = [coletor, robos, site].filter(
+    (v) => v.status !== "ok" && v.status !== "parado-pelo-usuario",
+  );
   const status = problemas.length ? problemas[0].status : coletor.status === "ok" ? "ok" : coletor.status;
-  const detalhe = `coletor: ${coletor.detail} · site: ${site.detail}`;
+  const detalhe = `coletor: ${coletor.detail} · robôs: ${robos.detail} · site: ${site.detail}`;
 
   await pool.query(
     `UPDATE watchdog_state SET last_check_at = NOW(), status = ?, detail = ?, checks = checks + 1 WHERE id = 1`,

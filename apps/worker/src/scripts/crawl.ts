@@ -6,6 +6,7 @@ import { getEmbeddingProvider, ingestImageFromUrl } from "@icompras/core";
 import { categoryFromProductSlug, fetchSourceTree } from "../taxonomy.js";
 import { buildBrandIndex, brandFromName, type BrandIndex } from "../brands.js";
 import { atualizarQuedas } from "../quedas.js";
+import { classificarProdutos } from "../prioridade.js";
 import { parse as parseHtml, type HTMLElement } from "node-html-parser";
 
 const BASE = "https://www.comprasparaguai.com.br";
@@ -27,6 +28,24 @@ const UA =
 const WORKERS = Math.max(1, Number(process.env.CRAWL_WORKERS ?? 1));
 const WORKER_ID = Math.max(0, Number(process.env.CRAWL_WORKER_ID ?? 0));
 const CHEFE = WORKER_ID === 0;
+
+// PAPEL DO ROBÔ (CRAWL_PAPEL) — ideia do dono em 05/08/2026.
+//
+//   normal  → a volta pelas categorias, como sempre foi
+//   quentes → só a lista dos produtos que mexem de preço, em ciclo contínuo
+//   novos   → só descoberta (mapa do site e páginas de marca)
+//
+// Especializar NÃO aumenta a pressão sobre a fonte: os robôs dividem um teto
+// único de pedidos por segundo (CRAWL_RPS). É redistribuir trabalho, não
+// acelerar.
+//
+// O padrão é "normal", então quem não definir nada continua com o
+// comportamento de hoje.
+type Papel = "normal" | "quentes" | "novos";
+const PAPEIS: Papel[] = ["normal", "quentes", "novos"];
+const PAPEL: Papel = (PAPEIS as string[]).includes(process.env.CRAWL_PAPEL ?? "")
+  ? (process.env.CRAWL_PAPEL as Papel)
+  : "normal";
 const RPS = Number(process.env.CRAWL_RPS ?? 2);
 // CRAWL_DELAY_MS ainda manda, se alguém quiser fixar na mão.
 const DELAY = Number(process.env.CRAWL_DELAY_MS ?? Math.round((1000 * WORKERS) / RPS));
@@ -161,6 +180,35 @@ async function ctlBeat(message: string, state = "running"): Promise<void> {
     texto.slice(0, 250),
     state,
   ]);
+  // E o sinal de vida DESTE robô, separado (ver migration 034): a linha única
+  // acima não distingue quem está vivo de quem travou.
+  await pool.query(
+    `INSERT INTO crawl_robo (worker_id, papel, pid, message, started_at, heartbeat_at)
+     VALUES (?, ?, ?, ?, NOW(), NOW())
+     ON DUPLICATE KEY UPDATE papel = VALUES(papel), pid = VALUES(pid),
+       message = VALUES(message), heartbeat_at = NOW()`,
+    [WORKER_ID, PAPEL, process.pid, message.slice(0, 250)],
+  );
+}
+
+/** Abre uma volta de trabalho deste robô (categorias, quentes ou novos). */
+async function roboCicloAbre(): Promise<void> {
+  await pool.query(
+    `INSERT INTO crawl_robo (worker_id, papel, ciclo_aberto_em, itens_no_ciclo, heartbeat_at)
+     VALUES (?, ?, NOW(), 0, NOW())
+     ON DUPLICATE KEY UPDATE papel = VALUES(papel), ciclo_aberto_em = NOW(), itens_no_ciclo = 0`,
+    [WORKER_ID, PAPEL],
+  );
+}
+
+/** Fecha a volta. É este carimbo que prova que o robô está PRODUZINDO. */
+async function roboCicloFecha(itens: number): Promise<void> {
+  await pool.query(
+    `UPDATE crawl_robo
+        SET ciclo_fechado_em = NOW(), itens_no_ciclo = ?, ciclos = ciclos + 1, heartbeat_at = NOW()
+      WHERE worker_id = ?`,
+    [itens, WORKER_ID],
+  );
 }
 async function ctlFinish(message: string): Promise<void> {
   await pool.query("UPDATE scrape_control SET state = 'idle', stop_requested = 0, message = ?, heartbeat_at = NOW() WHERE id = 1", [message]);
@@ -1175,9 +1223,19 @@ async function processarFilaLenta(): Promise<number> {
   return colhidos;
 }
 
+// Cada produto tem o SEU intervalo (coluna `intervalo_horas`, preenchida por
+// src/prioridade.ts). Quem ainda não foi classificado usa o padrão de sempre —
+// então esta mudança não altera nada até a classificação rodar, e produto novo
+// nunca é pulado por engano (nem está no scrape_log ainda).
+//
+// É daqui que sai a economia: 90% do catálogo tem 1 loja e 0,1% de chance de
+// mudar de preço; reconferi-lo a cada 24h consumia a volta inteira à toa.
 async function crawledRecently(ext: string): Promise<boolean> {
   const rows = await pool.query(
-    "SELECT 1 FROM scrape_log WHERE external_id = ? AND last_crawled_at > (NOW() - INTERVAL ? HOUR) LIMIT 1",
+    `SELECT 1 FROM scrape_log
+      WHERE external_id = ?
+        AND last_crawled_at > (NOW() - INTERVAL COALESCE(intervalo_horas, ?) HOUR)
+      LIMIT 1`,
     [ext, RECRAWL_HOURS],
   );
   return rows.length > 0;
@@ -1717,6 +1775,84 @@ async function crawlCategory(cat: Cat): Promise<number> {
   return processed;
 }
 
+// ---------------------------------------------------------------------------
+// ROBÔS ESPECIALIZADOS (ideia do dono, 05/08/2026)
+// ---------------------------------------------------------------------------
+//
+// A volta normal anda por CATEGORIAS, e só passa em cada uma a cada dias. Isso
+// significa que encurtar o intervalo do iPhone não adianta nada sozinho: por
+// mais "quente" que ele seja, o robô só chega lá quando a vez da categoria
+// dele voltar. Daí a necessidade de robôs que visitam produto direto.
+
+/** Robô dos QUENTES: refaz sem parar a lista dos produtos que mexem de preço. */
+async function loopQuentes(): Promise<void> {
+  const ESPERA_ENTRE_VOLTAS_MS = 5 * 60 * 1000;
+  do {
+    await roboCicloAbre();
+    // Os mais esquecidos primeiro: assim, se a volta for interrompida, quem
+    // ficou de fora é quem tinha sido visto há menos tempo.
+    const alvos = await pool.query(
+      `SELECT s.external_id, COALESCE(c.slug, p.source_category, 'celular') AS cat
+         FROM scrape_log s
+         JOIN offer o ON o.external_id = s.external_id
+         JOIN product_variant v ON v.id = o.variant_id
+         JOIN product p ON p.id = v.product_id
+         LEFT JOIN category c ON c.id = p.category_id
+        WHERE s.faixa = 'quente'
+        GROUP BY s.external_id
+        ORDER BY MIN(s.last_crawled_at) ASC
+        LIMIT 5000`,
+    );
+    console.log(`\n=== Quentes: ${alvos.length} produto(s) na lista ===`);
+    let feitos = 0;
+    for (const a of alvos) {
+      if (await ctlShouldStop()) {
+        stopRequested = true;
+        break;
+      }
+      const id = String(a.external_id).replace(/^cp-/, "");
+      if (!/^\d+$/.test(id)) continue;
+      // O número é que manda na página: qualquer texto antes do "_" serve
+      // (conferido em 05/08/2026 — /x_49558/ devolve o mesmo produto).
+      const caminho = `/x_${id}/`;
+      try {
+        await ingestProduct(getPage, caminho, String(a.cat));
+        await markCrawled(String(a.external_id));
+        feitos++;
+      } catch (e) {
+        console.log(`  ! ${caminho}: ${(e as Error).message.slice(0, 80)}`);
+      }
+      if (feitos % 25 === 0) await ctlBeat(`quentes · ${feitos}/${alvos.length}`);
+      await sleep(DELAY);
+    }
+    await refreshCatalog();
+    await roboCicloFecha(feitos);
+    await ctlBeat(`quentes · volta concluída (${feitos})`);
+    console.log(`=== Quentes: volta concluída, ${feitos} produto(s) ===`);
+    if (MONITOR && !stopRequested) await sleep(ESPERA_ENTRE_VOLTAS_MS);
+  } while (MONITOR && !stopRequested);
+}
+
+/** Robô dos NOVOS: só descoberta — mapa do site e páginas de marca. */
+async function loopNovos(): Promise<void> {
+  const ESPERA_ENTRE_VOLTAS_MS = 30 * 60 * 1000;
+  do {
+    await roboCicloAbre();
+    // O mapa custa ~176 pedidos (cerca de um minuto) e é o caminho oficial da
+    // fonte para "o que existe". As páginas de marca pegam o que não aparece
+    // em categoria nenhuma.
+    const doMapa = await varrerSitemap();
+    if (await ctlShouldStop()) stopRequested = true;
+    const deMarcas = stopRequested ? 0 : await varrerMarcas();
+    const total = doMapa + deMarcas;
+    if (total > 0) await refreshCatalog();
+    await roboCicloFecha(total);
+    await ctlBeat(`novos · ${total} encontrado(s) (mapa ${doMapa}, marcas ${deMarcas})`);
+    console.log(`=== Novos: ${total} produto(s) (mapa ${doMapa}, marcas ${deMarcas}) ===`);
+    if (MONITOR && !stopRequested) await sleep(ESPERA_ENTRE_VOLTAS_MS);
+  } while (MONITOR && !stopRequested);
+}
+
 async function main(): Promise<void> {
   const argCats = process.argv.slice(2).filter((a) => !a.startsWith("--"));
   let categories: Array<{ path: string; our: string }>;
@@ -1756,6 +1892,28 @@ async function main(): Promise<void> {
     return;
   }
 
+  // ROBÔ ESPECIALIZADO: não anda por categorias, tem a própria lista.
+  if (!DRY && PAPEL !== "normal") {
+    await loadSelfManaged();
+    await loadCategories();
+    await loadBrandIndex();
+    await carregarLojasDaApi();
+    await carregarDominiosDeLoja();
+    await carregarRobots();
+    try {
+      if (PAPEL === "quentes") await loopQuentes();
+      else await loopNovos();
+      await closeBrowser();
+      await ctlFinish(stopRequested ? "parado pelo painel" : `robô de ${PAPEL} concluído`);
+    } catch (err) {
+      await closeBrowser();
+      await ctlFinish(`erro (${PAPEL}): ${(err as Error).message}`.slice(0, 250));
+      throw err;
+    }
+    await pool.end();
+    return;
+  }
+
   try {
     do {
       if (!DRY) {
@@ -1772,6 +1930,11 @@ async function main(): Promise<void> {
         await cycleStart(categories.length);
         await semearCategorias(categories);
       }
+      // Abre a volta DESTE robô: é o carimbo que prova produção (ver
+      // migration 034). Sem ele o guardião só sabe dizer se o processo está
+      // vivo, não se está trabalhando.
+      if (!DRY) await roboCicloAbre();
+      let feitosNaVolta = 0;
 
       // MODO DE VÁRIOS ROBÔS: em vez de percorrer a lista inteira, cada robô
       // pede uma categoria de cada vez e trabalha nela. Quem terminar primeiro
@@ -1799,6 +1962,7 @@ async function main(): Promise<void> {
         if (!cat) break;
 
         const n = await crawlCategory(cat);
+        feitosNaVolta += n;
         if (stopRequested) break;
         if (!DRY) {
           await catDone(cat, n);
@@ -1808,6 +1972,15 @@ async function main(): Promise<void> {
           // varreduras do mapa do site ao mesmo tempo é justamente o tipo de
           // rajada que a divisão do teto existe para evitar.
           if (CHEFE && (await cycleMaybeClose(categories.length))) {
+            // A volta fechou: reclassifica os produtos por quanto merecem ser
+            // reconferidos. É daqui que sai a lista dos "quentes" que o robô
+            // especializado consome.
+            try {
+              const faixas = await classificarProdutos();
+              console.log(`  prioridades recalculadas: ${JSON.stringify(faixas)}`);
+            } catch (e) {
+              console.log(`  ! falha ao classificar prioridades: ${(e as Error).message}`);
+            }
             await processarFilaLenta();
             await reverPendentes();
             // Varredura pelas marcas: é o ÚNICO caminho para os produtos que

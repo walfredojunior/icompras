@@ -18,7 +18,8 @@
     "guardiao": "tsx src/scripts/guardiao.ts",
     "auditoria": "tsx src/scripts/auditoria.ts",
     "marcas": "tsx src/scripts/marcas.ts",
-    "quedas": "tsx src/quedas.ts"
+    "quedas": "tsx src/quedas.ts",
+    "prioridade": "tsx src/prioridade.ts"
   },
   "dependencies": {
     "@icompras/core": "*",

@@ -217,10 +217,76 @@ export async function GET(req: Request) {
     })),
   };
 
+  // OS TRÊS PAINÉIS (pedido do dono em 05/08/2026).
+  //
+  // Cada um traz um número que responde "está FUNCIONANDO?", e não apenas
+  // "está ligado?". Sem isso, robô especializado vira ponto cego: se o dos
+  // quentes travar, os preços que mais importam envelhecem em silêncio.
+  let robos: any = null;
+  try {
+    const linhas = await pool.query(
+      `SELECT worker_id, papel, message, ciclos, itens_no_ciclo,
+              TIMESTAMPDIFF(SECOND, heartbeat_at, NOW()) AS semSinalSeg,
+              TIMESTAMPDIFF(MINUTE, ciclo_fechado_em, NOW()) AS desdeVoltaMin
+         FROM crawl_robo ORDER BY worker_id`,
+    );
+
+    // Volta normal: quanto do catálogo já foi revisitado nesta passagem.
+    const [cats] = await pool.query(
+      `SELECT COUNT(*) total,
+              SUM(last_finished_at > NOW() - INTERVAL 2 DAY) recentes,
+              TIMESTAMPDIFF(HOUR, MIN(last_finished_at), NOW()) AS maisAntigaH
+         FROM crawl_category`,
+    );
+
+    // Quentes: tamanho da lista e idade do preço mais velho dela.
+    const [quentes] = await pool.query(
+      `SELECT COUNT(*) n, TIMESTAMPDIFF(MINUTE, MIN(last_crawled_at), NOW()) AS maisVelhoMin
+         FROM scrape_log WHERE faixa = 'quente'`,
+    );
+    const faixas = await pool.query(
+      "SELECT faixa, COUNT(*) n FROM scrape_log WHERE faixa IS NOT NULL GROUP BY faixa",
+    );
+
+    // Novos: quantos entraram, e em quanto tempo (o número que prova o valor
+    // do robô de descoberta — antes um produto novo levava até 4 dias).
+    const [novos] = await pool.query(
+      `SELECT SUM(created_at >= CURDATE()) hoje,
+              SUM(created_at > NOW() - INTERVAL 7 DAY) semana
+         FROM product`,
+    );
+
+    robos = {
+      lista: linhas.map((r: any) => ({
+        id: Number(r.worker_id),
+        papel: r.papel,
+        message: r.message,
+        ciclos: Number(r.ciclos ?? 0),
+        itensNoCiclo: Number(r.itens_no_ciclo ?? 0),
+        semSinalSeg: r.semSinalSeg == null ? null : Number(r.semSinalSeg),
+        desdeVoltaMin: r.desdeVoltaMin == null ? null : Number(r.desdeVoltaMin),
+      })),
+      normal: {
+        categorias: Number(cats?.total ?? 0),
+        recentes: Number(cats?.recentes ?? 0),
+        maisAntigaH: cats?.maisAntigaH == null ? null : Number(cats.maisAntigaH),
+      },
+      quentes: {
+        naLista: Number(quentes?.n ?? 0),
+        maisVelhoMin: quentes?.maisVelhoMin == null ? null : Number(quentes.maisVelhoMin),
+        faixas: faixas.map((f: any) => ({ faixa: f.faixa, n: Number(f.n) })),
+      },
+      novos: { hoje: Number(novos?.hoje ?? 0), semana: Number(novos?.semana ?? 0) },
+    };
+  } catch {
+    /* migrations 033/034 ainda não aplicadas */
+  }
+
   return NextResponse.json({
     control,
     cycle,
     watchdog,
+    robos,
     products: Number(t.products ?? 0),
     withSpecs: Number(t.withSpecs ?? 0),
     withPrice: Number(t.withPrice ?? 0),

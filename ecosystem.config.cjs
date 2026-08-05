@@ -38,6 +38,16 @@ module.exports = {
     // PARA VOLTAR AO ROBÔ ÚNICO:
     //   pm2 delete icompras-crawler-1 icompras-crawler-2 icompras-crawler-3
     //   e troque CRAWL_WORKERS para "1" no icompras-crawler-0.
+    //
+    // PAPÉIS (05/08/2026, ideia do dono): os robôs deixaram de ser iguais.
+    //   0 e 1 → volta normal pelas categorias (o 0 é o chefe)
+    //   2     → só os produtos QUENTES, em ciclo contínuo (~1h por volta)
+    //   3     → só descoberta de produtos NOVOS (mapa do site e marcas)
+    //
+    // Isso NÃO aumenta a pressão sobre a fonte: os quatro seguem dividindo o
+    // mesmo teto de 2 pedidos por segundo. É redistribuir, não acelerar.
+    //
+    // Para voltar a ter quatro robôs iguais, basta apagar a linha CRAWL_PAPEL.
     ...[0, 1, 2, 3].map((i) => ({
       name: `icompras-crawler-${i}`,
       cwd: "/opt/icompras/app",
@@ -49,6 +59,7 @@ module.exports = {
         CRAWL_WORKERS: "4",
         CRAWL_WORKER_ID: String(i),
         CRAWL_RPS: "2",
+        CRAWL_PAPEL: i === 2 ? "quentes" : i === 3 ? "novos" : "normal",
       },
       autorestart: true,
       // stop_exit_codes: [0] faz o PM2 respeitar a parada pelo painel admin

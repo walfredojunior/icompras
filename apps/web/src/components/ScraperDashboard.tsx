@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { PainelDosRobos, type RobosInfo } from "./PainelDosRobos";
 import { Boxes, Tag, ListChecks, Store, Phone, RefreshCw, Play, Square, ShieldCheck } from "lucide-react";
 
 interface Recent {
@@ -72,6 +73,7 @@ interface Cycle {
   lastSeconds: number | null;
 }
 interface Stats {
+  robos: RobosInfo | null;
   control: Control;
   cycle?: Cycle | null;
   watchdog?: Watchdog;
@@ -514,6 +516,11 @@ export function ScraperDashboard({ locale }: { locale: string }) {
       <CycleBar c={s.cycle} locale={locale} />
 
       {/* Guardião */}
+      {/* Um painel por função do coletor. Sem isto, robô especializado que
+          trava não aparece em lugar nenhum — os outros continuam batendo o
+          ponto e o painel diria "tudo certo". */}
+      <PainelDosRobos r={s.robos ?? null} />
+
       <WatchdogCard w={s.watchdog} />
 
       {/* Cards */}
