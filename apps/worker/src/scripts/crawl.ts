@@ -1869,9 +1869,25 @@ async function loopNovos(): Promise<void> {
     // em categoria nenhuma.
     const doMapa = await comBatimento("novos · varrendo o mapa do site", () => varrerSitemap());
     if (await ctlShouldStop()) stopRequested = true;
-    const deMarcas = stopRequested
-      ? 0
-      : await comBatimento("novos · varrendo páginas de marca", () => varrerMarcas());
+
+    // AS MARCAS SÓ UMA VEZ POR DIA (ver migration 036).
+    //
+    // O mapa do site custa 176 páginas (~6 min) e é onde produto novo aparece.
+    // As páginas de marca são **1.888** — mais de uma hora — e servem só para
+    // achar o que não está em categoria nenhuma. Rodar as duas a cada volta
+    // fazia a descoberta demorar mais de uma hora sem necessidade, e o robô
+    // nunca fechava uma volta (o painel marcava "atrasado" para sempre).
+    const [ultima] = await pool.query("SELECT marcas_em FROM crawl_robo WHERE worker_id = ?", [WORKER_ID]);
+    const horasDesdeMarcas = ultima?.marcas_em
+      ? (Date.now() - new Date(ultima.marcas_em).getTime()) / 3_600_000
+      : Infinity;
+    const vaiVarrerMarcas = !stopRequested && horasDesdeMarcas >= 24;
+    const deMarcas = vaiVarrerMarcas
+      ? await comBatimento("novos · varrendo páginas de marca (1x por dia)", () => varrerMarcas())
+      : 0;
+    if (vaiVarrerMarcas) {
+      await pool.query("UPDATE crawl_robo SET marcas_em = NOW() WHERE worker_id = ?", [WORKER_ID]);
+    }
     const total = doMapa + deMarcas;
     if (total > 0) await comBatimento("novos · atualizando catálogo", () => refreshCatalog());
     await roboCicloFecha(total);

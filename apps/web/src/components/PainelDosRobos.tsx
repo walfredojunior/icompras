@@ -99,7 +99,16 @@ export function PainelDosRobos({ r }: { r: RobosInfo | null }) {
   const quentesOk = idadeQuentes != null && idadeQuentes <= LIMITE_QUENTES_MIN;
 
   const roboNovos = porPapel("novos")[0];
-  const novosOk = roboNovos ? (roboNovos.desdeVoltaMin ?? 999) <= 240 : false;
+  // Volta de descoberta = mapa do site (~6 min) + pausa de 30 min ≈ 40 min.
+  // (As 1.888 páginas de marca saíram daqui: rodam uma vez por dia — antes
+  // faziam a volta passar de uma hora e o robô nunca fechar ciclo, o que
+  // deixava este cartão em "atrasado" para sempre.)
+  //
+  // Enquanto a PRIMEIRA volta não fecha, não há o que julgar: mostra
+  // "primeira volta" em vez de acusar atraso que não existe.
+  const LIMITE_NOVOS_MIN = 90;
+  const novosNuncaFechou = !roboNovos || roboNovos.desdeVoltaMin == null;
+  const novosOk = !novosNuncaFechou && (roboNovos!.desdeVoltaMin ?? 0) <= LIMITE_NOVOS_MIN;
 
   return (
     <div className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -157,16 +166,24 @@ export function PainelDosRobos({ r }: { r: RobosInfo | null }) {
         icone={<Sparkles className="h-4 w-4 text-brand-green-dark" />}
         titulo="Produtos novos"
         selo={
-          roboNovos ? (
-            <Selo ok={novosOk} alerta={!novosOk} texto={novosOk ? "varrendo" : "atrasado"} />
-          ) : (
+          !roboNovos ? (
             <Selo ok={false} alerta texto="sem robô" />
+          ) : novosNuncaFechou ? (
+            <Selo ok alerta={false} texto="primeira volta" />
+          ) : (
+            <Selo ok={novosOk} alerta={!novosOk} texto={novosOk ? "varrendo" : "atrasado"} />
           )
         }
       >
         <Linha rotulo="Entraram hoje" valor={r.novos.hoje.toLocaleString("pt-BR")} />
         <Linha rotulo="Na semana" valor={r.novos.semana.toLocaleString("pt-BR")} />
-        <Linha rotulo="Última varredura" valor={tempo(roboNovos?.desdeVoltaMin ?? null)} />
+        <Linha
+          rotulo="Última varredura"
+          valor={novosNuncaFechou ? "em andamento" : tempo(roboNovos.desdeVoltaMin)}
+        />
+        <p className="pt-0.5 text-[11px] text-slate-400">
+          Procura de ~40 em 40 min. Vira alerta se passar de 1h30.
+        </p>
         {roboNovos?.message && (
           <p className="truncate pt-1 text-[11px] text-slate-400">{roboNovos.message}</p>
         )}
