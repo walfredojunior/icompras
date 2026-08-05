@@ -1371,7 +1371,14 @@ async function ingestProduct(page: () => Promise<Page>, path: string, ourCategor
     const precos = [...byStore.values()].map((v) => v.price).sort((a, b) => a - b);
     const mediana = precos[Math.floor(precos.length / 2)];
     for (const [loja, info] of [...byStore]) {
-      if (info.price < mediana * FRACAO_DISCREPANTE) {
+      // NOS DOIS SENTIDOS. A versão original só desconfiava de preço BAIXO
+      // demais — e em 05/08/2026 apareceu o contrário: um "iPhone 17 Pro Max
+      // 256GB" de US$ 1.740 colado num fone de ouvido de US$ 18. Preço alto
+      // demais não inventa promoção falsa, mas suja o produto e atrapalha
+      // qualquer conta baseada em mediana.
+      const foraDaFila =
+        info.price < mediana * FRACAO_DISCREPANTE || info.price > mediana / FRACAO_DISCREPANTE;
+      if (foraDaFila) {
         console.log(
           `  ⚠ fora da fila, ignorado: ${loja} US$ ${info.price} (as outras lojas pedem ~US$ ${mediana})`,
         );

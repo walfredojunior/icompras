@@ -15,18 +15,42 @@ import { pool } from "@icompras/db";
 /** Abaixo disso não é queda, é ruído de centavo. */
 const QUEDA_MINIMA = 0.03;
 
+/**
+ * ACIMA disso não é promoção, é erro de dado — e a página não mostra.
+ *
+ * Rede de segurança de última instância (05/08/2026). Três vezes num dia a
+ * página "Baixaram de preço" foi flagrada anunciando bobagem: o Garmin de
+ * US$ 650 "caindo" para US$ 8 (era um fone na mesma página), o patinete de
+ * US$ 430 para US$ 76 (era o assento) e a moto elétrica de US$ 860 para
+ * US$ 15 (era um perfume Victoria Secret colado nela). Cada caso teve uma
+ * causa diferente e foi corrigido na origem — mas todos tinham em comum uma
+ * queda irreal.
+ *
+ * Desconto real acima de 90% não existe neste catálogo. Então, mesmo que
+ * apareça um defeito novo que eu não previ, ele não chega à vitrine.
+ */
+const QUEDA_MAXIMA = 0.9;
+
 /** As mesmas janelas que a página oferece nas abas. */
 const JANELAS = [1, 7, 30] as const;
 
 export async function atualizarQuedas(): Promise<number> {
-  const inicio = new Date();
+  // NÚMERO DA RODADA, não relógio.
+  //
+  // ⚠ A versão anterior comparava `computed_at < inicio` para apagar o que
+  // sobrou da rodada passada, e isso APAGAVA O QUE ACABARA DE SER GRAVADO:
+  // `inicio` tinha milissegundos (17:54:40.847) e a coluna só guarda segundos
+  // (17:54:40.000), então tudo que entrasse no mesmo segundo parecia velho.
+  // Era uma corrida — a janela de 30 dias sobrevivia, a de 7 sumia, e a página
+  // ficava vazia sem erro nenhum no log. Ver migration 035.
+  const rodada = Date.now();
   for (const dias of JANELAS) {
     // INSERT ... ON DUPLICATE primeiro e só depois apagar o que sobrou:
     // assim a página nunca encontra a tabela vazia no meio da atualização.
     await pool.query(
-      `INSERT INTO product_price_drop (janela, product_id, antes, agora, pct, offers)
+      `INSERT INTO product_price_drop (janela, product_id, antes, agora, pct, offers, rodada)
        SELECT ?, j.product_id, j.antes, j.min_usd,
-              ROUND((j.antes - j.min_usd) / j.antes * 100), j.offers
+              ROUND((j.antes - j.min_usd) / j.antes * 100), j.offers, ?
          FROM (SELECT product_id, day, min_usd, offers,
                       FIRST_VALUE(min_usd) OVER (PARTITION BY product_id ORDER BY day) AS antes
                  FROM product_price_daily
@@ -34,9 +58,10 @@ export async function atualizarQuedas(): Promise<number> {
         WHERE j.day = CURDATE()
           AND j.antes > j.min_usd
           AND (j.antes - j.min_usd) / j.antes >= ?
+          AND (j.antes - j.min_usd) / j.antes <= ?
        ON DUPLICATE KEY UPDATE
           antes = VALUES(antes), agora = VALUES(agora),
-          pct = VALUES(pct), offers = VALUES(offers),
+          pct = VALUES(pct), offers = VALUES(offers), rodada = VALUES(rodada),
           -- ⚠ ESTA LINHA É OBRIGATÓRIA, e a falta dela zerou a página em
           -- produção no primeiro deploy (05/08/2026). O MariaDB NÃO regrava a
           -- linha quando os valores novos são idênticos aos antigos — e, sem
@@ -46,10 +71,12 @@ export async function atualizarQuedas(): Promise<number> {
           -- fosse mais uma queda. Atribuindo a data explicitamente, a linha
           -- sempre muda e sempre sobrevive.
           computed_at = CURRENT_TIMESTAMP`,
-      [dias, dias, QUEDA_MINIMA],
+      [dias, rodada, dias, QUEDA_MINIMA, QUEDA_MAXIMA],
     );
-    // Produto que subiu de preço (ou saiu do ar) some da lista.
-    await pool.query("DELETE FROM product_price_drop WHERE janela = ? AND computed_at < ?", [dias, inicio]);
+    // Produto que subiu de preço (ou saiu do ar) some da lista. A pergunta é
+    // "é desta rodada?", que é exata — e não "é antigo?", que dependia de
+    // precisão de relógio e apagava o que acabara de entrar.
+    await pool.query("DELETE FROM product_price_drop WHERE janela = ? AND rodada <> ?", [dias, rodada]);
   }
   const [n] = await pool.query("SELECT COUNT(*) c FROM product_price_drop WHERE janela = 7");
   return Number(n?.c ?? 0);
