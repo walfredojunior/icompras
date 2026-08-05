@@ -5,6 +5,7 @@ import { syncProducts } from "@icompras/search";
 import { getEmbeddingProvider, ingestImageFromUrl } from "@icompras/core";
 import { categoryFromProductSlug, fetchSourceTree } from "../taxonomy.js";
 import { buildBrandIndex, brandFromName, type BrandIndex } from "../brands.js";
+import { atualizarQuedas } from "../quedas.js";
 import { parse as parseHtml, type HTMLElement } from "node-html-parser";
 
 const BASE = "https://www.comprasparaguai.com.br";
@@ -264,6 +265,10 @@ async function atualizarResumoDiario(): Promise<void> {
         offers  = VALUES(offers)`,
   );
   console.log(`  resumo de preços do dia atualizado (${res.affectedRows} produtos)`);
+  // As quedas saem do mesmo lugar e na mesma hora — quem lê a página só lê o
+  // resultado pronto (ver src/quedas.ts).
+  const n = await atualizarQuedas();
+  console.log(`  quedas de preço recalculadas (${n} produtos na janela de 7 dias)`);
 }
 
 // Põe na tabela toda categoria descoberta, para a fila de trabalho existir

@@ -17,7 +17,8 @@
     "recategorizar": "tsx src/scripts/recategorizar.ts",
     "guardiao": "tsx src/scripts/guardiao.ts",
     "auditoria": "tsx src/scripts/auditoria.ts",
-    "marcas": "tsx src/scripts/marcas.ts"
+    "marcas": "tsx src/scripts/marcas.ts",
+    "quedas": "tsx src/quedas.ts"
   },
   "dependencies": {
     "@icompras/core": "*",

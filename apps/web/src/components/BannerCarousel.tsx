@@ -20,6 +20,12 @@ const SEGUNDOS_POR_BANNER = 8;
 export function BannerCarousel({ banners }: { banners: B[] }) {
   const [i, setI] = useState(0);
   const [parado, setParado] = useState(false);
+  // O clique no banner é o ÚNICO que o esqueleto de página não cobre: ele passa
+  // pela rota que conta o clique antes de seguir, então é uma navegação inteira
+  // do navegador e não uma troca de tela do Next. Sem retorno visual, ficava a
+  // sensação de que o toque não pegou. Este estado acende assim que a pessoa
+  // clica, antes de a viagem começar.
+  const [indo, setIndo] = useState(false);
   const locale = useLocale();
 
   // `i` entra nas dependências de propósito: assim o relógio reinicia sempre
@@ -66,9 +72,16 @@ export function BannerCarousel({ banners }: { banners: B[] }) {
         href={href}
         target={destino.externo ? "_blank" : undefined}
         rel={rel}
-        className="block h-full w-full"
+        // Aba nova não tira a pessoa daqui, então não há por que "acender".
+        onClick={() => !destino.externo && setIndo(true)}
+        className="group relative block h-full w-full"
       >
         {img}
+        {indo && (
+          <span className="absolute inset-0 flex items-center justify-center bg-brand-navy/45 backdrop-blur-[1px]">
+            <span className="h-9 w-9 animate-spin rounded-full border-[3px] border-white/40 border-t-white" />
+          </span>
+        )}
       </a>
     );
   }

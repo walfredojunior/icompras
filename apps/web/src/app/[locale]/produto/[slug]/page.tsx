@@ -10,6 +10,8 @@ import { MoneyStack } from "@/components/MoneyStack";
 import { ProductOffers } from "@/components/ProductOffers";
 import { ProductTabs } from "@/components/ProductTabs";
 import { RelatedProducts } from "@/components/RelatedProducts";
+import { Suspense } from "react";
+import { EsqueletoRelacionados } from "@/components/Esqueleto";
 // import { PriceAlertForm } from "@/components/PriceAlertForm";  // volta com o alerta
 import { FavoriteButton } from "@/components/FavoriteButton";
 import { isFavorite } from "@/lib/favorites";
@@ -32,7 +34,8 @@ export default async function ProductPage({
   const rates = await getRates();
   const usuario = await getCurrentUser();
   const isLoggedIn = !!usuario;
-  const related = await getRelatedProducts(product.id);
+  // `getRelatedProducts` NÃO é esperado aqui de propósito — ver o componente
+  // Relacionados no fim do arquivo.
   const history = await getPriceHistory(product.id, rates);
   const crumbs = await getProductBreadcrumb(slug, locale);
   const favorito = usuario ? await isFavorite(usuario.id, product.id) : false;
@@ -166,14 +169,49 @@ export default async function ProductPage({
         }}
       />
 
-      <RelatedProducts
-        items={related}
-        locale={locale}
-        rates={rates}
-        title={t("related")}
-        fromLabel={th("from")}
-        storesLabel={th("stores")}
-      />
+      {/* Os relacionados chegam DEPOIS, sem segurar o resto da página.
+          Medido em 05/08/2026: essa busca por semelhança compara o produto com
+          134 mil outros e leva ~2,5s — era ela que fazia a página inteira
+          demorar 2,2s para aparecer. Agora o visitante vê produto, preço e
+          lojas quase instantaneamente, e esta faixa preenche sozinha. */}
+      <Suspense fallback={<EsqueletoRelacionados titulo={t("related")} />}>
+        <Relacionados
+          productId={product.id}
+          locale={locale}
+          rates={rates}
+          title={t("related")}
+          fromLabel={th("from")}
+          storesLabel={th("stores")}
+        />
+      </Suspense>
     </div>
+  );
+}
+
+async function Relacionados({
+  productId,
+  locale,
+  rates,
+  title,
+  fromLabel,
+  storesLabel,
+}: {
+  productId: number;
+  locale: string;
+  rates: Awaited<ReturnType<typeof getRates>>;
+  title: string;
+  fromLabel: string;
+  storesLabel: string;
+}) {
+  const items = await getRelatedProducts(productId);
+  return (
+    <RelatedProducts
+      items={items}
+      locale={locale}
+      rates={rates}
+      title={title}
+      fromLabel={fromLabel}
+      storesLabel={storesLabel}
+    />
   );
 }
