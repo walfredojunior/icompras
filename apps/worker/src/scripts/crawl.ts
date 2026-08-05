@@ -1882,12 +1882,23 @@ async function loopNovos(): Promise<void> {
       ? (Date.now() - new Date(ultima.marcas_em).getTime()) / 3_600_000
       : Infinity;
     const vaiVarrerMarcas = !stopRequested && horasDesdeMarcas >= 24;
-    const deMarcas = vaiVarrerMarcas
-      ? await comBatimento("novos · varrendo páginas de marca (1x por dia)", () => varrerMarcas())
-      : 0;
+    // Marca ANTES de começar, não depois.
+    //
+    // Registrar só no fim parece mais correto, mas cria um laço: a varredura
+    // leva mais de uma hora e, se o robô for reiniciado no meio (o que
+    // acontece a cada publicação), ela nunca chega ao fim, nunca é registrada
+    // e recomeça do zero para sempre — a descoberta rápida pelo mapa ficaria
+    // presa atrás dela.
+    //
+    // O preço de marcar antes: se a varredura falhar no meio, as marcas ficam
+    // 24h sem ser percorridas. Aceitável — o mapa do site continua rodando a
+    // cada volta e é ele que pega produto novo.
     if (vaiVarrerMarcas) {
       await pool.query("UPDATE crawl_robo SET marcas_em = NOW() WHERE worker_id = ?", [WORKER_ID]);
     }
+    const deMarcas = vaiVarrerMarcas
+      ? await comBatimento("novos · varrendo páginas de marca (1x por dia)", () => varrerMarcas())
+      : 0;
     const total = doMapa + deMarcas;
     if (total > 0) await comBatimento("novos · atualizando catálogo", () => refreshCatalog());
     await roboCicloFecha(total);
