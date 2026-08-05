@@ -55,6 +55,38 @@ export async function atualizarQuedas(): Promise<number> {
                       FIRST_VALUE(min_usd) OVER (PARTITION BY product_id ORDER BY day) AS antes
                  FROM product_price_daily
                 WHERE day >= CURDATE() - INTERVAL ? DAY) j
+        -- ⭐ SÓ ENTRA QUEM TEVE UMA OFERTA QUE REALMENTE BAIXOU DE PREÇO.
+        --
+        -- Esta é a correção de fundo, e ela resolve uma classe inteira de erro
+        -- em vez de mais um caso. Até aqui a "queda" era calculada do MENOR
+        -- preço do produto — que muda quando uma oferta APARECE ou SOME, sem
+        -- ninguém ter baixado nada.
+        --
+        -- O caso que expôs isso (05/08/2026): o "iPhone 14 Pro Max 128GB"
+        -- tinha duas ofertas — a certa da Cellshop (US$ 710) e uma ERRADA da
+        -- Digital Center, que na verdade anunciava um "iPhone 17 Pro Max 1TB"
+        -- (US$ 1.720). Em 31/07 só existia a errada; em 01/08 a certa entrou.
+        -- O menor preço "caiu" de 1.720 para 710 e a página anunciou −59%.
+        -- **Nenhum preço mudou**: as duas ofertas ficaram paradas o tempo todo.
+        --
+        -- Medido: das 368 quedas listadas, apenas 164 tinham uma oferta que de
+        -- fato baixou. **55% da página era ruído.**
+        --
+        -- A tabela offer_price_history guarda o preço POR OFERTA, então dá para
+        -- perguntar a coisa certa: "alguma oferta deste produto está mais
+        -- barata hoje do que estava no começo da janela?"
+        JOIN (
+          SELECT DISTINCT v.product_id
+            FROM (SELECT offer_id,
+                         CAST(SUBSTRING_INDEX(GROUP_CONCAT(price ORDER BY recorded_at), ',', 1) AS DECIMAL(14,2)) AS primeiro,
+                         CAST(SUBSTRING_INDEX(GROUP_CONCAT(price ORDER BY recorded_at DESC), ',', 1) AS DECIMAL(14,2)) AS ultimo
+                    FROM offer_price_history
+                   WHERE recorded_at > NOW() - INTERVAL ? DAY
+                   GROUP BY offer_id) x
+            JOIN offer o ON o.id = x.offer_id
+            JOIN product_variant v ON v.id = o.variant_id
+           WHERE x.ultimo < x.primeiro
+        ) baixou ON baixou.product_id = j.product_id
         WHERE j.day = CURDATE()
           AND j.antes > j.min_usd
           AND (j.antes - j.min_usd) / j.antes >= ?
@@ -71,7 +103,7 @@ export async function atualizarQuedas(): Promise<number> {
           -- fosse mais uma queda. Atribuindo a data explicitamente, a linha
           -- sempre muda e sempre sobrevive.
           computed_at = CURRENT_TIMESTAMP`,
-      [dias, rodada, dias, QUEDA_MINIMA, QUEDA_MAXIMA],
+      [dias, rodada, dias, dias, QUEDA_MINIMA, QUEDA_MAXIMA],
     );
     // Produto que subiu de preço (ou saiu do ar) some da lista. A pergunta é
     // "é desta rodada?", que é exata — e não "é antigo?", que dependia de

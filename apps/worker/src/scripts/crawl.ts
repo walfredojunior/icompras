@@ -484,6 +484,35 @@ function tokens(s: string): string[] {
     .toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "")
     .split(/[^a-z0-9]+/).filter((t) => t.length >= 2 && !STOP.has(t));
 }
+// Os NÚMEROS de um nome são a identidade do produto em eletrônicos.
+//
+// "iPhone 14 Pro Max 128GB" e "iPhone 17 Pro Max 1TB" têm 4 palavras em comum
+// de 7 (57%) — passam folgado em qualquer teste de semelhança de texto. Mas
+// são produtos DIFERENTES, e quem diz isso são os números: 14≠17, 128≠1.
+//
+// Caso real (05/08/2026): um "iPhone 17 Pro Max 1TB" de US$ 1.720 estava colado
+// no "iPhone 14 Pro Max 128GB" e passou por todos os filtros de palavra.
+function numerosDe(s: string): Set<string> {
+  return new Set(s.match(/\d+/g) ?? []);
+}
+
+/**
+ * Verdadeiro quando os números se CONTRADIZEM — ambos os lados têm números e
+ * não compartilham nenhum.
+ *
+ * Exige números dos DOIS lados de propósito: "Cámara Nikon Z F Cuerpo" (sem
+ * número) contra "Câmera Nikon Z F 24.5MP" não é contradição, é falta de
+ * informação — e descartar por falta de informação foi o erro que quase me fez
+ * apagar as ofertas escritas em espanhol.
+ */
+function numerosBrigam(nomeProduto: string, tituloOferta: string): boolean {
+  const a = numerosDe(nomeProduto);
+  const b = numerosDe(tituloOferta);
+  if (!a.size || !b.size) return false;
+  for (const n of a) if (b.has(n)) return false;
+  return true;
+}
+
 function overlap(a: string[], b: string[]): number {
   if (!a.length) return 0;
   const bs = new Set(b);
@@ -1304,6 +1333,14 @@ async function ingestProduct(page: () => Promise<Page>, path: string, ourCategor
   // outro. Entram só como último recurso, quando nenhuma oferta com título
   // serviu.
   if (!kept.length) kept = data.offers.filter((o) => !o.title);
+  // Descarta quem os NÚMEROS desmentem, mesmo tendo passado no teste de
+  // palavras (ver numerosBrigam). É o que separa "iPhone 14 128GB" de
+  // "iPhone 17 1TB", que compartilham 57% das palavras.
+  const antesDosNumeros = kept.length;
+  kept = kept.filter((o) => !o.title || !numerosBrigam(name, o.title));
+  if (antesDosNumeros !== kept.length) {
+    console.log(`  ⚠ ${antesDosNumeros - kept.length} oferta(s) com números incompatíveis descartada(s) em ${path}`);
+  }
   if (!kept.length) {
     // Nenhuma oferta é deste produto: ele está SEM PREÇO, e essa é a verdade.
     // Vai para a lista de espera e é reconferido nas próximas voltas.
