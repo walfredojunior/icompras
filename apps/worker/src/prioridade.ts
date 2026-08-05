@@ -37,71 +37,59 @@ export const FAIXAS = {
 } as const;
 
 export async function classificarProdutos(): Promise<Record<string, number>> {
-  // Tudo numa tabela temporária primeiro: são ~223 mil linhas, e fazer isso
-  // com subconsulta por linha levaria horas.
-  await pool.query("DROP TEMPORARY TABLE IF EXISTS tmp_prio");
-  await pool.query(`
-    CREATE TEMPORARY TABLE tmp_prio (
-      external_id VARCHAR(200) NOT NULL PRIMARY KEY,
-      intervalo   SMALLINT UNSIGNED NOT NULL,
-      faixa       VARCHAR(16) NOT NULL
-    ) ENGINE=MEMORY
-  `);
-
+  // UM comando só, sem tabela temporária.
+  //
+  // ⚠ A primeira versão usava CREATE TEMPORARY TABLE e quebrou em produção com
+  // "Table 'tmp_prio' doesn't exist": tabela temporária vive dentro de UMA
+  // conexão, e o pool entrega uma conexão diferente a cada consulta — então o
+  // CREATE acontecia numa e o INSERT em outra. Armadilha clássica de pool.
+  // Com UPDATE ... JOIN (subconsulta) o problema deixa de existir.
+  //
   // Um produto pode ter várias ofertas com o mesmo external_id da fonte; o
-  // GROUP BY resolve. `lojas` sai da contagem de lojas distintas com oferta.
+  // GROUP BY resolve. `lojas` é a contagem de lojas distintas com oferta.
   await pool.query(
-    `INSERT INTO tmp_prio (external_id, intervalo, faixa)
-     SELECT x.ext,
-            CASE WHEN x.mudou THEN ?
-                 WHEN x.visto OR x.lojas >= 10 THEN ?
-                 WHEN x.lojas >= 5 THEN ?
-                 WHEN x.lojas >= 2 THEN ?
-                 ELSE ? END,
-            CASE WHEN x.mudou THEN 'quente'
-                 WHEN x.visto OR x.lojas >= 10 THEN 'morno'
-                 WHEN x.lojas >= 5 THEN 'normal'
-                 WHEN x.lojas >= 2 THEN 'frio'
-                 ELSE 'gelado' END
-       FROM (
+    `UPDATE scrape_log s
+       JOIN (
          SELECT o.external_id AS ext,
                 COUNT(DISTINCT o.store_id) AS lojas,
-                MAX(h.mudou IS NOT NULL) AS mudou,
+                MAX(h.product_id IS NOT NULL) AS mudou,
                 MAX(a.slug IS NOT NULL)  AS visto
            FROM offer o
            JOIN product_variant v ON v.id = o.variant_id
            JOIN product p ON p.id = v.product_id
-           -- Mudou de preço na última semana?
+           -- Mudou de preço na última semana? (o sinal mais confiável)
            LEFT JOIN (
-             SELECT product_id, 1 AS mudou
+             SELECT product_id
                FROM product_price_daily
               WHERE day >= CURDATE() - INTERVAL 7 DAY
               GROUP BY product_id
              HAVING COUNT(DISTINCT min_usd) > 1
            ) h ON h.product_id = p.id
-           -- Alguém abriu a página deste produto?
+           -- Alguém abriu a página deste produto nos últimos 30 dias?
            LEFT JOIN (
              SELECT DISTINCT slug FROM analytics_page
               WHERE kind = 'produto' AND day > CURDATE() - INTERVAL 30 DAY
            ) a ON a.slug = p.slug
           WHERE o.source = 'scraped' AND o.external_id IS NOT NULL
           GROUP BY o.external_id
-       ) x`,
-    [FAIXAS.quente, FAIXAS.morno, FAIXAS.normal, FAIXAS.frio, FAIXAS.gelado],
-  );
-
-  await pool.query(
-    `UPDATE scrape_log s JOIN tmp_prio t ON t.external_id = s.external_id
-        SET s.intervalo_horas = t.intervalo,
-            s.faixa = t.faixa,
+       ) x ON x.ext = s.external_id
+        SET s.intervalo_horas = CASE WHEN x.mudou THEN ?
+                                     WHEN x.visto OR x.lojas >= 10 THEN ?
+                                     WHEN x.lojas >= 5 THEN ?
+                                     WHEN x.lojas >= 2 THEN ?
+                                     ELSE ? END,
+            s.faixa           = CASE WHEN x.mudou THEN 'quente'
+                                     WHEN x.visto OR x.lojas >= 10 THEN 'morno'
+                                     WHEN x.lojas >= 5 THEN 'normal'
+                                     WHEN x.lojas >= 2 THEN 'frio'
+                                     ELSE 'gelado' END,
             s.classificado_em = NOW()`,
+    [FAIXAS.quente, FAIXAS.morno, FAIXAS.normal, FAIXAS.frio, FAIXAS.gelado],
   );
 
   const linhas = await pool.query(
     "SELECT faixa, COUNT(*) n FROM scrape_log WHERE faixa IS NOT NULL GROUP BY faixa",
   );
-  await pool.query("DROP TEMPORARY TABLE IF EXISTS tmp_prio");
-
   const saida: Record<string, number> = {};
   for (const r of linhas) saida[String(r.faixa)] = Number(r.n);
   return saida;
