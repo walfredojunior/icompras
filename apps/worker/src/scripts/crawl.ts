@@ -407,6 +407,21 @@ function cleanName(s: string): string {
       .slice(0, 250)
   );
 }
+// Quanto o título anunciado pela loja precisa parecer com o nome do produto.
+// BOA = casou; MÍNIMA = piso de resgate quando nenhuma oferta chega em BOA
+// (ver o comentário longo em ingestProduct).
+const SEMELHANCA_BOA = 0.55;
+// 0,25 e não 1/3: calibrado olhando os casos reais. "iPhone SE2 128GB Black
+// Swap Usa" (a loja) x "Celular Apple iPhone SE 2020 128GB Recondicionado" (o
+// nosso nome) dá 0,29 — é o MESMO produto e não pode ser descartado. Já os
+// erros de verdade ficam bem abaixo: "Cel iPhone 17 Pro Max" num Poco M6 dá
+// 0,12, e "Motorola Headset XT120" no Garmin dá 0.
+const SEMELHANCA_MINIMA = 0.25;
+
+// Preço abaixo desta fração do preço conhecido do produto é tratado como
+// suspeito, não como promoção.
+const FRACAO_SUSPEITA = 0.2;
+
 function tokens(s: string): string[] {
   return s
     .toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "")
@@ -1186,9 +1201,39 @@ async function ingestProduct(page: () => Promise<Page>, path: string, ourCategor
   }
 
   // Filtra as ofertas DESTE produto (título parecido com o nome do produto).
+  //
+  // ⚠ AQUI MORAVA UM BUG CARO (achado em 05/08/2026). A linha era:
+  //     if (!kept.length) kept = data.offers;
+  // ou seja: "se NENHUMA oferta é deste produto, considere TODAS como sendo
+  // dele". É o contrário do certo. Página de produto sem ninguém vendendo
+  // continua mostrando os blocos de "produtos relacionados", e o coletor
+  // adotava o mais barato deles como preço do produto.
+  //
+  // Resultado real: o "Relógio Garmin Fenix 7X Pro Sapphire Solar" ficou
+  // custando US$ 8,00 — que era o preço de um "Motorola Headset XT120" (0% de
+  // palavras em comum) na mesma página. E a página de quedas anunciou −99%.
+  //
+  // Agora há um PISO em vez de "vale tudo": não chegando aos 55%, aceita só
+  // quem tiver pelo menos um terço das palavras. Esse meio-termo existe porque
+  // exigir os 55% sempre seria pior que a doença — a loja escreve o mesmo
+  // produto de outro jeito ("Smartphone Motorola Moto G67 XT2621" para o nosso
+  // "Celular Motorola Moto G67 XT-2621") e o produto perderia o preço.
   const ptoks = tokens(name);
-  let kept = data.offers.filter((o) => o.title && overlap(ptoks, tokens(o.title)) >= 0.55);
-  if (!kept.length) kept = data.offers;
+  const semelhanca = (o: { title: string | null }) => (o.title ? overlap(ptoks, tokens(o.title)) : 0);
+  let kept = data.offers.filter((o) => o.title && semelhanca(o) >= SEMELHANCA_BOA);
+  if (!kept.length) kept = data.offers.filter((o) => o.title && semelhanca(o) >= SEMELHANCA_MINIMA);
+  // Oferta SEM título não pode ser julgada — e "não dá para julgar" é diferente
+  // de "não é deste produto". Descartá-las tiraria o preço de produtos que hoje
+  // têm oferta legítima (Caterpillar B30, Hotwav A17…), trocando um erro por
+  // outro. Entram só como último recurso, quando nenhuma oferta com título
+  // serviu.
+  if (!kept.length) kept = data.offers.filter((o) => !o.title);
+  if (!kept.length) {
+    // Nenhuma oferta é deste produto: ele está SEM PREÇO, e essa é a verdade.
+    // Vai para a lista de espera e é reconferido nas próximas voltas.
+    await anotarSemPreco(path, origemAtual);
+    return 0;
+  }
 
   // Menor preço por loja — guardando também os dados daquela oferta
   // específica (título, código, foto e link da variação anunciada).
@@ -1213,6 +1258,35 @@ async function ingestProduct(page: () => Promise<Page>, path: string, ourCategor
   }
   // Clientes que enviam a própria lista (self_managed): o scraper os ignora.
   for (const s of [...byStore.keys()]) if (selfManagedSlugs.has(slugify(s))) byStore.delete(s);
+
+  // CINTO E SUSPENSÓRIO: preço absurdo é suspeito, não promoção.
+  //
+  // O filtro de título acima resolve a maioria dos casos, mas ele depende de a
+  // loja escrever um título parecido. Esta é a segunda rede: se o produto já
+  // tem um preço conhecido e aparece uma oferta valendo menos de um quinto
+  // disso, é quase sempre erro — oferta de outro produto, preço de acessório
+  // ou de parcela.
+  //
+  // A saída NÃO é descartar toda pechincha: promoção de verdade existe. Por
+  // isso a oferta é aceita quando OUTRA loja confirma preço na mesma ordem de
+  // grandeza. Uma loja sozinha com preço absurdo é descartada; duas lojas com
+  // preço parecido é o mercado, não erro.
+  const slug = slugify(name);
+  const [conhecido] = await pool.query("SELECT min_price_usd FROM product WHERE slug = ? LIMIT 1", [slug]);
+  const precoRef = Number(conhecido?.min_price_usd ?? 0);
+  if (precoRef > 0) {
+    for (const [loja, info] of [...byStore]) {
+      if (info.price >= precoRef * FRACAO_SUSPEITA) continue;
+      const confirmada = [...byStore].some(([outra, v]) => outra !== loja && v.price <= info.price * 2);
+      if (!confirmada) {
+        console.log(
+          `  ⚠ preço suspeito ignorado: ${loja} US$ ${info.price} (${name.slice(0, 40)} vale ~US$ ${precoRef})`,
+        );
+        byStore.delete(loja);
+      }
+    }
+  }
+
   if (!byStore.size) {
     await anotarSemPreco(path, origemAtual);
     return 0;
@@ -1221,7 +1295,7 @@ async function ingestProduct(page: () => Promise<Page>, path: string, ourCategor
   await saiuDaEspera(path);
   const minPrice = Math.min(...[...byStore.values()].map((v) => v.price));
 
-  const slug = slugify(name);
+  // (`slug` já foi calculado acima, para consultar o preço conhecido.)
   // A categoria sai do nome do produto ("Robô de Limpeza Xiaomi…" → robo-de-limpeza);
   // se o nome não revelar, fica a categoria da página em que ele foi encontrado.
   const catSlug = categoryFromProductSlug(slug, categorySlugs) ?? ourCategory;
