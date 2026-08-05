@@ -434,9 +434,35 @@ function parsePrice(s: string): number | null {
 // fonte está pedindo. Sai muito mais barato do que contornar bloqueio depois.
 // ---------------------------------------------------------------------------
 let freioAte = 0; // enquanto agora < isto, ninguém pede nada
-let atrasoExtra = 0; // pausa a mais, permanente, depois de 429 repetido
+let atrasoExtra = 0; // pausa a mais em TODO pedido, depois de 429 repetido
 let recusas429 = 0;
+let marcoAlivio = Date.now(); // desde quando estamos sem levar 429
 const ATRASO_EXTRA_MAX = 5000;
+
+// O atraso extra DIMINUI sozinho depois de meia hora sem 429.
+//
+// Antes ele só subia: uma vez castigado, o robô ficava lento até o processo
+// reiniciar. Em 04/08/2026 isso quase custou caro sem ninguém ver — a FONTE
+// caiu 3 vezes (12 respostas 503) e, pelas regras antigas, quem ficaria lento
+// para sempre éramos nós, por causa de um problema que não era nosso.
+//
+// Meia hora é tempo suficiente para não ficar oscilando a cada tropeço, e curto
+// o bastante para uma noite ruim da fonte não custar um dia de coleta.
+const ALIVIO_APOS_MS = 30 * 60 * 1000;
+const ALIVIO_PASSO = 500;
+
+function aliviarAtraso(): void {
+  if (!atrasoExtra) return;
+  const quieto = Date.now() - marcoAlivio;
+  if (quieto < ALIVIO_APOS_MS) return;
+  const passos = Math.floor(quieto / ALIVIO_APOS_MS);
+  atrasoExtra = Math.max(0, atrasoExtra - passos * ALIVIO_PASSO);
+  marcoAlivio = Date.now();
+  // Zerou o castigo: a contagem de recusas também recomeça, senão a próxima
+  // recusa isolada cairia direto num múltiplo de 3 e puniria sem motivo.
+  if (atrasoExtra === 0) recusas429 = 0;
+  console.log(`  ↩ meia hora sem recusa — pausa extra baixou para +${atrasoExtra}ms`);
+}
 
 async function respeitarFreio(): Promise<void> {
   const falta = freioAte - Date.now();
@@ -456,27 +482,43 @@ function esperaPedida(res: Response): number {
 async function fetchText(url: string, tentativa = 0): Promise<string | null> {
   if (!permitidoPeloRobots(url)) return null;
   await respeitarFreio();
+  aliviarAtraso();
   if (atrasoExtra) await sleep(atrasoExtra);
   try {
     const res = await fetch(url, { headers: { "User-Agent": UA, "Accept-Language": "es,pt;q=0.8" } });
 
-    // 429 = pedindo rápido demais · 503 = sobrecarregado. Nos dois casos a
-    // fonte está pedindo espaço, e a resposta certa é dar.
+    // 429 e 503 são as duas formas de a fonte dizer "espera" — e nos DOIS casos
+    // esperar é a resposta certa. Mas eles NÃO significam a mesma coisa, e
+    // tratá-los igual custou caro em 04/08/2026:
+    //
+    //   429 = "VOCÊ está pedindo rápido demais"  → é sobre nós, e o ritmo baixa
+    //   503 = "EU estou sobrecarregado/fora"     → é sobre eles, e não é culpa
+    //                                              nossa
+    //
+    // Naquele dia levamos 12 recusas, TODAS 503, em 3 episódios que pegaram os
+    // 4 robôs ao mesmo tempo, em páginas diferentes — a fonte tinha caído. Com
+    // a regra antiga, a queda DELES deixava o NOSSO robô permanentemente mais
+    // lento. Agora só o 429 castiga.
     if (res.status === 429 || res.status === 503) {
       const espera = esperaPedida(res);
       freioAte = Date.now() + espera;
-      recusas429++;
-      // TODA recusa é registrada, não só as que aumentam a pausa: o número de
-      // freios é o termômetro de quanto estamos incomodando a fonte, e serve
-      // para decidir se o ritmo (CRAWL_RPS) precisa baixar.
+      // TODA recusa é registrada, não só as que aumentam a pausa: o painel
+      // separa as duas e mostra "pedimos rápido demais" x "a fonte esteve fora".
       await registrarFreio(res.status, espera, url);
-      // Recusa repetida não é acaso: o ritmo está alto demais. Aumenta a pausa
-      // de todas as próximas requisições, e não só desta.
-      if (recusas429 % 3 === 0 && atrasoExtra < ATRASO_EXTRA_MAX) {
-        atrasoExtra = Math.min(ATRASO_EXTRA_MAX, atrasoExtra + 500);
-        console.log(`  ⚠ ${recusas429}ª recusa da fonte — aumentando a pausa para +${atrasoExtra}ms`);
+
+      if (res.status === 429) {
+        recusas429++;
+        marcoAlivio = Date.now();
+        // Recusa repetida não é acaso: o ritmo está alto demais. Aumenta a
+        // pausa de todas as próximas requisições, e não só desta.
+        if (recusas429 % 3 === 0 && atrasoExtra < ATRASO_EXTRA_MAX) {
+          atrasoExtra = Math.min(ATRASO_EXTRA_MAX, atrasoExtra + 500);
+          console.log(`  ⚠ ${recusas429}ª recusa por ritmo — aumentando a pausa para +${atrasoExtra}ms`);
+        } else {
+          console.log(`  ⏸ fonte pediu ${Math.round(espera / 1000)}s de espera (429, ritmo)`);
+        }
       } else {
-        console.log(`  ⏸ fonte pediu ${Math.round(espera / 1000)}s de espera (${res.status})`);
+        console.log(`  ⏸ fonte fora do ar — esperando ${Math.round(espera / 1000)}s (503)`);
       }
       // Duas chances depois de esperar; na terceira desiste e segue a vida.
       return tentativa < 2 ? fetchText(url, tentativa + 1) : null;

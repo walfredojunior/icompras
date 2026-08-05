@@ -163,14 +163,20 @@ export async function GET(req: Request) {
   }
 
   // Freios: quantas vezes a fonte mandou o coletor esperar.
-  // É o termômetro de quanto estamos incomodando — enquanto ficar em zero, o
-  // ritmo está confortável para ela.
+  //
+  // OS DOIS NÚMEROS VÊM SEPARADOS DE PROPÓSITO (corrigido em 04/08/2026). Antes
+  // eram somados, e isso deu alarme falso: 12 freios pareciam "estamos
+  // incomodando a fonte" quando na verdade eram 12 respostas 503 — a fonte fora
+  // do ar 3 vezes, nada a ver com o nosso ritmo. Só o 429 fala sobre nós.
   let freios: any = null;
   try {
     const [f] = await pool.query(
       `SELECT COUNT(*) total,
               SUM(happened_at > NOW() - INTERVAL 24 HOUR) hoje,
               SUM(happened_at > NOW() - INTERVAL 7 DAY)   semana,
+              SUM(happened_at > NOW() - INTERVAL 24 HOUR AND status = 429) ritmo24h,
+              SUM(happened_at > NOW() - INTERVAL 24 HOUR AND status <> 429) fora24h,
+              SUM(status = 429) ritmoTotal,
               COALESCE(SUM(CASE WHEN happened_at > NOW() - INTERVAL 24 HOUR THEN espera_ms END), 0) espera24h,
               MAX(happened_at) ultimo
          FROM crawl_freio`,
@@ -179,6 +185,11 @@ export async function GET(req: Request) {
       total: Number(f?.total ?? 0),
       hoje: Number(f?.hoje ?? 0),
       semana: Number(f?.semana ?? 0),
+      // "Pedimos rápido demais" (429) — o único que pede providência nossa.
+      ritmo24h: Number(f?.ritmo24h ?? 0),
+      ritmoTotal: Number(f?.ritmoTotal ?? 0),
+      // "A fonte esteve fora do ar" (503) — informação sobre a saúde deles.
+      fora24h: Number(f?.fora24h ?? 0),
       // Quanto tempo o coletor passou parado por ordem da fonte, em segundos.
       paradoSegundos24h: Math.round(Number(f?.espera24h ?? 0) / 1000),
       ultimoAt: f?.ultimo ? new Date(f.ultimo).toISOString() : null,

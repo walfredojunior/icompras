@@ -42,6 +42,11 @@ interface Brakes {
   total: number;
   hoje: number;
   semana: number;
+  /** 429 — "você está pedindo rápido demais". É sobre nós. */
+  ritmo24h: number;
+  ritmoTotal: number;
+  /** 503 — "estou sobrecarregado/fora do ar". É sobre a fonte. */
+  fora24h: number;
   paradoSegundos24h: number;
   ultimoAt: string | null;
 }
@@ -181,20 +186,44 @@ function FreiosLinha({ b }: { b: Brakes | null }) {
     b.paradoSegundos24h >= 60
       ? `${Math.round(b.paradoSegundos24h / 60)} min`
       : `${b.paradoSegundos24h}s`;
+
+  // A cor sai SÓ do 429. Um dia cheio de 503 é notícia sobre a fonte, não
+  // motivo de alarme aqui — pintar de âmbar por causa deles fazia o painel
+  // gritar por algo que não temos como resolver (e foi o que aconteceu).
+  const nossoProblema = b.ritmo24h > 0;
+  const cor = nossoProblema
+    ? "border-amber-200 bg-amber-50 text-amber-800"
+    : "border-slate-200 bg-slate-50 text-slate-600";
+
   return (
-    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+    <div className={`mt-3 rounded-xl border p-3 ${cor}`}>
       <div className="flex flex-wrap items-baseline gap-x-2 text-xs">
         <span className="font-medium text-slate-700">Freios da fonte</span>
-        <span className="font-medium text-amber-700">
-          {b.hoje} nas últimas 24h
-        </span>
         <span className="text-slate-400">{ago(b.ultimoAt)}</span>
       </div>
-      <p className="mt-1 text-xs leading-relaxed text-amber-800">
-        A fonte pediu para o coletor esperar {b.hoje} vez{b.hoje === 1 ? "" : "es"} nas últimas 24h
-        {b.paradoSegundos24h > 0 ? `, somando ${parado} parado` : ""}. Na semana: {b.semana}. Total: {b.total}.
-        {b.hoje >= 10 ? " Convém baixar o ritmo do coletor." : ""}
-      </p>
+
+      <div className="mt-1.5 space-y-1 text-xs leading-relaxed">
+        <p>
+          <span className="font-medium">Pedimos rápido demais:</span>{" "}
+          {b.ritmo24h === 0 ? (
+            <span className="font-medium text-brand-green-dark">nenhuma vez nas últimas 24h</span>
+          ) : (
+            <span className="font-medium text-amber-700">
+              {b.ritmo24h} vez{b.ritmo24h === 1 ? "" : "es"} nas últimas 24h
+            </span>
+          )}
+          {b.ritmo24h >= 10 ? " — convém baixar o ritmo do coletor." : ""}
+        </p>
+        <p>
+          <span className="font-medium">A fonte esteve fora do ar:</span> {b.fora24h} vez
+          {b.fora24h === 1 ? "" : "es"} nas últimas 24h
+          {b.paradoSegundos24h > 0 ? `, somando ${parado} de espera` : ""}. Isso é problema do lado
+          deles; o coletor só aguarda e continua.
+        </p>
+        <p className="text-slate-500">
+          Na semana: {b.semana}. Total desde sempre: {b.total} ({b.ritmoTotal} por ritmo).
+        </p>
+      </div>
     </div>
   );
 }
