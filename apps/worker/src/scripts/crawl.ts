@@ -1784,6 +1784,25 @@ async function crawlCategory(cat: Cat): Promise<number> {
 // mais "quente" que ele seja, o robô só chega lá quando a vez da categoria
 // dele voltar. Daí a necessidade de robôs que visitam produto direto.
 
+// Bate o ponto DURANTE uma tarefa longa.
+//
+// ⚠ Sem isto os robôs especializados eram mortos em laço pelo guardião, e o
+// caso apareceu em produção em 05/08/2026: o robô dos novos varre as 176
+// páginas do mapa do site em silêncio (~6 min a 2s por página), o guardião
+// considera travado quem passa 5 min sem sinal, e religava — para o robô
+// recomeçar a varredura do zero e ser morto de novo. A varredura nunca
+// terminaria.
+async function comBatimento<T>(msg: string, fn: () => Promise<T>): Promise<T> {
+  const t = setInterval(() => {
+    void ctlBeat(msg).catch(() => {});
+  }, 60_000);
+  try {
+    return await fn();
+  } finally {
+    clearInterval(t);
+  }
+}
+
 /** Robô dos QUENTES: refaz sem parar a lista dos produtos que mexem de preço. */
 async function loopQuentes(): Promise<void> {
   const ESPERA_ENTRE_VOLTAS_MS = 5 * 60 * 1000;
@@ -1822,10 +1841,10 @@ async function loopQuentes(): Promise<void> {
       } catch (e) {
         console.log(`  ! ${caminho}: ${(e as Error).message.slice(0, 80)}`);
       }
-      if (feitos % 25 === 0) await ctlBeat(`quentes · ${feitos}/${alvos.length}`);
+      if (feitos % 5 === 0) await ctlBeat(`quentes · ${feitos}/${alvos.length}`);
       await sleep(DELAY);
     }
-    await refreshCatalog();
+    await comBatimento(`quentes · atualizando catálogo`, () => refreshCatalog());
     await roboCicloFecha(feitos);
     await ctlBeat(`quentes · volta concluída (${feitos})`);
     console.log(`=== Quentes: volta concluída, ${feitos} produto(s) ===`);
@@ -1841,11 +1860,13 @@ async function loopNovos(): Promise<void> {
     // O mapa custa ~176 pedidos (cerca de um minuto) e é o caminho oficial da
     // fonte para "o que existe". As páginas de marca pegam o que não aparece
     // em categoria nenhuma.
-    const doMapa = await varrerSitemap();
+    const doMapa = await comBatimento("novos · varrendo o mapa do site", () => varrerSitemap());
     if (await ctlShouldStop()) stopRequested = true;
-    const deMarcas = stopRequested ? 0 : await varrerMarcas();
+    const deMarcas = stopRequested
+      ? 0
+      : await comBatimento("novos · varrendo páginas de marca", () => varrerMarcas());
     const total = doMapa + deMarcas;
-    if (total > 0) await refreshCatalog();
+    if (total > 0) await comBatimento("novos · atualizando catálogo", () => refreshCatalog());
     await roboCicloFecha(total);
     await ctlBeat(`novos · ${total} encontrado(s) (mapa ${doMapa}, marcas ${deMarcas})`);
     console.log(`=== Novos: ${total} produto(s) (mapa ${doMapa}, marcas ${deMarcas}) ===`);
