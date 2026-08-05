@@ -89,8 +89,11 @@ export function FaixaDePreco({
     setB(inicial.b);
   }, [inicial.a, inicial.b]);
 
-  const de = paraValor(Math.min(a, b), min, max);
-  const ate = paraValor(Math.max(a, b), min, max);
+  // Na ponta, mostra o valor EXATO da faixa em vez do arredondado. Sem isto a
+  // barra de "iphone" dizia US$ 1.960 quando o produto mais caro custa 1.962 —
+  // pequeno, mas é o tipo de número torto que faz duvidar do resto.
+  const de = Math.min(a, b) === 0 ? min : paraValor(Math.min(a, b), min, max);
+  const ate = Math.max(a, b) === PASSOS ? max : paraValor(Math.max(a, b), min, max);
   const esq = (Math.min(a, b) / PASSOS) * 100;
   const dir = 100 - (Math.max(a, b) / PASSOS) * 100;
 
@@ -152,10 +155,6 @@ export function FaixaDePreco({
         />
       </div>
 
-      <div className="mt-1 flex justify-between text-[10px] text-slate-400">
-        <span>{dinheiro(min, locale)}</span>
-        <span>{dinheiro(max, locale)}</span>
-      </div>
     </div>
   );
 }
