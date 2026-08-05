@@ -14,7 +14,7 @@ export async function GET(req: Request) {
   const horas = Math.min(168, Math.max(1, Number(new URL(req.url).searchParams.get("horas") ?? 24)));
 
   const [agora] = await pool.query(
-    `SELECT at, cpu_pct, mem_pct, mem_usada_mb, mem_total_mb, disco_pct, disco_usado_gb,
+    `SELECT at, cpu_pct, mem_pct, mem_usada_mb, mem_total_mb, swap_pct, swap_usada_mb, swap_total_mb, disco_pct, disco_usado_gb,
             disco_total_gb, carga1, carga5, carga15, rede_rx_kbs, rede_tx_kbs,
             TIMESTAMPDIFF(SECOND, at, NOW()) AS idadeSeg
        FROM vps_metric ORDER BY at DESC LIMIT 1`,
@@ -67,6 +67,9 @@ export async function GET(req: Request) {
           mem: num(agora.mem_pct),
           memUsadaMb: num(agora.mem_usada_mb),
           memTotalMb: num(agora.mem_total_mb),
+          swap: num(agora.swap_pct),
+          swapUsadaMb: num(agora.swap_usada_mb),
+          swapTotalMb: num(agora.swap_total_mb),
           disco: num(agora.disco_pct),
           discoUsadoGb: num(agora.disco_usado_gb),
           discoTotalGb: num(agora.disco_total_gb),

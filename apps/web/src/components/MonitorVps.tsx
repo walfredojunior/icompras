@@ -16,6 +16,9 @@ interface Agora {
   mem: number | null;
   memUsadaMb: number | null;
   memTotalMb: number | null;
+  swap: number | null;
+  swapUsadaMb: number | null;
+  swapTotalMb: number | null;
   disco: number | null;
   discoUsadoGb: number | null;
   discoTotalGb: number | null;
@@ -231,7 +234,10 @@ export function MonitorVps() {
           valor={pct(a?.mem ?? null)}
           detalhe={
             a?.memUsadaMb != null
-              ? `${(a.memUsadaMb / 1024).toFixed(1)} de ${((a.memTotalMb ?? 0) / 1024).toFixed(1)} GB`
+              ? `${(a.memUsadaMb / 1024).toFixed(1)} de ${((a.memTotalMb ?? 0) / 1024).toFixed(1)} GB` +
+                (a.swapTotalMb
+                  ? ` · reserva: ${a.swap === 0 ? "sem uso ✓" : `${a.swap}% em uso ⚠`}`
+                  : " · SEM reserva de emergência")
               : "—"
           }
           cor={corDe(a?.mem ?? null, 80, 92)}
