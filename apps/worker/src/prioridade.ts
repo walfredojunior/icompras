@@ -83,7 +83,17 @@ export async function classificarProdutos(): Promise<Record<string, number>> {
                                      WHEN x.lojas >= 5 THEN 'normal'
                                      WHEN x.lojas >= 2 THEN 'frio'
                                      ELSE 'gelado' END,
-            s.classificado_em = NOW()`,
+            s.classificado_em = NOW(),
+            -- ⚠ ESTA LINHA É OBRIGATÓRIA, e a falta dela quase congelou o
+            -- coletor em produção (05/08/2026). `last_crawled_at` é
+            -- `ON UPDATE CURRENT_TIMESTAMP`: qualquer gravação na linha
+            -- reinicia o relógio de "quando visitei este produto". Como esta
+            -- classificação escreve em TODAS as 223 mil linhas e roda ao fim
+            -- de cada volta, ela fazia o coletor achar que tinha acabado de
+            -- visitar o catálogo inteiro — e ele pularia tudo, para sempre, a
+            -- cada volta. Atribuir a coluna a ela mesma suprime a atualização
+            -- automática (o MariaDB só age quando ninguém define a coluna).
+            s.last_crawled_at = s.last_crawled_at`,
     [FAIXAS.quente, FAIXAS.morno, FAIXAS.normal, FAIXAS.frio, FAIXAS.gelado],
   );
 
