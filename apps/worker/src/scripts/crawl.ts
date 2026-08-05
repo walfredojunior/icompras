@@ -1819,6 +1819,25 @@ async function comBatimento<T>(msg: string, fn: () => Promise<T>): Promise<T> {
   }
 }
 
+// Espera batendo o ponto, em vez de sumir.
+//
+// ⚠ SEGUNDO LAÇO QUE ISTO CONSERTA (05/08/2026): entre uma volta e outra os
+// robôs especializados dormiam — 5 min os quentes, 30 min os novos — sem dar
+// sinal de vida. O guardião considera travado quem passa 5 min calado, então
+// religava o robô no meio da soneca. Aparecia no log como
+// "robô 3 (novos): sem sinal há 1296s".
+//
+// De quebra, a parada pelo painel passa a ser atendida durante a espera, e não
+// só no fim dela.
+async function esperarBatendo(ms: number, msg: string): Promise<void> {
+  const fim = Date.now() + ms;
+  while (Date.now() < fim && !stopRequested) {
+    await sleep(Math.min(30_000, Math.max(0, fim - Date.now())));
+    await ctlBeat(msg);
+    if (await ctlShouldStop()) stopRequested = true;
+  }
+}
+
 /** Robô dos QUENTES: refaz sem parar a lista dos produtos que mexem de preço. */
 async function loopQuentes(): Promise<void> {
   const ESPERA_ENTRE_VOLTAS_MS = 5 * 60 * 1000;
@@ -1894,7 +1913,7 @@ async function loopQuentes(): Promise<void> {
       `=== Quentes: volta concluída, ${feitos} produto(s) · ` +
         `${usouRapido} sem navegador · ${usouNavegador} com navegador ===`,
     );
-    if (MONITOR && !stopRequested) await sleep(ESPERA_ENTRE_VOLTAS_MS);
+    if (MONITOR && !stopRequested) await esperarBatendo(ESPERA_ENTRE_VOLTAS_MS, "quentes · aguardando próxima volta");
   } while (MONITOR && !stopRequested);
 }
 
@@ -1943,7 +1962,7 @@ async function loopNovos(): Promise<void> {
     await roboCicloFecha(total);
     await ctlBeat(`novos · ${total} encontrado(s) (mapa ${doMapa}, marcas ${deMarcas})`);
     console.log(`=== Novos: ${total} produto(s) (mapa ${doMapa}, marcas ${deMarcas}) ===`);
-    if (MONITOR && !stopRequested) await sleep(ESPERA_ENTRE_VOLTAS_MS);
+    if (MONITOR && !stopRequested) await esperarBatendo(ESPERA_ENTRE_VOLTAS_MS, "novos · aguardando próxima varredura");
   } while (MONITOR && !stopRequested);
 }
 

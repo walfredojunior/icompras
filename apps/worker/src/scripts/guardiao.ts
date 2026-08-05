@@ -113,9 +113,13 @@ async function religar(app: string, target: string, motivo: string): Promise<str
 //   · batimento — está vivo?
 //   · produção  — fechou uma volta dentro do tempo esperado do papel dele?
 // O segundo é o que pega "vivo mas parado", que o primeiro nunca pegaria.
+// Tetos com o DOBRO da duração real medida, não o dobro da que eu imaginava.
+// A volta dos quentes leva ~2h33 (medido em 05/08 depois do conserto dos dois
+// sublinhados), então 3h era apertado demais — e a volta dos novos ficou em
+// ~40 min desde que as marcas passaram a rodar 1x por dia.
 const TETO_POR_PAPEL: Record<string, number> = {
-  quentes: num(process.env.GUARD_CICLO_QUENTES_MIN, 180), // volta de ~1h; 3h é folga
-  novos: num(process.env.GUARD_CICLO_NOVOS_MIN, 240), // varre de 30 em 30 min
+  quentes: num(process.env.GUARD_CICLO_QUENTES_MIN, 360), // volta de ~2h33
+  novos: num(process.env.GUARD_CICLO_NOVOS_MIN, 120), // volta de ~40 min
   normal: num(process.env.GUARD_CICLO_NORMAL_MIN, 10080), // uma volta leva dias
 };
 
@@ -123,7 +127,27 @@ async function conferirRobos(): Promise<{ status: string; detail: string }> {
   const robos = await pool.query(
     `SELECT worker_id, papel, message,
             TIMESTAMPDIFF(SECOND, heartbeat_at, NOW()) AS idade,
-            TIMESTAMPDIFF(MINUTE, COALESCE(ciclo_fechado_em, ciclo_aberto_em, heartbeat_at), NOW()) AS desdeCiclo
+            -- O MAIS RECENTE dos dois, não o fechamento primeiro.
+            --
+            -- ⚠ ISTO CRIOU UM LAÇO EM PRODUÇÃO (05/08/2026): com COALESCE, um
+            -- ciclo fechado há 5h "vencia" um ciclo ABERTO há 10 minutos. O
+            -- guardião concluía que o robô dos quentes estava parado, reiniciava
+            -- — e o reinício abortava justamente a volta em andamento, que então
+            -- nunca fechava. Ele se reiniciava para sempre por causa de uma
+            -- volta que ele mesmo impedia de terminar. Só não virou desastre
+            -- porque o limite de "religando demais" segurou.
+            --
+            -- Volta ABERTA é sinal de trabalho tanto quanto volta fechada: o
+            -- que se mede aqui é "há quanto tempo esta volta está correndo",
+            -- e o teto por papel é o dobro da duração real dela.
+            --
+            -- ⚠ NÃO incluir o heartbeat_at neste GREATEST: ele está sempre
+            -- fresco num robô vivo, e isso anularia justamente a checagem de
+            -- "vivo mas parado", que é a razão de este bloco existir.
+            TIMESTAMPDIFF(MINUTE, GREATEST(
+              COALESCE(ciclo_fechado_em, '1970-01-01'),
+              COALESCE(ciclo_aberto_em,  '1970-01-01')
+            ), NOW()) AS desdeCiclo
        FROM crawl_robo`,
   );
   if (!robos.length) return { status: "ok", detail: "nenhum robô registrado ainda" };
