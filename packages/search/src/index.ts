@@ -162,7 +162,11 @@ export async function syncProducts(): Promise<number> {
      FROM product p
      LEFT JOIN category c ON c.id = p.category_id
      LEFT JOIN product_variant v ON v.product_id = p.id
-     LEFT JOIN offer o ON o.variant_id = v.id
+     -- Oferta esgotada não entra no preço nem na contagem de lojas: anunciar o
+     -- menor preço de algo que ninguém consegue comprar irrita o visitante e
+     -- queima a loja. (A condição fica no JOIN, e não no WHERE, senão o LEFT
+     -- JOIN viraria INNER e sumiriam os produtos sem oferta nenhuma.)
+     LEFT JOIN offer o ON o.variant_id = v.id AND o.in_stock = 1
      GROUP BY p.id`,
   );
 

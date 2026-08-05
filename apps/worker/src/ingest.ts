@@ -150,12 +150,13 @@ export async function processPriceList(
         [storeId, externalId],
       );
       const oRes = await conn.query(
-        `INSERT INTO offer (variant_id, store_id, price, currency, price_usd, url, image_url, in_stock, source, external_id, last_seen_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        `INSERT INTO offer (variant_id, store_id, price, currency, price_usd, url, image_url, in_stock, stock, source, external_id, last_seen_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
          ON DUPLICATE KEY UPDATE
            variant_id = VALUES(variant_id), price = VALUES(price), currency = VALUES(currency),
            price_usd = VALUES(price_usd),
            url = VALUES(url), image_url = VALUES(image_url), in_stock = VALUES(in_stock),
+           stock = VALUES(stock),
            last_seen_at = NOW()`,
         [
           variantId,
@@ -165,7 +166,10 @@ export async function processPriceList(
           toUsd(Number(item.price), item.currency),
           item.url ?? null,
           item.image_url ?? null,
-          item.in_stock ? 1 : 0,
+          // Quem manda `stock: 0` sai do site; quem não manda o campo continua
+          // no ar (loja sem controle de estoque não pode sumir por engano).
+          item.stock !== undefined ? (item.stock > 0 ? 1 : 0) : item.in_stock ? 1 : 0,
+          item.stock ?? null,
           source,
           externalId,
         ],

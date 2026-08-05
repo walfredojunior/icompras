@@ -67,11 +67,11 @@ export async function getStoresList(): Promise<StoreListItem[]> {
 export async function getStoreProducts(storeId: number, limit = 24): Promise<ProductHit[]> {
   const rows = await pool.query(
     `SELECT p.id, p.slug, p.canonical_name AS name, p.brand, p.primary_image_url AS image_url,
-       COALESCE((SELECT MIN(o.price_usd) FROM offer o JOIN product_variant v ON v.id = o.variant_id WHERE v.product_id = p.id), p.min_price_usd) AS min_price,
-       GREATEST((SELECT COUNT(DISTINCT o.store_id) FROM offer o JOIN product_variant v ON v.id = o.variant_id WHERE v.product_id = p.id), p.ext_store_count) AS store_count
+       COALESCE((SELECT MIN(o.price_usd) FROM offer o JOIN product_variant v ON v.id = o.variant_id WHERE v.product_id = p.id AND o.in_stock = 1), p.min_price_usd) AS min_price,
+       GREATEST((SELECT COUNT(DISTINCT o.store_id) FROM offer o JOIN product_variant v ON v.id = o.variant_id WHERE v.product_id = p.id AND o.in_stock = 1), p.ext_store_count) AS store_count
      FROM product p
      WHERE p.id IN (SELECT product_id FROM product_store WHERE store_id = ?)
-        OR p.id IN (SELECT v.product_id FROM offer o JOIN product_variant v ON v.id = o.variant_id WHERE o.store_id = ?)
+        OR p.id IN (SELECT v.product_id FROM offer o JOIN product_variant v ON v.id = o.variant_id WHERE o.store_id = ? AND o.in_stock = 1)
      ORDER BY p.canonical_name
      LIMIT ?`,
     [storeId, storeId, limit],

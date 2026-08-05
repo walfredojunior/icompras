@@ -43,7 +43,7 @@ export async function getFavorites(userId: number): Promise<FavoriteItem[]> {
        FROM favorite f
        JOIN product p ON p.id = f.product_id
        LEFT JOIN product_variant v ON v.product_id = p.id
-       LEFT JOIN offer o ON o.variant_id = v.id
+       LEFT JOIN offer o ON o.variant_id = v.id AND o.in_stock = 1
       WHERE f.user_id = ?
       GROUP BY p.id
       ORDER BY MAX(f.created_at) DESC`,

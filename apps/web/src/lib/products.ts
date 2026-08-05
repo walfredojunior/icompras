@@ -60,7 +60,7 @@ export async function getProductDetail(slug: string): Promise<ProductDetail | nu
             SUBSTRING_INDEX(GROUP_CONCAT(o.code ORDER BY o.price_usd SEPARATOR 0x1f), 0x1f, 1) AS offer_code,
             SUBSTRING_INDEX(GROUP_CONCAT(o.image_url ORDER BY o.price_usd SEPARATOR 0x1f), 0x1f, 1) AS offer_image
      FROM offer o JOIN product_variant v ON v.id = o.variant_id JOIN store s ON s.id = o.store_id
-     WHERE v.product_id = ? GROUP BY s.id ORDER BY price ASC`,
+     WHERE v.product_id = ? AND o.in_stock = 1 GROUP BY s.id ORDER BY price ASC`,
     [pid],
   );
 
@@ -129,9 +129,9 @@ export async function getProductBreadcrumb(
 export async function getRelatedProducts(productId: number, limit = 6): Promise<ProductHit[]> {
   const rows = await pool.query(
     `SELECT p.id, p.slug, p.canonical_name AS name, p.brand, p.primary_image_url AS image_url,
-            COALESCE((SELECT MIN(o.price_usd) FROM offer o JOIN product_variant v ON v.id = o.variant_id WHERE v.product_id = p.id), p.min_price_usd) AS min_price,
+            COALESCE((SELECT MIN(o.price_usd) FROM offer o JOIN product_variant v ON v.id = o.variant_id WHERE v.product_id = p.id AND o.in_stock = 1), p.min_price_usd) AS min_price,
             GREATEST(
-              (SELECT COUNT(DISTINCT o.store_id) FROM offer o JOIN product_variant v ON v.id = o.variant_id WHERE v.product_id = p.id),
+              (SELECT COUNT(DISTINCT o.store_id) FROM offer o JOIN product_variant v ON v.id = o.variant_id WHERE v.product_id = p.id AND o.in_stock = 1),
               p.ext_store_count
             ) AS store_count
      FROM product_embedding e1
