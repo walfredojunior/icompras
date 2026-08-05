@@ -36,7 +36,16 @@ export async function atualizarQuedas(): Promise<number> {
           AND (j.antes - j.min_usd) / j.antes >= ?
        ON DUPLICATE KEY UPDATE
           antes = VALUES(antes), agora = VALUES(agora),
-          pct = VALUES(pct), offers = VALUES(offers)`,
+          pct = VALUES(pct), offers = VALUES(offers),
+          -- ⚠ ESTA LINHA É OBRIGATÓRIA, e a falta dela zerou a página em
+          -- produção no primeiro deploy (05/08/2026). O MariaDB NÃO regrava a
+          -- linha quando os valores novos são idênticos aos antigos — e, sem
+          -- regravar, o \`ON UPDATE CURRENT_TIMESTAMP\` não dispara. Resultado:
+          -- todo produto cuja queda continuou EXATAMENTE igual ficava com a
+          -- data velha e era apagado pela limpeza logo abaixo, como se não
+          -- fosse mais uma queda. Atribuindo a data explicitamente, a linha
+          -- sempre muda e sempre sobrevive.
+          computed_at = CURRENT_TIMESTAMP`,
       [dias, dias, QUEDA_MINIMA],
     );
     // Produto que subiu de preço (ou saiu do ar) some da lista.
