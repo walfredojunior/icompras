@@ -85,8 +85,8 @@ export async function classificarProdutos(): Promise<Record<string, number>> {
                                      ELSE 'gelado' END,
             s.classificado_em = NOW(),
             -- ⚠ ESTA LINHA É OBRIGATÓRIA, e a falta dela quase congelou o
-            -- coletor em produção (05/08/2026). `last_crawled_at` é
-            -- `ON UPDATE CURRENT_TIMESTAMP`: qualquer gravação na linha
+            -- coletor em produção (05/08/2026). A coluna last_crawled_at é
+            -- ON UPDATE CURRENT_TIMESTAMP: qualquer gravação na linha
             -- reinicia o relógio de "quando visitei este produto". Como esta
             -- classificação escreve em TODAS as 223 mil linhas e roda ao fim
             -- de cada volta, ela fazia o coletor achar que tinha acabado de
