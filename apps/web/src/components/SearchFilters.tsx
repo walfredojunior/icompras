@@ -1,6 +1,7 @@
 import { Link } from "@/i18n/navigation";
 import { X } from "lucide-react";
 import { buildHref } from "@/lib/urlFiltros";
+import { FaixaDePreco } from "./FaixaDePreco";
 
 export interface FilterLabels {
   filters: string;
@@ -23,11 +24,16 @@ export function SearchFilters({
   brands,
   params,
   activeBrands,
+  priceRange,
+  locale,
 }: {
   labels: FilterLabels;
   brands: Array<{ value: string; count: number }>;
   params: Record<string, string | undefined>;
   activeBrands: string[];
+  /** Menor e maior preço do resultado atual — dá escala à barra. */
+  priceRange: { min: number; max: number } | null;
+  locale: string;
 }) {
   const temFiltro = activeBrands.length > 0 || params.min || params.max;
 
@@ -49,40 +55,12 @@ export function SearchFilters({
         )}
       </div>
 
-      {/* Faixa de preço — um formulário simples, sem depender de JavaScript. */}
-      <form action="/search" className="mt-4">
-        {Object.entries(params).map(([k, v]) =>
-          v && k !== "min" && k !== "max" && k !== "page" ? (
-            <input key={k} type="hidden" name={k} value={v} />
-          ) : null,
-        )}
-        <span className="text-xs font-medium text-slate-600">{labels.priceRange}</span>
-        <div className="mt-2 flex items-center gap-2">
-          <input
-            type="number"
-            name="min"
-            inputMode="numeric"
-            placeholder={labels.min}
-            defaultValue={params.min ?? ""}
-            className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
-          />
-          <span className="text-slate-300">–</span>
-          <input
-            type="number"
-            name="max"
-            inputMode="numeric"
-            placeholder={labels.max}
-            defaultValue={params.max ?? ""}
-            className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
-          />
-        </div>
-        <button
-          type="submit"
-          className="mt-2 w-full rounded-lg border border-slate-200 py-1.5 text-xs text-slate-600 hover:border-brand-green hover:text-brand-green-dark"
-        >
-          {labels.apply}
-        </button>
-      </form>
+      {/* Faixa de preço: duas bolinhas, sem caixas de digitar (decisão do dono
+          em 05/08/2026). O valor exato aparece por cima da barra enquanto se
+          arrasta, então ninguém fica sem saber o número. */}
+      {priceRange && (
+        <FaixaDePreco faixa={priceRange} params={params} locale={locale} rotulo={labels.priceRange} />
+      )}
 
       {brands.length > 0 && (
         <div className="mt-6">

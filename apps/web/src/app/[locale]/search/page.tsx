@@ -125,6 +125,8 @@ export default async function SearchPage({
           brands={res.brands}
           params={urlParams}
           activeBrands={activeBrands}
+          priceRange={res.priceRange}
+          locale={locale}
         />
 
         <div className="min-w-0 flex-1">
@@ -143,6 +145,8 @@ export default async function SearchPage({
               brands={res.brands}
               params={urlParams}
               activeBrands={activeBrands}
+              priceRange={res.priceRange}
+              locale={locale}
             />
             <span className="text-xs text-slate-500">{t("sort")}:</span>
             {ORDENACOES.map((o) => (

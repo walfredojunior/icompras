@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { SlidersHorizontal, X, Check } from "lucide-react";
+import { FaixaDePreco } from "./FaixaDePreco";
 import { useRouter } from "@/i18n/navigation";
 import { buildHref } from "@/lib/urlFiltros";
 
@@ -29,12 +30,17 @@ export function FiltrosMobile({
   brands,
   params,
   activeBrands,
+  priceRange,
+  locale,
   base = "/search",
 }: {
   labels: FiltrosLabels;
   brands: Array<{ value: string; count: number }>;
   params: Record<string, string | undefined>;
   activeBrands: string[];
+  /** Menor e maior preço do resultado atual — dá escala à barra de preço. */
+  priceRange: { min: number; max: number } | null;
+  locale: string;
   base?: string;
 }) {
   const router = useRouter();
@@ -116,26 +122,23 @@ export function FiltrosMobile({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
-          <span className="text-sm font-medium text-slate-700">{labels.priceRange}</span>
-          <div className="mt-2 flex items-center gap-2">
-            <input
-              type="number"
-              inputMode="numeric"
-              placeholder={labels.min}
-              value={min}
-              onChange={(e) => setMin(e.target.value)}
-              className={campo}
+          {/* Duas bolinhas no lugar das caixas de digitar. Aqui a barra só
+              guarda os valores: quem navega é o botão "aplicar" lá embaixo,
+              junto com as marcas escolhidas — uma navegação só. */}
+          {priceRange ? (
+            <FaixaDePreco
+              faixa={priceRange}
+              params={params}
+              locale={locale}
+              rotulo={labels.priceRange}
+              aoSoltar={(de, ate) => {
+                setMin(de ?? "");
+                setMax(ate ?? "");
+              }}
             />
-            <span className="text-slate-300">–</span>
-            <input
-              type="number"
-              inputMode="numeric"
-              placeholder={labels.max}
-              value={max}
-              onChange={(e) => setMax(e.target.value)}
-              className={campo}
-            />
-          </div>
+          ) : (
+            <span className="text-sm font-medium text-slate-700">{labels.priceRange}</span>
+          )}
 
           {brands.length > 0 && (
             <>

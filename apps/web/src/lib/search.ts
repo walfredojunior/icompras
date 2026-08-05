@@ -31,6 +31,14 @@ export interface SearchResult {
   page: number;
   pages: number;
   brands: Array<{ value: string; count: number }>;
+  /**
+   * Menor e maior preço DESTE resultado — é o que dá escala à barra de preço.
+   *
+   * Precisa ser do resultado e não do catálogo inteiro: os preços do site vão
+   * de US$ 0,09 a US$ 35.360, então uma barra global seria inútil. Em
+   * "celulares" a faixa real é US$ 1,50 a US$ 1.962, e aí a barra faz sentido.
+   */
+  priceRange: { min: number; max: number } | null;
 }
 
 function client(): MeiliSearch {
@@ -74,7 +82,9 @@ export async function search(query: string, opts: SearchOptions = {}): Promise<S
     hitsPerPage: perPage,
     filter: filters.length ? filters : undefined,
     sort: sortBy,
-    facets: ["brand"],
+    // `min_price` entra nas facetas só para o Meilisearch devolver o menor e o
+    // maior preço do resultado (facetStats) — é o que dimensiona a barra.
+    facets: ["brand", "min_price"],
   });
 
   const dist =
@@ -86,6 +96,16 @@ export async function search(query: string, opts: SearchOptions = {}): Promise<S
     .sort((a, b) => b.count - a.count)
     .slice(0, 15);
 
+  // Faixa de preço do resultado. Vem do Meilisearch já calculada; sem isso a
+  // barra de preço não teria como saber onde começa e onde termina.
+  const stats =
+    (res as unknown as { facetStats?: Record<string, { min: number; max: number }> }).facetStats
+      ?.min_price ?? null;
+  const priceRange =
+    stats && Number.isFinite(stats.min) && Number.isFinite(stats.max) && stats.max > stats.min
+      ? { min: Math.floor(stats.min), max: Math.ceil(stats.max) }
+      : null;
+
   const r = res as unknown as { totalHits?: number; totalPages?: number };
   return {
     hits: res.hits as ProductHit[],
@@ -93,6 +113,7 @@ export async function search(query: string, opts: SearchOptions = {}): Promise<S
     page,
     pages: r.totalPages ?? 1,
     brands,
+    priceRange,
   };
 }
 
