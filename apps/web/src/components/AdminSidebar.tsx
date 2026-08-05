@@ -1,10 +1,11 @@
 "use client";
 
-import { Radar, ChartLine, CreditCard, Users, BookOpen, Images, LayoutGrid, Star, Coins, Store, KeyRound, LogOut } from "lucide-react";
+import { Radar, ChartLine, Gauge, CreditCard, Users, BookOpen, Images, LayoutGrid, Star, Coins, Store, KeyRound, LogOut } from "lucide-react";
 import { Link, usePathname, useRouter } from "@/i18n/navigation";
 
 const ITEMS = [
   { href: "/admin/scraper", label: "Scraper", Icon: Radar },
+  { href: "/admin/monitor", label: "Monitor VPS", Icon: Gauge },
   { href: "/admin/visitas", label: "Visitas", Icon: ChartLine },
   { href: "/admin/planos", label: "Planos", Icon: CreditCard },
   { href: "/admin/clientes", label: "Clientes", Icon: Users },

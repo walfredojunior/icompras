@@ -13,6 +13,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { pool } from "@icompras/db";
+import { coletarMetrica, conferirLimites } from "../metricas.js";
 
 const execAsync = promisify(exec);
 // .../apps/worker/src/scripts/guardiao.ts → raiz do projeto
@@ -255,13 +256,15 @@ async function verificar(): Promise<void> {
       ? { status: "ok", detail: "parado pelo painel" }
       : await conferirRobos();
   const site = await conferirSite();
+  const vps = await conferirLimites();
   await talvezAuditar();
 
-  const problemas = [coletor, robos, site].filter(
+  const problemas = [coletor, robos, site, vps].filter(
     (v) => v.status !== "ok" && v.status !== "parado-pelo-usuario",
   );
   const status = problemas.length ? problemas[0].status : coletor.status === "ok" ? "ok" : coletor.status;
-  const detalhe = `coletor: ${coletor.detail} · robôs: ${robos.detail} · site: ${site.detail}`;
+  const detalhe = `coletor: ${coletor.detail} · robôs: ${robos.detail} · site: ${site.detail} · servidor: ${vps.detail}`;
+  if (vps.status !== "ok") await registrar("servidor", vps.status, vps.detail, "nenhuma");
 
   await pool.query(
     `UPDATE watchdog_state SET last_check_at = NOW(), status = ?, detail = ?, checks = checks + 1 WHERE id = 1`,
@@ -277,9 +280,21 @@ async function main(): Promise<void> {
       `considera travado após ${SEM_SINAL_SEG}s sem sinal · no máximo ${MAX_RELIGADAS_HORA} religadas/hora · ` +
       `auditoria de catálogo no dia ${AUDIT_DIA} (0=domingo) às ${AUDIT_HORA}h UTC`,
   );
+  // AMOSTRA DE MINUTO EM MINUTO, independente da verificação (que é de 5 em
+  // 5). O dono pediu esse detalhe, e ele importa: a verificação a cada 5 min
+  // não enxergaria um pico de 1 minuto, e é justamente o pico que se quer ver.
+  const AMOSTRA_MS = 60_000;
+  await coletarMetrica();
+  const relogioMetricas = setInterval(() => {
+    void coletarMetrica();
+  }, AMOSTRA_MS);
+  if (UMA_VEZ) clearInterval(relogioMetricas);
+
   do {
     try {
       await verificar();
+      // Mantém o histórico do monitor em 90 dias (~130 mil amostras).
+      await pool.query("DELETE FROM vps_metric WHERE at < NOW() - INTERVAL 90 DAY");
     } catch (e) {
       console.error("falha na verificação:", (e as Error).message);
     }
