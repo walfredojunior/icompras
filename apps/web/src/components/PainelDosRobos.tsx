@@ -81,10 +81,22 @@ export function PainelDosRobos({ r }: { r: RobosInfo | null }) {
     porPapel(p).some((x) => x.semSinalSeg == null || x.semSinalSeg > 300);
 
   const quentes = r.quentes;
-  // O número que importa nos quentes não é quantos existem, e sim há quanto
-  // tempo o mais esquecido não é conferido. Passou de 2h, algo travou.
+  // O número que importa nos quentes não é quantos existem, e sim **há quanto
+  // tempo o mais esquecido da lista não é reconferido**.
+  //
+  // ⚠ O limite é 6 HORAS, e não as 2 que eu tinha posto no primeiro dia.
+  // Aquele número foi escolhido ANTES de medir: eu estimava uma volta de ~1h,
+  // mas o ritmo real é ~4h45 (cada página precisa ser renderizada pelo
+  // navegador, ~8s por produto, e não os 2s da pausa de educação). Com 2h o
+  // painel acusava "atrasado" o tempo todo, mesmo funcionando perfeitamente —
+  // e alarme que sempre toca é alarme que ninguém olha.
+  //
+  // 6h é a promessa da própria faixa "quente" (FAIXAS.quente em
+  // apps/worker/src/prioridade.ts). Assim o âmbar significa exatamente uma
+  // coisa: o robô deixou de cumprir o que prometeu.
+  const LIMITE_QUENTES_MIN = 360;
   const idadeQuentes = quentes.maisVelhoMin;
-  const quentesOk = idadeQuentes != null && idadeQuentes <= 120;
+  const quentesOk = idadeQuentes != null && idadeQuentes <= LIMITE_QUENTES_MIN;
 
   const roboNovos = porPapel("novos")[0];
   const novosOk = roboNovos ? (roboNovos.desdeVoltaMin ?? 999) <= 240 : false;
@@ -123,6 +135,9 @@ export function PainelDosRobos({ r }: { r: RobosInfo | null }) {
       >
         <Linha rotulo="Na lista" valor={quentes.naLista.toLocaleString("pt-BR")} />
         <Linha rotulo="Preço mais velho" valor={tempo(idadeQuentes)} />
+        <p className="pt-0.5 text-[11px] text-slate-400">
+          Uma volta completa leva ~5h. Vira alerta se passar de 6h.
+        </p>
         {quentes.faixas.length > 0 && (
           <p className="pt-1 text-[11px] text-slate-400">
             {quentes.faixas
