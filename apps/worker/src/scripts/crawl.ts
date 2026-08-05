@@ -1256,6 +1256,15 @@ async function ingestProduct(page: () => Promise<Page>, path: string, ourCategor
     usouRapido++;
   } else {
     usouNavegador++;
+    // QUAL página precisou do navegador, e não só quantas.
+    //
+    // Medido em 05/08/2026: a volta normal marca "400 sem navegador · 0 com
+    // navegador" — ou seja, a leitura rápida dá conta de tudo lá. Mas os 6
+    // processos de Chromium abertos pertencem TODOS ao robô dos quentes, e o
+    // HTML cru de um produto quente já vem com as 14 lojas e os preços. Ou
+    // seja: alguma coisa faz a leitura rápida desistir ali, e sem saber QUAL
+    // endereço é não dá para descobrir o quê.
+    console.log(`  🌐 navegador para ${path}`);
     data = await extractProduct(await page(), BASE + path);
   }
   const name = cleanName(data.name || path);
@@ -1849,12 +1858,21 @@ async function loopQuentes(): Promise<void> {
         console.log(`  ! ${caminho}: ${(e as Error).message.slice(0, 80)}`);
       }
       if (feitos % 5 === 0) await ctlBeat(`quentes · ${feitos}/${alvos.length}`);
+      // O MESMO placar que a volta normal já imprime. Sem ele, o robô dos
+      // quentes era o único sem essa medida — e foi justamente nele que o
+      // Chromium apareceu consumindo 770 MB.
+      if (feitos % 25 === 0) {
+        console.log(`  ⚡ ${usouRapido} sem navegador · ${usouNavegador} com navegador`);
+      }
       await sleep(DELAY);
     }
     await comBatimento(`quentes · atualizando catálogo`, () => refreshCatalog());
     await roboCicloFecha(feitos);
     await ctlBeat(`quentes · volta concluída (${feitos})`);
-    console.log(`=== Quentes: volta concluída, ${feitos} produto(s) ===`);
+    console.log(
+      `=== Quentes: volta concluída, ${feitos} produto(s) · ` +
+        `${usouRapido} sem navegador · ${usouNavegador} com navegador ===`,
+    );
     if (MONITOR && !stopRequested) await sleep(ESPERA_ENTRE_VOLTAS_MS);
   } while (MONITOR && !stopRequested);
 }
