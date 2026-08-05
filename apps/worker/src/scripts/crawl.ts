@@ -1847,15 +1847,36 @@ async function loopQuentes(): Promise<void> {
       }
       const id = String(a.external_id).replace(/^cp-/, "");
       if (!/^\d+$/.test(id)) continue;
-      // O número é que manda na página: qualquer texto antes do "_" serve
-      // (conferido em 05/08/2026 — /x_49558/ devolve o mesmo produto).
-      const caminho = `/x_${id}/`;
+
+      // UM sublinhado ou DOIS — e errar isso dá 404.
+      //
+      // ⚠ BUG QUE ESTE TRECHO CORRIGE (05/08/2026, medido): eu montava sempre
+      // `/x_<id>/`. Funciona para o produto comum, mas o **anúncio de loja
+      // única** mora em `/slug__<id>/`, com DOIS sublinhados. Conferido:
+      //   id de 5 dígitos → um sublinhado 200, dois 404
+      //   id de 7 dígitos → um sublinhado 404, dois 200
+      // Eram **333 dos 2.109 quentes (16%)** batendo em página inexistente —
+      // e como o produto era marcado como visitado do mesmo jeito, ele
+      // **nunca era realmente reconferido**, com o preço envelhecendo em
+      // silêncio. De quebra, cada 404 abria o Chromium à toa (a leitura
+      // rápida devolve null sem título), o que explica os 770 MB de navegador
+      // que só apareciam neste robô.
+      //
+      // O texto antes do sublinhado não importa (o número é que manda), mas a
+      // QUANTIDADE de sublinhados importa. Tento a forma provável primeiro e
+      // caio na outra se não vier nada — assim o dia em que a fonte mudar a
+      // regra dos 7 dígitos não quebra a coleta em silêncio.
+      const formas = id.length >= 7 ? [`/x__${id}/`, `/x_${id}/`] : [`/x_${id}/`, `/x__${id}/`];
       try {
-        await ingestProduct(getPage, caminho, String(a.cat));
+        let colhido = 0;
+        for (const caminho of formas) {
+          colhido = await ingestProduct(getPage, caminho, String(a.cat));
+          if (colhido > 0) break;
+        }
         await markCrawled(String(a.external_id));
         feitos++;
       } catch (e) {
-        console.log(`  ! ${caminho}: ${(e as Error).message.slice(0, 80)}`);
+        console.log(`  ! ${formas[0]}: ${(e as Error).message.slice(0, 80)}`);
       }
       if (feitos % 5 === 0) await ctlBeat(`quentes · ${feitos}/${alvos.length}`);
       // O MESMO placar que a volta normal já imprime. Sem ele, o robô dos
