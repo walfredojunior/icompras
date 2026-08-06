@@ -1139,21 +1139,26 @@ async function ensureStore(
   }
   const slug = slugify(name);
   if (storeCache.has(slug)) return storeCache.get(slug)!;
-  const existing = await pool.query("SELECT id, logo_url, phone, website FROM store WHERE slug = ? LIMIT 1", [slug]);
+  // ⚠ `external_url` e NAO `website`: o site do lojista mora na primeira.
+  // A coluna `website` existe na tabela, tem nome melhor e esta MORTA — nada
+  // no site le ou escreve nela. O admin (lib/clients.ts) grava em
+  // `external_url`, e a pagina publica da loja le de la. Escrevi em `website`
+  // na primeira tentativa: 62 lojas preenchidas e a pagina continuou vazia.
+  const existing = await pool.query("SELECT id, logo_url, phone, external_url FROM store WHERE slug = ? LIMIT 1", [slug]);
   let id: number;
   if (existing.length) {
     id = Number(existing[0].id);
     // COALESCE e nao sobrescrita: o que ja esta preenchido manda. Se o dono
     // corrigir o site de uma loja no admin, o coletor nao desfaz.
-    if ((!existing[0].logo_url && logo) || (!existing[0].phone && phone) || (!existing[0].website && site)) {
+    if ((!existing[0].logo_url && logo) || (!existing[0].phone && phone) || (!existing[0].external_url && site)) {
       await pool.query(
-        "UPDATE store SET logo_url = COALESCE(logo_url, ?), phone = COALESCE(phone, ?), website = COALESCE(website, ?) WHERE id = ?",
+        "UPDATE store SET logo_url = COALESCE(logo_url, ?), phone = COALESCE(phone, ?), external_url = COALESCE(external_url, ?) WHERE id = ?",
         [logo, phone, site, id],
       );
     }
   } else {
     const res = await pool.query(
-      "INSERT INTO store (slug, name, status, source, is_lead, logo_url, phone, maps_query, website) VALUES (?, ?, 'active', 'scraped', 1, ?, ?, ?, ?)",
+      "INSERT INTO store (slug, name, status, source, is_lead, logo_url, phone, maps_query, external_url) VALUES (?, ?, 'active', 'scraped', 1, ?, ?, ?, ?)",
       [slug, name, logo, phone, mapsQuery, site],
     );
     id = Number(res.insertId);
