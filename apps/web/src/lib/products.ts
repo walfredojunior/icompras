@@ -126,22 +126,67 @@ export async function getProductBreadcrumb(
 }
 
 // Produtos relacionados por similaridade (IA / embeddings VECTOR do MariaDB).
-export async function getRelatedProducts(productId: number, limit = 6): Promise<ProductHit[]> {
-  const rows = await pool.query(
-    `SELECT p.id, p.slug, p.canonical_name AS name, p.brand, p.primary_image_url AS image_url,
+//
+// ⚠ ESTA FUNÇÃO ERA O GARGALO DO SITE INTEIRO (medido em 06/08/2026).
+//
+// A página de produto levava 2,5 s com um visitante e 7,5 s com dez — enquanto
+// busca e "baixaram de preço" respondiam em 0,26 s. É a página mais importante
+// que existe: é nela que o Google deixa o visitante e para onde vai todo clique
+// da busca. Dois segundos dos 2,5 eram esta consulta.
+//
+// A causa: ela comparava o produto com os **226 mil** vetores do catálogo, um
+// por um, a cada visita. O índice vetorial (HNSW) não ajuda aqui — ele só entra
+// quando o vetor de comparação é uma constante, e aqui ele vem de um JOIN.
+//
+// E não adianta trocar para o jeito que o índice entende: testado lado a lado,
+// a busca indexada (euclidiana) devolvia *acessórios* para um celular — bateria,
+// tela, capa, display. A cosseno força bruta devolvia os celulares comparáveis.
+// Rápido e errado não serve.
+//
+// A SAÍDA: manter a cosseno, mas comparar só com a MESMA CATEGORIA. Medido no
+// iPhone 14 Pro Max: **os 6 mesmos produtos, na mesma ordem, em 0,085 s no
+// lugar de 2,0 s** — 24× mais rápido, porque são 795 candidatos e não 226 mil.
+// Faz sentido além do desempenho: produto relacionado de celular é celular.
+//
+// A rede de segurança abaixo existe para 0,54% do catálogo: 1.218 produtos sem
+// categoria e 12 em categorias com menos de 7 itens. Nesses, e só nesses, a
+// busca ampla (lenta) ainda roda — melhor uma página lenta do que uma página
+// sem sugestão nenhuma.
+const SELECT_RELACIONADOS = `p.id, p.slug, p.canonical_name AS name, p.brand, p.primary_image_url AS image_url,
             COALESCE((SELECT MIN(o.price_usd) FROM offer o JOIN product_variant v ON v.id = o.variant_id WHERE v.product_id = p.id AND o.in_stock = 1), p.min_price_usd) AS min_price,
             GREATEST(
               (SELECT COUNT(DISTINCT o.store_id) FROM offer o JOIN product_variant v ON v.id = o.variant_id WHERE v.product_id = p.id AND o.in_stock = 1),
               p.ext_store_count
-            ) AS store_count
+            ) AS store_count`;
+
+export async function getRelatedProducts(productId: number, limit = 6): Promise<ProductHit[]> {
+  // Caminho normal: só dentro da categoria do produto.
+  let rows = await pool.query(
+    `SELECT ${SELECT_RELACIONADOS}
      FROM product_embedding e1
-     JOIN product_embedding e2 ON e2.product_id <> e1.product_id
-     JOIN product p ON p.id = e2.product_id
+     JOIN product p0 ON p0.id = e1.product_id
+     JOIN product p ON p.category_id = p0.category_id AND p.id <> p0.id
+     JOIN product_embedding e2 ON e2.product_id = p.id
      WHERE e1.product_id = ?
      ORDER BY VEC_DISTANCE_COSINE(e1.embedding, e2.embedding) ASC
      LIMIT ?`,
     [productId, limit],
   );
+
+  // Plano B para quem não tem categoria (ou tem categoria quase vazia).
+  if (rows.length < limit) {
+    rows = await pool.query(
+      `SELECT ${SELECT_RELACIONADOS}
+       FROM product_embedding e1
+       JOIN product_embedding e2 ON e2.product_id <> e1.product_id
+       JOIN product p ON p.id = e2.product_id
+       WHERE e1.product_id = ?
+       ORDER BY VEC_DISTANCE_COSINE(e1.embedding, e2.embedding) ASC
+       LIMIT ?`,
+      [productId, limit],
+    );
+  }
+
   return rows.map((r: any) => ({
     id: Number(r.id),
     slug: r.slug,
