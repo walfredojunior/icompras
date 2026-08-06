@@ -1,0 +1,11 @@
+-- Perguntar "quais são os quentes e há quanto tempo não vejo o mais esquecido?"
+-- lia as 231 mil linhas de `scrape_log` inteiras — `EXPLAIN` acusava
+-- `type=ALL, key=NULL, rows=207.498` para achar 2.108. Levava 4,7 s, em uma
+-- consulta que o painel do admin refaz a cada abertura.
+--
+-- A ordem das colunas importa: `faixa` primeiro porque é o filtro de
+-- igualdade; `last_crawled_at` em seguida para o `MIN()` sair do próprio
+-- índice, já ordenado, sem tocar na tabela.
+--
+-- Serve também para a classificação em prioridade.ts, que agrupa por faixa.
+CREATE INDEX idx_slog_faixa ON scrape_log (faixa, last_crawled_at);
