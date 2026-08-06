@@ -1396,7 +1396,15 @@ async function ingestProduct(page: () => Promise<Page>, path: string, ourCategor
   // específica (título, código, foto e link da variação anunciada).
   const byStore = new Map<
     string,
-    { price: number; phone: string | null; title: string | null; code: string | null; image: string | null; url: string | null }
+    {
+      price: number;
+      phone: string | null;
+      title: string | null;
+      code: string | null;
+      image: string | null;
+      url: string | null;
+      site: string | null;
+    }
   >();
   for (const o of kept) {
     const price = parsePrice(o.price);
@@ -1410,6 +1418,19 @@ async function ingestProduct(page: () => Promise<Page>, path: string, ourCategor
         code: o.code,
         image: o.image,
         url: o.url,
+        // ⚠ ESQUECER UM CAMPO AQUI NÃO DÁ ERRO — dá silêncio.
+        //
+        // Na primeira tentativa (06/08/2026) eu colhi o site nos quatro pontos
+        // de leitura, gravei no banco e publiquei. Duas horas de robô depois:
+        // zero lojas com site. O motivo era esta linha faltando — a oferta
+        // trazia o endereço, mas o agrupamento por loja não o copiava adiante,
+        // e chegava `undefined` no cadastro.
+        //
+        // O `tsx` que roda o coletor apaga os tipos em vez de conferi-los, e o
+        // `esbuild` que eu uso para checar sintaxe também não olha tipo nenhum.
+        // Ou seja: a rede que pegaria isso não existe neste caminho. Quando
+        // somar campo a uma oferta, seguir ele até o fim à mão.
+        site: o.site,
       });
     }
   }
