@@ -25,14 +25,40 @@ const Traduzido = z.object({
 // simplificam, e recusar por isso seria implicância.
 const TextoOuTraduzido = z.union([Traduzido, z.string().min(1)]);
 
+/**
+ * Endereço da web — e só isso.
+ *
+ * Antes destes campos serem `z.string()` puro, `javascript:alert(1)` e
+ * `file:///etc/passwd` passavam pela validação e iam para o banco. Hoje o site
+ * nunca põe esses valores direto num link (todo clique passa pelo nosso
+ * `/ir/loja/`, que decide o destino a partir do banco), então não dava para
+ * explorar — mas era uma mina esperando alguém escrever `href={oferta.url}`
+ * num arquivo novo. Barrar na porta custa uma linha; lembrar para sempre de
+ * não usar o campo, não.
+ *
+ * `.trim()` antes: espaço no começo é o disfarce mais banal (" javascript:").
+ *
+ * ⚠ Isto NÃO substitui a portaria de `packages/core/src/media/seguranca.ts`.
+ * Aqui só se confere a forma do endereço; lá se confere PARA ONDE ele aponta,
+ * o que só dá para saber na hora de buscar.
+ */
+const EnderecoWeb = (max: number) =>
+  z
+    .string()
+    .max(max)
+    .trim()
+    .refine((v) => v === "" || /^https?:\/\//i.test(v), {
+      message: "Deve começar com http:// ou https://",
+    });
+
 export const ItemCompatSchema = z.object({
   code: z.string().min(1).max(200),
   name: TextoOuTraduzido,
   price: z.number().nonnegative(),
   stock: z.number().nonnegative(),
   description: TextoOuTraduzido.optional(),
-  url_image: z.string().max(500).optional(),
-  link: z.string().max(600).optional(),
+  url_image: EnderecoWeb(500).optional(),
+  link: EnderecoWeb(600).optional(),
   brand: z.string().max(120).nullable().optional(),
 
   // Campos aceitos para não recusar quem já os envia, mas que o iCompras não
@@ -43,7 +69,7 @@ export const ItemCompatSchema = z.object({
   //    (`link`), que é onde ele compara antes de decidir.
   //  · force_image_update — nossa imagem é reprocessada quando a URL muda.
   price_iva: z.number().nullable().optional(),
-  link_purchase: z.string().max(600).optional(),
+  link_purchase: EnderecoWeb(600).optional(),
   force_image_update: z.boolean().optional(),
 });
 
