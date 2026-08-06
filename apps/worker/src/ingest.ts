@@ -1,5 +1,5 @@
 import { pool } from "@icompras/db";
-import { ingestImageFromUrl, getNotificationProvider } from "@icompras/core";
+import { ingerirImagem, getNotificationProvider } from "@icompras/core";
 import type { PriceListJob } from "@icompras/queue";
 import type { PoolConnection } from "mariadb";
 
@@ -200,10 +200,27 @@ export async function processPriceList(
       if (item.image_url) {
         const existing = await conn.query("SELECT primary_image_url FROM product WHERE id = ?", [productId]);
         if (!existing[0]?.primary_image_url) {
-          const stored = await ingestImageFromUrl(item.image_url);
+          const { url: stored, recusa } = await ingerirImagem(item.image_url);
           if (stored) {
             await conn.query("UPDATE product SET primary_image_url = ? WHERE id = ?", [stored, productId]);
             await conn.query("UPDATE product_variant SET image_url = COALESCE(image_url, ?) WHERE id = ?", [stored, variantId]);
+            // Deu certo agora: some a queixa antiga daquele produto.
+            await conn.query("DELETE FROM store_image_reject WHERE store_id = ? AND external_id = ?", [
+              storeId,
+              externalId,
+            ]);
+          } else if (recusa) {
+            // A FOTO NÃO DERRUBA O PRODUTO (decisão do dono, 06/08/2026) — mas o
+            // silêncio também não serve: a loja mandaria o catálogo, receberia
+            // "sucesso" e as fotos sumiriam sem explicação. Fica registrado aqui
+            // e aparece em Admin › Clientes › (loja).
+            await conn.query(
+              `INSERT INTO store_image_reject (store_id, external_id, url, motivo)
+               VALUES (?, ?, ?, ?)
+               ON DUPLICATE KEY UPDATE url = VALUES(url), motivo = VALUES(motivo),
+                 updated_at = CURRENT_TIMESTAMP`,
+              [storeId, externalId, item.image_url.slice(0, 600), recusa],
+            );
           }
         }
       }

@@ -2,7 +2,8 @@ import { setRequestLocale } from "next-intl/server";
 import { redirect, notFound } from "next/navigation";
 import { Link } from "@/i18n/navigation";
 import { getCurrentAdmin } from "@/lib/adminauth";
-import { getClient, getKeyInfo, getPayments, getStoreProfile } from "@/lib/clients";
+import { getClient, getKeyInfo, getPayments, getStoreProfile, getFotosRecusadas } from "@/lib/clients";
+import { FotosRecusadas } from "@/components/FotosRecusadas";
 import { getAllPlans } from "@/lib/billing";
 import { bancardConfigured } from "@/lib/bancard";
 import { ClientPanel } from "@/components/ClientPanel";
@@ -19,11 +20,12 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ l
   const client = await getClient(storeId);
   if (!client) notFound();
 
-  const [keyInfo, payments, allPlans, profile] = await Promise.all([
+  const [keyInfo, payments, allPlans, profile, fotosRecusadas] = await Promise.all([
     getKeyInfo(storeId),
     getPayments(storeId),
     getAllPlans(),
     getStoreProfile(storeId),
+    getFotosRecusadas(storeId),
   ]);
   const plans = allPlans.filter((p) => p.active).map((p) => ({ id: p.id, name: p.name, priceMonthly: p.priceMonthly, priceYearly: p.priceYearly }));
 
@@ -37,6 +39,9 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ l
         {client.planName ?? "sem plano"} · {client.interval === "yearly" ? "Anual" : "Mensal"} · vencimento {date(client.periodEnd)}
       </p>
       <div className="space-y-6">
+        {/* Antes do formulário de propósito: é o que pede ação. Quem abre a
+            ficha do cliente precisa ver o problema sem rolar a página. */}
+        <FotosRecusadas fotos={fotosRecusadas} />
         {profile && <StoreProfileForm storeId={storeId} profile={profile} locale={locale} />}
         <ClientPanel
           client={{

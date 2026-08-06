@@ -336,3 +336,44 @@ export async function getPayments(storeId: number): Promise<Array<{ amount: numb
     note: r.note ?? null,
   }));
 }
+
+/** Uma foto que a loja mandou e a portaria recusou. */
+export interface FotoRecusada {
+  externalId: string;
+  url: string | null;
+  motivo: string;
+  quando: string;
+}
+
+/**
+ * As fotos recusadas de uma loja — o "por quê" que falta ao lojista.
+ *
+ * A portaria de imagens (packages/core/src/media/seguranca.ts) aceita o
+ * produto e descarta só a foto. Sem esta lista, o lojista manda o catálogo,
+ * recebe "sucesso" e as fotos somem sem explicação.
+ *
+ * A linha SOME sozinha quando a loja corrige: a ingestão apaga o registro no
+ * primeiro envio em que a foto daquele produto entra.
+ */
+export async function getFotosRecusadas(storeId: number, limite = 50): Promise<FotoRecusada[]> {
+  const rows = await pool.query(
+    `SELECT external_id, url, motivo, updated_at
+       FROM store_image_reject
+      WHERE store_id = ?
+      ORDER BY updated_at DESC
+      LIMIT ?`,
+    [storeId, limite],
+  );
+  return rows.map((r: { external_id: string; url: string | null; motivo: string; updated_at: Date }) => ({
+    externalId: r.external_id,
+    url: r.url ?? null,
+    motivo: r.motivo,
+    quando: new Date(r.updated_at).toISOString(),
+  }));
+}
+
+/** Quantas fotos de uma loja estão recusadas — para o resumo da lista de clientes. */
+export async function contarFotosRecusadas(storeId: number): Promise<number> {
+  const [r] = await pool.query("SELECT COUNT(*) n FROM store_image_reject WHERE store_id = ?", [storeId]);
+  return Number(r?.n ?? 0);
+}
