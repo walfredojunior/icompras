@@ -33,6 +33,10 @@ export interface ProductStore {
   offerTitle: string | null;
   offerCode: string | null;
   offerImage: string | null;
+  /** Id da oferta mais barata desta loja — usado no redirecionamento contado. */
+  offerId: number | null;
+  /** Endereço DAQUELE produto no site DA loja. Null quando ainda não coletado. */
+  storeUrl: string | null;
 }
 
 export interface ProductDetail {
@@ -73,11 +77,24 @@ async function buscarProductDetail(slug: string): Promise<ProductDetail | null> 
   const colors = colorRows.map((r: any) => r.value_label);
 
   // Lojas com oferta real (via API) — têm preço.
+  // Cada loja aparece UMA vez, com os dados da oferta MAIS BARATA dela.
+  //
+  // O truque do GROUP_CONCAT ordenado por preço + SUBSTRING_INDEX pega "o
+  // primeiro da lista ordenada", que é a oferta mais barata daquela loja.
+  //
+  // ⚠ O `COALESCE(..., '')` não é enfeite: **`GROUP_CONCAT` PULA OS NULOS**.
+  // Sem ele, se a oferta mais barata não tem título, o primeiro item da lista
+  // de títulos passa a ser o da SEGUNDA oferta — e a linha mistura o preço de
+  // uma com o título de outra. Com o `COALESCE` o nulo vira posição vazia e
+  // todas as colunas continuam alinhadas. O `|| null` na leitura devolve o
+  // vazio para nulo. (Achado em 06/08/2026, ao somar o link da loja.)
   const offers = await pool.query(
     `SELECT s.id, s.slug, s.name, s.logo_url AS logo, s.phone, MIN(o.price_usd) AS price,
-            SUBSTRING_INDEX(GROUP_CONCAT(o.title ORDER BY o.price_usd SEPARATOR 0x1f), 0x1f, 1) AS offer_title,
-            SUBSTRING_INDEX(GROUP_CONCAT(o.code ORDER BY o.price_usd SEPARATOR 0x1f), 0x1f, 1) AS offer_code,
-            SUBSTRING_INDEX(GROUP_CONCAT(o.image_url ORDER BY o.price_usd SEPARATOR 0x1f), 0x1f, 1) AS offer_image
+            SUBSTRING_INDEX(GROUP_CONCAT(COALESCE(o.title, '') ORDER BY o.price_usd SEPARATOR 0x1f), 0x1f, 1) AS offer_title,
+            SUBSTRING_INDEX(GROUP_CONCAT(COALESCE(o.code, '') ORDER BY o.price_usd SEPARATOR 0x1f), 0x1f, 1) AS offer_code,
+            SUBSTRING_INDEX(GROUP_CONCAT(COALESCE(o.image_url, '') ORDER BY o.price_usd SEPARATOR 0x1f), 0x1f, 1) AS offer_image,
+            SUBSTRING_INDEX(GROUP_CONCAT(COALESCE(o.store_url, '') ORDER BY o.price_usd SEPARATOR 0x1f), 0x1f, 1) AS offer_store_url,
+            SUBSTRING_INDEX(GROUP_CONCAT(o.id ORDER BY o.price_usd SEPARATOR 0x1f), 0x1f, 1) AS offer_id
      FROM offer o JOIN product_variant v ON v.id = o.variant_id JOIN store s ON s.id = o.store_id
      WHERE v.product_id = ? AND o.in_stock = 1 GROUP BY s.id ORDER BY price ASC`,
     [pid],
@@ -92,12 +109,38 @@ async function buscarProductDetail(slug: string): Promise<ProductDetail | null> 
   const seen = new Set<string>();
   const stores: ProductStore[] = [];
   for (const o of offers) {
-    stores.push({ id: Number(o.id), slug: o.slug, name: o.name, logo: o.logo ?? null, phone: o.phone ?? null, priceUsd: Number(o.price), offerTitle: o.offer_title ?? null, offerCode: o.offer_code ?? null, offerImage: o.offer_image ?? null });
+    stores.push({
+      id: Number(o.id),
+      slug: o.slug,
+      name: o.name,
+      logo: o.logo ?? null,
+      phone: o.phone ?? null,
+      priceUsd: Number(o.price),
+      // `|| null` e nao `?? null`: o COALESCE da consulta troca nulo por vazio
+      // para nao desalinhar as colunas, e aqui o vazio volta a ser nulo.
+      offerTitle: o.offer_title || null,
+      offerCode: o.offer_code || null,
+      offerImage: o.offer_image || null,
+      offerId: o.offer_id ? Number(o.offer_id) : null,
+      storeUrl: o.offer_store_url || null,
+    });
     seen.add(o.slug);
   }
   for (const s of scraped) {
     if (!seen.has(s.slug)) {
-      stores.push({ id: Number(s.id), slug: s.slug, name: s.name, logo: s.logo ?? null, phone: s.phone ?? null, priceUsd: null, offerTitle: null, offerCode: null, offerImage: null });
+      stores.push({
+        id: Number(s.id),
+        slug: s.slug,
+        name: s.name,
+        logo: s.logo ?? null,
+        phone: s.phone ?? null,
+        priceUsd: null,
+        offerTitle: null,
+        offerCode: null,
+        offerImage: null,
+        offerId: null,
+        storeUrl: null,
+      });
       seen.add(s.slug);
     }
   }

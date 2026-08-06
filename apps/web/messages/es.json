@@ -91,7 +91,12 @@
     "sortProductAz": "Producto (A-Z)",
     "sortProductZa": "Producto (Z-A)",
     "sortStore": "Tienda",
-    "sortNewest": "Más nuevos"
+    "sortNewest": "Más nuevos",
+    "seeInStore": "Ver en la tienda",
+    "closePanel": "Cerrar",
+    "specsShort": "Ficha técnica",
+    "soldBy": "Vendido por",
+    "noProductLink": "Ir al sitio de la tienda"
   },
   "store": {
     "products": "Productos",

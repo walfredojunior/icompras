@@ -153,7 +153,18 @@ export default async function ProductPage({
             seeStore: t("seeStore"),
             code: t("code"),
             sortBy: t("sortBy"),
+            detalhe: {
+              code: t("code"),
+              seeInStore: t("seeInStore"),
+              seeStore: t("seeStore"),
+              whatsapp: "WhatsApp",
+              close: t("closePanel"),
+              specs: t("specsShort"),
+              soldBy: t("soldBy"),
+              noLink: t("noProductLink"),
+            },
           }}
+          specs={product.specs}
         />
       )}
 

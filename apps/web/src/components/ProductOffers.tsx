@@ -6,6 +6,7 @@ import { Link } from "@/i18n/navigation";
 import { fromUsd, fmt } from "@/lib/money";
 import type { Rates } from "@/lib/rates";
 import type { ProductStore } from "@/lib/products";
+import { OfertaDetalhe, type DicionarioOferta } from "@/components/OfertaDetalhe";
 
 export interface OfferDict {
   relevance: string;
@@ -19,6 +20,7 @@ export interface OfferDict {
   sortBy: string;
   seeStore: string;
   code: string;
+  detalhe: DicionarioOferta;
 }
 
 // Lista de lojas que vendem o produto.
@@ -37,6 +39,7 @@ export function ProductOffers({
   rates,
   locale,
   dict,
+  specs,
 }: {
   productName: string;
   productImage: string | null;
@@ -44,8 +47,10 @@ export function ProductOffers({
   rates: Rates;
   locale: string;
   dict: OfferDict;
+  specs: Array<{ k: string; v: string }>;
 }) {
   const [sort, setSort] = useState("relevancia");
+  const [aberta, setAberta] = useState<ProductStore | null>(null);
 
   const sorted = useMemo(() => {
     const arr = [...stores];
@@ -70,9 +75,22 @@ export function ProductOffers({
   }, [stores, sort]);
 
   // O mais barato entre os que têm preço — marcado com a estrela.
+  //
+  // ⚠ Quando TODAS as ofertas custam o mesmo, o selo não sai em nenhuma.
+  // Antes ele aparecia em todas: no mouse Xiaomi as seis lojas pediam
+  // US$ 9,50 e as seis ganhavam "Mais barato". Medido em 06/08/2026:
+  // **1.085 de 3.000 produtos têm empate no menor preço** — mais de um
+  // terço. Selo que aparece em todo mundo não diz nada; pior, ensina o
+  // visitante a ignorar o selo justamente quando ele significa algo.
+  //
+  // Empate PARCIAL continua marcando todas as empatadas: aí a informação
+  // é verdadeira e útil ("estas são as mais baratas").
   const menorPreco = useMemo(() => {
     const comPreco = stores.filter((s) => s.priceUsd != null).map((s) => s.priceUsd as number);
-    return comPreco.length ? Math.min(...comPreco) : null;
+    if (!comPreco.length) return null;
+    const menor = Math.min(...comPreco);
+    const todosIguais = comPreco.every((p) => p === menor);
+    return todosIguais ? null : menor;
   }, [stores]);
 
   const fmtUsd = (v: number) => fmt(fromUsd(v, rates).usd, "USD", locale);
@@ -105,8 +123,18 @@ export function ProductOffers({
         {sorted.map((s) => {
           const barato = menorPreco != null && s.priceUsd === menorPreco;
           return (
-            <li key={s.slug} className={`p-3 sm:p-4 ${barato ? "bg-brand-green-light/40" : ""}`}>
-              <div className="flex items-start gap-3">
+            <li key={s.slug} className={`relative ${barato ? "bg-brand-green-light/40" : ""}`}>
+              {/* A LINHA INTEIRA abre o detalhe.
+
+                  Botão de verdade, e não uma div com onClick: assim o teclado
+                  alcança (Tab + Enter) e o leitor de tela anuncia que abre algo.
+                  O logo da loja e as ações continuam sendo links próprios, por
+                  isso ficam FORA deste botão — botão dentro de botão não vale. */}
+              <button
+                type="button"
+                onClick={() => setAberta(s)}
+                className="flex w-full items-start gap-3 p-3 pr-24 text-left transition hover:bg-slate-50 sm:p-4 sm:pr-32"
+              >
                 {/* Foto DAQUELA oferta (cada loja anuncia uma variação —
                     cor, modelo). Sem ela, cai na foto do produto. */}
                 <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-100 bg-white sm:h-20 sm:w-20">
@@ -164,8 +192,14 @@ export function ProductOffers({
                   </div>
                 </div>
 
-                {/* Logo da loja, à direita — igual ao comprasparaguai */}
-                <Link href={`/loja/${s.slug}`} className="shrink-0" title={s.name}>
+              </button>
+
+              {/* Logo da loja: link PROPRIO, por isso fora do botao (botao dentro
+                  de botao nao vale). Posicionada por cima, no espaco que o `pr-24`
+                  do botao reservou — assim ela nao empurra o texto nem depende de
+                  margem negativa, que quebraria se a linha mudasse de altura. */}
+              <div className="pointer-events-none absolute right-3 top-3 sm:right-4 sm:top-4">
+                <Link href={`/loja/${s.slug}`} className="pointer-events-auto block shrink-0" title={s.name}>
                   {s.logo ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={s.logo} alt={s.name} className="h-10 w-20 object-contain sm:h-12 sm:w-24" />
@@ -185,15 +219,41 @@ export function ProductOffers({
                     WhatsApp
                   </a>
                 )}
-                <Link href={`/loja/${s.slug}`} className={acao}>
-                  <ArrowUpRight className="h-3.5 w-3.5" />
-                  {dict.seeStore}
-                </Link>
+                {/* Atalho: quando temos o endereco do produto naquela loja, a acao
+                    da linha ja leva direto para la — quem so quer comprar nao
+                    precisa abrir o painel. Sem o endereco, continua indo para a
+                    nossa pagina da loja, como antes. */}
+                {s.storeUrl && s.offerId ? (
+                  <a
+                    href={`/ir/loja/${s.id}?para=produto&oferta=${s.offerId}`}
+                    target="_blank"
+                    rel="noopener noreferrer nofollow"
+                    className={acao}
+                  >
+                    <ArrowUpRight className="h-3.5 w-3.5" />
+                    {dict.detalhe.seeInStore}
+                  </a>
+                ) : (
+                  <Link href={`/loja/${s.slug}`} className={acao}>
+                    <ArrowUpRight className="h-3.5 w-3.5" />
+                    {dict.seeStore}
+                  </Link>
+                )}
               </div>
             </li>
           );
         })}
       </ul>
+
+      <OfertaDetalhe
+        oferta={aberta}
+        productName={productName}
+        productImage={productImage}
+        specs={specs}
+        precoFmt={(usd) => ({ usd: fmtUsd(usd), brl: fmtBrl(usd), pyg: fmtPyg(usd) })}
+        dict={dict.detalhe}
+        onClose={() => setAberta(null)}
+      />
     </div>
   );
 }

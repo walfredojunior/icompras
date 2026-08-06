@@ -91,7 +91,12 @@
     "sortProductAz": "Product (A-Z)",
     "sortProductZa": "Product (Z-A)",
     "sortStore": "Store",
-    "sortNewest": "Newest"
+    "sortNewest": "Newest",
+    "seeInStore": "View at store",
+    "closePanel": "Close",
+    "specsShort": "Specifications",
+    "soldBy": "Sold by",
+    "noProductLink": "Go to store website"
   },
   "store": {
     "products": "Products",
