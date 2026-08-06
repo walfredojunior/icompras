@@ -1,3 +1,4 @@
+import { Store } from "lucide-react";
 import { Link } from "@/i18n/navigation";
 import { MoneyStack } from "@/components/MoneyStack";
 import type { Rates } from "@/lib/rates";
@@ -60,8 +61,20 @@ export function ProductCard({
         <div className="mt-auto pt-3">
           <div className="text-xs text-slate-400">{fromLabel}</div>
           <MoneyStack usd={hit.min_price} rates={rates} locale={locale} size="md" />
-          <div className="mt-1 text-xs text-slate-400">
-            {hit.store_count} {storesLabel}
+          {/* QUANTAS LOJAS VENDEM — é o motivo de o site existir, e estava no
+              cinza mais apagado da paleta (text-slate-400), do mesmo tom do
+              "a partir de", que é só uma legenda. O dono reclamou que "parece
+              muito apagado" (06/08/2026).
+
+              Virou selo, e não só texto mais escuro, porque a informação não é
+              legenda: é o que diferencia este site de uma loja. O verde da
+              marca liga o número à ideia de comparar; a caixinha o separa do
+              preço logo acima, para os dois não brigarem. */}
+          <div className="mt-2">
+            <span className="inline-flex items-center gap-1 rounded-full bg-brand-green/10 px-2 py-1 text-xs font-semibold text-brand-green-dark">
+              <Store className="h-3.5 w-3.5" strokeWidth={2.5} />
+              {hit.store_count} {storesLabel}
+            </span>
           </div>
         </div>
       </div>

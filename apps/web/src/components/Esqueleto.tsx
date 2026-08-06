@@ -24,6 +24,11 @@ export function EsqueletoCartoes({ n = 12, colunas = "sm:grid-cols-3 lg:grid-col
             <Bloco className="h-3 w-4/5" />
             <div className="mt-auto pt-2">
               <Bloco className="h-4 w-2/3" />
+              {/* O selo de "N lojas" do ProductCard. Sem esta linha o cartão
+                  encolhia no instante em que o conteúdo real chegava, e a
+                  página dava um pulo — justamente o que o esqueleto existe
+                  para evitar. */}
+              <Bloco className="mt-2 h-5 w-20 rounded-full" />
             </div>
           </div>
         </div>
