@@ -1,0 +1,18 @@
+-- O endereço DAQUELE produto no site DAQUELA loja.
+--
+-- Por que coluna nova e não reaproveitar `offer.url`: a `url` guarda onde o
+-- coletor ENCONTROU a oferta — hoje, em 83.809 casos, uma página do
+-- comprasparaguai. É registro de origem, útil para depurar, e ligá-la a um
+-- botão mandaria nosso visitante para o concorrente. São duas coisas
+-- diferentes e passam a ter nomes diferentes.
+--
+-- De onde vem: o mesmo botão `.btn-store-redirect` de onde saiu o site da loja
+-- em 06/08/2026. Lá guardamos a raiz (`https://nissei.com`); aqui, o caminho
+-- inteiro (`https://nissei.com/br/catalog/product/view/id/1639706`).
+--
+-- Para que serve: o visitante comparou 11 lojas e escolheu uma. Mandá-lo para
+-- a home da loja faria ele procurar o produto de novo, num catálogo de 10 mil
+-- itens — o trabalho que ele fez aqui iria pelo ralo no clique.
+--
+-- 600 e não 300: endereços de loja carregam slug longo e parâmetros.
+ALTER TABLE offer ADD COLUMN store_url VARCHAR(600) NULL AFTER url;

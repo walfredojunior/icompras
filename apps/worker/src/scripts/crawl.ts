@@ -813,7 +813,7 @@ async function extractProductFast(url: string): Promise<Extracted | null> {
         code,
         image: img && !img.includes("loading-images") ? img : null,
         url: url ? (url.startsWith("http") ? url : BASE + url) : null,
-        site: siteDaLoja(botaoLoja?.getAttribute("href")),
+        site: botaoLoja?.getAttribute("href") ?? null,
       });
     }
   }
@@ -878,7 +878,7 @@ async function extractProductFast(url: string): Promise<Extracted | null> {
         code: (textoDe(caixa).match(/c[óo]digo:\s*#?(\d{3,})/i) || [])[1] ?? null,
         image,
         url: externo?.getAttribute("href") ?? null,
-        site: siteDaLoja(externo?.getAttribute("href")),
+        site: externo?.getAttribute("href") ?? null,
       });
       const src = logoLoja?.getAttribute("src");
       if (src) logos[loja] = src;
@@ -1118,6 +1118,27 @@ function siteDaLoja(href: string | null | undefined): string | null {
     // O domínio da própria fonte não é site de loja nenhuma.
     if (/comprasparaguai\.com/i.test(u.hostname)) return null;
     return `${u.protocol}//${u.hostname}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * O endereco DAQUELE produto no site DAQUELA loja — o caminho inteiro.
+ *
+ * Irmao de `siteDaLoja`, que corta na raiz. Aqui o que interessa e levar o
+ * visitante ao produto exato: ele comparou 11 lojas e escolheu uma; cair na
+ * home de um catalogo de 10 mil itens o faria comecar de novo.
+ *
+ * A mesma recusa vale: endereco da propria fonte nao e link de loja.
+ */
+function urlDoProdutoNaLoja(href: string | null | undefined): string | null {
+  if (!href) return null;
+  try {
+    const u = new URL(href);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    if (/comprasparaguai\.com/i.test(u.hostname)) return null;
+    return href.slice(0, 600);
   } catch {
     return null;
   }
@@ -1575,13 +1596,28 @@ async function ingestProduct(page: () => Promise<Page>, path: string, ourCategor
     }
     await pool.query(
       `INSERT INTO offer (variant_id, store_id, price, currency, price_usd, in_stock, source,
-                          external_id, title, code, image_url, url, last_seen_at)
-       VALUES (?, ?, ?, 'USD', ?, 1, 'scraped', ?, ?, ?, ?, ?, NOW())
+                          external_id, title, code, image_url, url, store_url, last_seen_at)
+       VALUES (?, ?, ?, 'USD', ?, 1, 'scraped', ?, ?, ?, ?, ?, ?, NOW())
        ON DUPLICATE KEY UPDATE price = VALUES(price), price_usd = VALUES(price_usd),
          title = COALESCE(VALUES(title), offer.title), code = COALESCE(VALUES(code), offer.code),
          image_url = COALESCE(VALUES(image_url), offer.image_url), url = COALESCE(VALUES(url), offer.url),
+         -- Endereco novo VENCE o antigo (VALUES vem primeiro no COALESCE): se a
+         -- loja mudou a pagina do produto, seguir o velho daria 404. O COALESCE
+         -- so evita apagar o que ja temos quando a leitura desta vez veio vazia.
+         store_url = COALESCE(VALUES(store_url), offer.store_url),
          last_seen_at = NOW()`,
-      [variantId, storeId, info.price, info.price, ext, info.title, info.code, info.image, info.url],
+      [
+        variantId,
+        storeId,
+        info.price,
+        info.price,
+        ext,
+        info.title,
+        info.code,
+        info.image,
+        info.url,
+        urlDoProdutoNaLoja(info.site),
+      ],
     );
     await pool.query("INSERT IGNORE INTO product_store (product_id, store_id) VALUES (?, ?)", [productId, storeId]);
   }
