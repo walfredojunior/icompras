@@ -1,0 +1,16 @@
+-- Procurar uma oferta pelo código da fonte estava varrendo a tabela inteira.
+--
+-- `external_id` só existia como SEGUNDA coluna de `uq_offer_store_ext
+-- (store_id, external_id)`, e um índice composto só serve quando a primeira
+-- coluna também entra na busca. Quem procura só pelo código não usa nada — são
+-- 294 mil ofertas lidas por consulta.
+--
+-- Onde doía (medido em 06/08/2026):
+--  · o robô dos QUENTES junta `scrape_log` com `offer` por este campo a cada
+--    volta, para montar a lista de 5.000 alvos;
+--  · o painel do admin faz a mesma junção para dizer se os quentes estão em
+--    dia — levava 4,4 s.
+--
+-- O campo não é único sozinho (duas lojas podem repetir o código da fonte),
+-- então é índice comum, não UNIQUE.
+CREATE INDEX idx_offer_external ON offer (external_id);

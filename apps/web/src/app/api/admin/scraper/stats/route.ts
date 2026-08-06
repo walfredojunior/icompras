@@ -240,9 +240,25 @@ export async function GET(req: Request) {
     );
 
     // Quentes: tamanho da lista e idade do preço mais velho dela.
+    //
+    // ⚠ O `EXISTS` não é detalhe — sem ele o painel mede uma lista DIFERENTE da
+    // que o robô trabalha, e passa a acusar atraso que ninguém pode resolver.
+    //
+    // Aconteceu em 06/08/2026: o cartão ficou "atrasado" apontando 19,2 h,
+    // enquanto o segundo produto mais esquecido tinha só 2,5 h. O culpado era
+    // UM registro cuja oferta havia sumido da fonte. O robô (loopQuentes, em
+    // crawl.ts) seleciona com `JOIN offer`, então nunca o alcançava — e como
+    // nunca o visitava, ele seguia sendo o mais velho para sempre, subindo uma
+    // hora por hora. O painel dizia 2.109 produtos; o robô, 2.108.
+    //
+    // A linha do registro fica: ela é o histórico de que aquela página já foi
+    // varrida, e apagá-la faria o coletor visitar de novo, para sempre, uma
+    // página que não gera oferta. O que estava errado era a CONTA, não o dado.
     const [quentes] = await pool.query(
-      `SELECT COUNT(*) n, TIMESTAMPDIFF(MINUTE, MIN(last_crawled_at), NOW()) AS maisVelhoMin
-         FROM scrape_log WHERE faixa = 'quente'`,
+      `SELECT COUNT(*) n, TIMESTAMPDIFF(MINUTE, MIN(s.last_crawled_at), NOW()) AS maisVelhoMin
+         FROM scrape_log s
+        WHERE s.faixa = 'quente'
+          AND EXISTS (SELECT 1 FROM offer o WHERE o.external_id = s.external_id)`,
     );
     const faixas = await pool.query(
       "SELECT faixa, COUNT(*) n FROM scrape_log WHERE faixa IS NOT NULL GROUP BY faixa",
