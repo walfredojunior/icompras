@@ -1,7 +1,26 @@
+import { unstable_cache } from "next/cache";
 import { pool } from "./db";
 import { toUsd } from "./money";
 import type { Rates } from "./rates";
 import type { ProductHit } from "./search";
+
+// CINCO MINUTOS DE VALIDADE — escolha do dono, perguntado e respondido em
+// 06/08/2026: "sim, um preço desatualizado por 5 minutos é aceitável".
+//
+// A pergunta veio de uma medição: a Cloudflare devolve `cf-cache-status:
+// DYNAMIC` em TODAS as páginas, ou seja, cada visitante atravessa até o banco.
+//
+// ⚠ Por que aqui, e não guardando a página inteira na borda: a página de
+// produto tem partes de CADA visitante — se está logado, se o produto é
+// favorito dele, e o registro da visita. HTML guardado na borda mostraria o
+// favorito de um para outro e apagaria a estatística. Guardando os DADOS o
+// ganho é quase o mesmo e nada disso quebra: login e favorito seguem ao vivo.
+//
+// `unstable_cache` e não a diretiva `use cache` (que é o caminho novo do
+// Next 16) porque `use cache` exige ligar `cacheComponents` no next.config, o
+// que muda o comportamento do site INTEIRO — mudança grande demais para
+// produção só por isto. Ver node_modules/next/dist/docs/.../use-cache.md.
+const VALIDADE = { revalidate: 300 };
 
 export interface ProductStore {
   id: number;
@@ -29,7 +48,7 @@ export interface ProductDetail {
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-export async function getProductDetail(slug: string): Promise<ProductDetail | null> {
+async function buscarProductDetail(slug: string): Promise<ProductDetail | null> {
   const prod = await pool.query(
     "SELECT id, slug, canonical_name AS name, brand, primary_image_url AS image_url, min_price_usd, specs FROM product WHERE slug = ? LIMIT 1",
     [slug],
@@ -102,7 +121,7 @@ export async function getProductDetail(slug: string): Promise<ProductDetail | nu
 }
 
 // Caminho de migalhas: raiz → subcategoria (nomes no idioma), para navegar de volta.
-export async function getProductBreadcrumb(
+async function buscarProductBreadcrumb(
   slug: string,
   locale: string,
 ): Promise<Array<{ slug: string; name: string }>> {
@@ -159,7 +178,7 @@ const SELECT_RELACIONADOS = `p.id, p.slug, p.canonical_name AS name, p.brand, p.
               p.ext_store_count
             ) AS store_count`;
 
-export async function getRelatedProducts(productId: number, limit = 6): Promise<ProductHit[]> {
+async function buscarRelatedProducts(productId: number, limit = 6): Promise<ProductHit[]> {
   // Caminho normal: só dentro da categoria do produto.
   let rows = await pool.query(
     `SELECT ${SELECT_RELACIONADOS}
@@ -200,19 +219,29 @@ export async function getRelatedProducts(productId: number, limit = 6): Promise<
   }));
 }
 
-export async function getPriceHistory(
-  productId: number,
-  rates: Rates,
-): Promise<Array<{ day: string; usd: number }>> {
-  const rows = await pool.query(
-    `SELECT h.recorded_at, h.price, h.currency
+// O histórico é LIDO do banco (caro) e depois convertido pelo câmbio (barato).
+// Só a leitura entra no cache: se o câmbio mudar, o gráfico acompanha na hora,
+// porque a conversão continua acontecendo a cada pedido.
+const lerHistorico = unstable_cache(
+  async (productId: number): Promise<any[]> =>
+    pool.query(
+      `SELECT h.recorded_at, h.price, h.currency
      FROM offer_price_history h
      JOIN offer o ON o.id = h.offer_id
      JOIN product_variant v ON v.id = o.variant_id
      WHERE v.product_id = ?
      ORDER BY h.recorded_at ASC`,
-    [productId],
-  );
+      [productId],
+    ),
+  ["produto-historico"],
+  VALIDADE,
+);
+
+export async function getPriceHistory(
+  productId: number,
+  rates: Rates,
+): Promise<Array<{ day: string; usd: number }>> {
+  const rows = await lerHistorico(productId);
   const byDay = new Map<string, number>();
   for (const r of rows) {
     const usd = toUsd(Number(r.price), r.currency, rates);
@@ -221,3 +250,9 @@ export async function getPriceHistory(
   }
   return [...byDay.entries()].map(([day, usd]) => ({ day, usd: Math.round(usd * 100) / 100 }));
 }
+
+// As três consultas da página de produto, guardadas por 5 minutos.
+// Os nomes exportados são os mesmos de antes — nenhum chamador muda.
+export const getProductDetail = unstable_cache(buscarProductDetail, ["produto-detalhe"], VALIDADE);
+export const getProductBreadcrumb = unstable_cache(buscarProductBreadcrumb, ["produto-migalhas"], VALIDADE);
+export const getRelatedProducts = unstable_cache(buscarRelatedProducts, ["produto-relacionados"], VALIDADE);
