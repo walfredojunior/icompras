@@ -742,6 +742,8 @@ interface Extracted {
     code: string | null;
     image: string | null;
     url: string | null;
+    /** Site da própria loja, tirado do botão "Ver no site da loja". */
+    site: string | null;
   }>;
   logos: Record<string, string>;
   specs: Array<{ k: string; v: string }>;
@@ -790,7 +792,8 @@ async function extractProductFast(url: string): Promise<Extracted | null> {
     if (!card) continue;
     const price = textoDe(card.querySelector(".promocao-item-preco-oferta strong"));
     const title = textoDe(info.querySelector(".promocao-item-nome a")) || null;
-    const onclick = info.querySelector(".btn-store-redirect")?.getAttribute("onclick") ?? "";
+    const botaoLoja = info.querySelector(".btn-store-redirect");
+    const onclick = botaoLoja?.getAttribute("onclick") ?? "";
     const adv = onclick.match(/advertiser['"]?\s*:\s*['"]([^'"]+)['"]/);
     const store = adv ? adv[1].trim() : null;
     const href = info.querySelector('a[href*="api.whatsapp.com"]')?.getAttribute("href") ?? "";
@@ -810,6 +813,7 @@ async function extractProductFast(url: string): Promise<Extracted | null> {
         code,
         image: img && !img.includes("loading-images") ? img : null,
         url: url ? (url.startsWith("http") ? url : BASE + url) : null,
+        site: siteDaLoja(botaoLoja?.getAttribute("href")),
       });
     }
   }
@@ -874,6 +878,7 @@ async function extractProductFast(url: string): Promise<Extracted | null> {
         code: (textoDe(caixa).match(/c[óo]digo:\s*#?(\d{3,})/i) || [])[1] ?? null,
         image,
         url: externo?.getAttribute("href") ?? null,
+        site: siteDaLoja(externo?.getAttribute("href")),
       });
       const src = logoLoja?.getAttribute("src");
       if (src) logos[loja] = src;
@@ -957,6 +962,10 @@ async function extractProduct(page: Page, url: string): Promise<Extracted> {
       const src = imgEl ? imgEl.getAttribute("data-src") || imgEl.getAttribute("src") || "" : "";
       const linkEl = card.querySelector(".promocao-item-img a") || info.querySelector(".promocao-item-nome a");
       const href2 = linkEl ? linkEl.getAttribute("href") || "" : "";
+      // O site da loja sai do proprio botao de redirecionamento. A limpeza
+      // (tirar caminho, recusar o dominio da fonte) fica com siteDaLoja(),
+      // fora daqui: este codigo roda DENTRO do navegador.
+      const siteBruto = redirect ? redirect.getAttribute("href") : null;
       if (price && store) {
         offers.push({
           store,
@@ -966,6 +975,7 @@ async function extractProduct(page: Page, url: string): Promise<Extracted> {
           code,
           image: src && src.indexOf("loading-images") === -1 ? src : null,
           url: href2 ? (href2.indexOf("http") === 0 ? href2 : location.origin + href2) : null,
+          site: siteBruto,
         });
       }
     });
@@ -1008,6 +1018,7 @@ async function extractProduct(page: Page, url: string): Promise<Extracted> {
           code: (txt.match(/c[óo]digo:\s*#?(\d{3,})/i) || [])[1] ?? null,
           image,
           url: ext ? ext.getAttribute("href") : null,
+          site: ext ? ext.getAttribute("href") : null,
         });
         const s = logoLoja?.getAttribute("src");
         if (s) logos[nomeLoja] = s;
@@ -1085,12 +1096,40 @@ function nomeDeLojaPeloDominio(dominio: string): string | null {
   return null;
 }
 
+/**
+ * O SITE DA LOJA, tirado do link "Ver no site da loja".
+ *
+ * A fonte põe, em toda oferta, um botão `.btn-store-redirect` que leva à
+ * página daquele produto no site da própria loja:
+ *   href="https://matriximportados.com.br/produto/le-chameau-catwalk-80-ml..."
+ * Guardamos só a raiz — `https://matriximportados.com.br` —, porque o que
+ * interessa é a loja, não aquele produto dela.
+ *
+ * Curiosidade: este link já era lido antes de 06/08/2026, mas só para adivinhar
+ * o NOME da loja quando o logo não trazia (`nomeDeLojaPeloDominio`). O endereço
+ * era descartado logo em seguida. A coluna `store.website` existia e estava
+ * vazia nas 158 lojas.
+ */
+function siteDaLoja(href: string | null | undefined): string | null {
+  if (!href) return null;
+  try {
+    const u = new URL(href);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    // O domínio da própria fonte não é site de loja nenhuma.
+    if (/comprasparaguai\.com/i.test(u.hostname)) return null;
+    return `${u.protocol}//${u.hostname}`;
+  } catch {
+    return null;
+  }
+}
+
 const storeCache = new Map<string, { id: number; daApi: boolean }>();
 async function ensureStore(
   nomeOuDominio: string,
   logo: string | null,
   phone: string | null,
   mapsQuery: string,
+  site: string | null,
 ): Promise<{ id: number; daApi: boolean }> {
   // Se veio um domínio no lugar do nome, troca pela loja que já existe.
   // Só quando não casa é que vira loja nova, com o domínio como nome.
@@ -1100,17 +1139,22 @@ async function ensureStore(
   }
   const slug = slugify(name);
   if (storeCache.has(slug)) return storeCache.get(slug)!;
-  const existing = await pool.query("SELECT id, logo_url, phone FROM store WHERE slug = ? LIMIT 1", [slug]);
+  const existing = await pool.query("SELECT id, logo_url, phone, website FROM store WHERE slug = ? LIMIT 1", [slug]);
   let id: number;
   if (existing.length) {
     id = Number(existing[0].id);
-    if ((!existing[0].logo_url && logo) || (!existing[0].phone && phone)) {
-      await pool.query("UPDATE store SET logo_url = COALESCE(logo_url, ?), phone = COALESCE(phone, ?) WHERE id = ?", [logo, phone, id]);
+    // COALESCE e nao sobrescrita: o que ja esta preenchido manda. Se o dono
+    // corrigir o site de uma loja no admin, o coletor nao desfaz.
+    if ((!existing[0].logo_url && logo) || (!existing[0].phone && phone) || (!existing[0].website && site)) {
+      await pool.query(
+        "UPDATE store SET logo_url = COALESCE(logo_url, ?), phone = COALESCE(phone, ?), website = COALESCE(website, ?) WHERE id = ?",
+        [logo, phone, site, id],
+      );
     }
   } else {
     const res = await pool.query(
-      "INSERT INTO store (slug, name, status, source, is_lead, logo_url, phone, maps_query) VALUES (?, ?, 'active', 'scraped', 1, ?, ?, ?)",
-      [slug, name, logo, phone, mapsQuery],
+      "INSERT INTO store (slug, name, status, source, is_lead, logo_url, phone, maps_query, website) VALUES (?, ?, 'active', 'scraped', 1, ?, ?, ?, ?)",
+      [slug, name, logo, phone, mapsQuery, site],
     );
     id = Number(res.insertId);
   }
@@ -1480,7 +1524,16 @@ async function ingestProduct(page: () => Promise<Page>, path: string, ourCategor
   const ext = idM ? `cp-${idM[1]}` : path;
 
   for (const [storeName, info] of byStore) {
-    const { id: storeId, daApi } = await ensureStore(storeName, data.logos[storeName] ?? null, info.phone, `${storeName}, Paraguay`);
+    // `siteDaLoja` tambem aqui porque o valor vindo do NAVEGADOR chega cru
+    // (a limpeza nao pode rodar dentro do page.evaluate). E idempotente:
+    // limpar um endereco ja limpo devolve ele mesmo.
+    const { id: storeId, daApi } = await ensureStore(
+      storeName,
+      data.logos[storeName] ?? null,
+      info.phone,
+      `${storeName}, Paraguay`,
+      siteDaLoja(info.site),
+    );
     // Loja da plataforma: o preço dela vem da API, não daqui.
     //
     // Só o preço é preservado — a oferta raspada continua no ar até o primeiro
