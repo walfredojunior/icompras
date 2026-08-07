@@ -1323,3 +1323,22 @@ Ele avisou; o painel mostrava 4,8 dias. **Não era o robô sem dar conta** — e
 ⚠️ Detalhe que confundiu no diagnóstico: a mensagem do robô dizia `quentes · 1045/2108` enquanto a lista já tinha **2.967** — ele carrega os alvos UMA vez, no início da volta, e a reclassificação daquele dia aumentou a lista no meio do caminho. Reiniciar o robô recarrega.
 
 ⚠️ Ao investigar, testar a URL nos DOIS formatos: `/x__<id>/` (loja única, 7 dígitos) e `/x_<id>/`. Os cinco produtos respondiam 200 no formato `__` — o que descartou "página morreu" e apontou para o marcador.
+
+## 2026-08-07 — PROJETO NO GITHUB
+
+**`git@github.com:walfredojunior/icompras.git`** — repositório **privado**, conta `walfredojunior@gmail.com`. Ramo `master` (não `main`). 50 commits, 329 arquivos, 18 MB.
+
+**Como o servidor envia:** chave SSH dedicada em `/root/.ssh/id_ed25519_github`, cadastrada no GitHub como **Deploy key com "Allow write access"**, e `Host github.com` apontando para ela em `/root/.ssh/config`. ⚠️ **Senha do GitHub não serve** — o GitHub desativou envio por senha em 2021; é chave SSH ou token.
+
+O `origin` está configurado **na VPS** (`/opt/icompras/app`), que é onde vive o histórico — o PC do dono só tem as fontes, sem `.git`. Então o envio se faz de lá: `git push origin master`.
+
+**Auditoria feita ANTES do primeiro envio** (e vale repetir se um dia mudar de repositório):
+- `.env` não é versionado (só `.env.example` com `troque-aqui`) ✅
+- senha do SSH: **zero** ocorrências no histórico ✅
+- `node_modules`, `.next` e as imagens geradas ficam de fora ✅
+
+⚠️ **`[SENHA-ADMIN-REMOVIDA]` ESTÁ no repositório** — em `apps/web/src/lib/adminauth.ts` (é o valor padrão do código: `process.env.ADMIN_PASSWORD ?? "[SENHA-ADMIN-REMOVIDA]"`) e em `docs/COMO-RODAR.md`. Como padrão documentado tudo bem; o problema é que **a produção usa exatamente esse valor** (está assim no `.env`). Trocar o `ADMIN_PASSWORD` no `.env` da VPS resolve sem mexer no código.
+
+**A memória também subiu**, em `docs/memoria/`, mas **sem as senhas** — trocadas por `[SENHA-SSH-REMOVIDA]` e `[SENHA-ADMIN-REMOVIDA]`, com um aviso no topo de cada arquivo. A versão completa fica só na máquina dele. Motivo: repositório privado protege menos do que parece (um colaborador a mais, um token vazado, um clique errado em "tornar público"). **Se a memória for atualizada, a cópia do repositório NÃO se atualiza sozinha** — é preciso refazer a limpeza e commitar.
+
+⚠️ Ele mandou a senha do GitHub pelo chat. Não foi usada nem guardada; avisei para trocar por precaução.
