@@ -298,21 +298,74 @@ async function cycleMaybeClose(total: number): Promise<boolean> {
 // Só entra oferta em estoque e vista há pouco: oferta que sumiu da fonte não
 // pode continuar puxando o mínimo para baixo e inventando uma pechincha que
 // não existe mais.
+/** Tamanho do bloco. 20 mil produtos por vez: transação curta, lock curto. */
+const BLOCO_RESUMO = 20_000;
+
 async function atualizarResumoDiario(): Promise<void> {
-  const res = await pool.query(
-    `INSERT INTO product_price_daily (product_id, day, min_usd, offers)
-     SELECT v.product_id, CURDATE(), MIN(o.price_usd), COUNT(*)
-       FROM offer o
-       JOIN product_variant v ON v.id = o.variant_id
-      WHERE o.price_usd IS NOT NULL
-        AND o.in_stock = 1
-        AND o.last_seen_at > NOW() - INTERVAL 3 DAY
-      GROUP BY v.product_id
-     ON DUPLICATE KEY UPDATE
-        min_usd = LEAST(product_price_daily.min_usd, VALUES(min_usd)),
-        offers  = VALUES(offers)`,
+  // ⚠ ESTA FUNÇÃO DERRUBOU O ROBÔ 0 POR 3h44 (07/08/2026).
+  //
+  // Ela era uma consulta só, varrendo as 318 mil ofertas e gravando 226 mil
+  // linhas numa transação única. Enquanto isso, os outros três robôs escrevem
+  // em `offer` sem parar — e um esperava o outro até estourar os 50 segundos
+  // de `innodb_lock_wait_timeout`. O erro subia sem ninguém pegar e **matava o
+  // processo inteiro**: 214 reinícios em laço, robô parado, coleta parada.
+  //
+  // Três consertos, e os três importam:
+  //  1. NUNCA MAIS DERRUBA. Isto aqui é anotação de apoio; se falhar, o robô
+  //     precisa seguir coletando. A próxima volta refaz.
+  //  2. EM BLOCOS. Transação curta segura lock por pouco tempo, então os
+  //     outros robôs passam entre um bloco e outro.
+  //  3. ISOLAMENTO "READ COMMITTED" numa conexão só desta tarefa. Em
+  //     REPEATABLE READ, `INSERT ... SELECT` tranca as linhas que LÊ, para o
+  //     log binário poder repetir a operação na ordem. Aqui o `log_bin` está
+  //     DESLIGADO (conferido em 07/08/2026), então essa trava não protege
+  //     nada — só atrapalha. Em READ COMMITTED o InnoDB não a aplica.
+  //
+  // ⚠ A conexão tem de ser DEDICADA: `pool.query` sorteia uma conexão a cada
+  // chamada, então mandar o SET numa e a consulta noutra não teria efeito.
+  const conn = await pool.getConnection();
+  let total = 0;
+  let blocosComFalha = 0;
+  try {
+    await conn.query("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED");
+    const [{ maxId }] = await conn.query("SELECT COALESCE(MAX(id), 0) AS maxId FROM product");
+    for (let de = 1; de <= Number(maxId); de += BLOCO_RESUMO) {
+      const ate = de + BLOCO_RESUMO - 1;
+      try {
+        const res = await conn.query(
+          `INSERT INTO product_price_daily (product_id, day, min_usd, offers)
+           SELECT v.product_id, CURDATE(), MIN(o.price_usd), COUNT(*)
+             FROM offer o
+             JOIN product_variant v ON v.id = o.variant_id
+            WHERE o.price_usd IS NOT NULL
+              AND o.in_stock = 1
+              AND o.last_seen_at > NOW() - INTERVAL 3 DAY
+              AND v.product_id BETWEEN ? AND ?
+            GROUP BY v.product_id
+           ON DUPLICATE KEY UPDATE
+              min_usd = LEAST(product_price_daily.min_usd, VALUES(min_usd)),
+              offers  = VALUES(offers)`,
+          [de, ate],
+        );
+        total += Number(res.affectedRows ?? 0);
+      } catch (e) {
+        // Bloco que bateu em disputa: anota e segue. Um pedaço desatualizado
+        // por algumas horas é infinitamente melhor que o coletor parado.
+        blocosComFalha++;
+        console.log(`  ⚠ resumo diário: bloco ${de}-${ate} não passou (${(e as Error).message.slice(0, 60)})`);
+      }
+      // Respiro entre blocos: dá vez a quem está escrevendo em `offer`.
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  } catch (e) {
+    console.log(`  ⚠ resumo diário não pôde ser feito agora: ${(e as Error).message.slice(0, 80)}`);
+  } finally {
+    conn.release();
+  }
+  console.log(
+    `  resumo de preços do dia atualizado (${total} produtos` +
+      `${blocosComFalha ? `, ${blocosComFalha} bloco(s) ficaram para a próxima volta` : ""})`,
   );
-  console.log(`  resumo de preços do dia atualizado (${res.affectedRows} produtos)`);
   // As quedas saem do mesmo lugar e na mesma hora — quem lê a página só lê o
   // resultado pronto (ver src/quedas.ts).
   const n = await atualizarQuedas();
