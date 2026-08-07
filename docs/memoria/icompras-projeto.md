@@ -1,7 +1,6 @@
 > ⚠️ **Cópia sem as senhas.** Este arquivo é o histórico de trabalho do projeto,
 > guardado aqui como backup. As senhas foram trocadas por marcadores antes de
-> subir — repositório privado protege menos do que parece (um colaborador a
-> mais, um token vazado, um clique errado em "tornar público").
+> subir — repositório privado protege menos do que parece.
 > A versão completa vive só na máquina do dono.
 
 ---
@@ -1342,3 +1341,33 @@ O `origin` está configurado **na VPS** (`/opt/icompras/app`), que é onde vive 
 **A memória também subiu**, em `docs/memoria/`, mas **sem as senhas** — trocadas por `[SENHA-SSH-REMOVIDA]` e `[SENHA-ADMIN-REMOVIDA]`, com um aviso no topo de cada arquivo. A versão completa fica só na máquina dele. Motivo: repositório privado protege menos do que parece (um colaborador a mais, um token vazado, um clique errado em "tornar público"). **Se a memória for atualizada, a cópia do repositório NÃO se atualiza sozinha** — é preciso refazer a limpeza e commitar.
 
 ⚠️ Ele mandou a senha do GitHub pelo chat. Não foi usada nem guardada; avisei para trocar por precaução.
+
+## 2026-08-07 — GUARDIÃO OLHA TENDÊNCIA, NÃO SÓ O NÚMERO
+
+Fechando o ponto que ficou aberto no mesmo dia: **755 quentes atrasados e CAINDO** era fila se recuperando, não defeito — e quem percebeu foi o dono, comparando duas medições. O guardião não tinha como: não guardava a anterior.
+
+**`guardiao_tendencia`** (migration 044) é a memória curta: `chave`, `valor`, `repeticoes`. `repeticoes` conta verificações seguidas SEM melhorar — é o que evita gritar no primeiro solavanco.
+
+**`conferirAtrasados()`** usa a MESMA conta do painel (inclusive o `EXISTS`, senão registro fantasma deixa o alarme ligado para sempre — ver 06/08). A regra:
+
+| Situação | O que faz |
+|---|---|
+| nenhum atrasado | tudo certo, zera o contador |
+| atrasados mas **diminuindo** | fica quieto — está se recuperando |
+| parado por menos de 3 verificações | fica quieto |
+| **parado por 3+ verificações (15 min)** | 🔔 avisa |
+
+**Não religa nada de propósito.** Fila parada tem dezenas de causas, e reiniciar robô no meio de uma volta longa é o que mais atrapalha (foi o que criou o laço do guardião em 05/08). Avisa e deixa para quem decide.
+
+### ⚠️ Um defeito que o teste pegou
+
+A primeira versão chamava `tendencia()` sempre. Com **zero** atrasados, `0 >= 0` conta como "não melhorou" e o contador subia a cada verificação com tudo em ordem — aí, no primeiro atrasado que aparecesse, o alarme dispararia na hora. Exatamente o alarme falso que a função existe para evitar. **Zero agora zera o contador explicitamente.**
+
+### Testado nos dois cenários, com dados reais
+
+Atrasei 3 produtos quentes de propósito (guardando os valores originais em `zz_backup_teste` e restaurando depois):
+
+- **Fila parada:** quieto, quieto, **🔔 alarmou na 3ª**, continuou alarmando.
+- **Fila caindo (3→2→1→0):** quieto o tempo todo, contador zerado a cada queda.
+
+⚠️ Erro meu no meio do teste: escrevi `SET last_crawled_at = NOW() - INTERVAL 10 HOUR, last_crawled_at = last_crawled_at` — **definir a mesma coluna duas vezes faz a segunda anular a primeira**. O truque de suprimir o `ON UPDATE CURRENT_TIMESTAMP` só é necessário quando NÃO se está atribuindo a coluna; atribuindo, ele já não dispara.

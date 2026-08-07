@@ -199,6 +199,88 @@ async function conferirBanco(): Promise<{ status: string; detail: string }> {
     : { status: "travado", detail: `${bloqueadoras.length} bloqueando e não consegui encerrar` };
 }
 
+// A MEMÓRIA CURTA: compara a medição de agora com a da verificação anterior.
+//
+// ⚠ É a diferença entre "755 e caindo" e "755 e parado". O primeiro é trabalho
+// acontecendo; o segundo é problema. Olhando só o valor, os dois são iguais —
+// e foi assim que o guardião não viu nada de errado enquanto o dono via a fila
+// se recuperando sozinha (07/08/2026).
+//
+// Devolve quantas verificações seguidas passaram SEM melhorar. Zero significa
+// "melhorou agora" ou "é a primeira medição".
+async function tendencia(chave: string, atual: number): Promise<number> {
+  const linhas = await pool.query("SELECT valor, repeticoes FROM guardiao_tendencia WHERE chave = ?", [chave]);
+  const anterior = linhas.length ? Number(linhas[0].valor) : null;
+  // Melhorou (ou é a primeira vez): zera o contador.
+  // Empate conta como NÃO melhorou — parado é exatamente o que se quer pegar.
+  const semMelhora = anterior != null && atual >= anterior ? Number(linhas[0].repeticoes) + 1 : 0;
+  await pool.query(
+    `INSERT INTO guardiao_tendencia (chave, valor, repeticoes) VALUES (?, ?, ?)
+     ON DUPLICATE KEY UPDATE valor = VALUES(valor), repeticoes = VALUES(repeticoes),
+       medido_em = CURRENT_TIMESTAMP`,
+    [chave, atual, semMelhora],
+  );
+  return semMelhora;
+}
+
+// PRODUTOS QUENTES ATRASADOS — com tendência, não só com o número.
+//
+// É o alarme que o dono vê no painel, e o que mais deu alarme falso. A regra:
+//   · nenhum atrasado          → tudo certo;
+//   · atrasados MAS diminuindo → fila se recuperando, ficar quieto;
+//   · atrasados e sem melhorar por várias verificações → aí sim avisar.
+//
+// Não religa nada de propósito. Fila parada pode ter dezenas de causas, e
+// reiniciar o robô no meio de uma volta longa é o que mais atrapalha (foi o que
+// criou o laço do guardião em 05/08). Aqui ele avisa e deixa para quem decide.
+const CHECAGENS_SEM_MELHORA = num(process.env.GUARD_SEM_MELHORA, 3);
+
+async function conferirAtrasados(): Promise<{ status: string; detail: string }> {
+  let atrasados: number;
+  try {
+    // A MESMA conta do painel, inclusive o `EXISTS`: registro cujo produto não
+    // tem mais oferta é fantasma que o robô nunca alcança, e contá-lo deixaria
+    // o alarme ligado para sempre (ver o caso de 06/08 em icompras-projeto).
+    const [r] = await pool.query(
+      `SELECT COUNT(*) n
+         FROM scrape_log s
+        WHERE s.faixa = 'quente'
+          AND s.last_crawled_at < NOW() - INTERVAL 6 HOUR
+          AND EXISTS (SELECT 1 FROM offer o WHERE o.external_id = s.external_id)`,
+    );
+    atrasados = Number(r?.n ?? 0);
+  } catch (e) {
+    return { status: "ok", detail: `quentes: não deu para medir (${(e as Error).message.slice(0, 40)})` };
+  }
+
+  // ⚠ ZERO ZERA O CONTADOR, e isto não é detalhe.
+  //
+  // Peguei no teste: a versão anterior chamava `tendencia()` sempre. Com zero
+  // atrasados, `0 >= 0` conta como "não melhorou" e o contador subia a cada
+  // verificação, para sempre, com tudo em ordem. Aí, na primeira vez que
+  // aparecesse UM atrasado, o contador já estaria alto e o alarme dispararia
+  // na hora — justamente o alarme falso que esta função existe para evitar.
+  if (atrasados === 0) {
+    await pool.query(
+      `INSERT INTO guardiao_tendencia (chave, valor, repeticoes) VALUES ('quentes-atrasados', 0, 0)
+       ON DUPLICATE KEY UPDATE valor = 0, repeticoes = 0, medido_em = CURRENT_TIMESTAMP`,
+    );
+    return { status: "ok", detail: "quentes em dia" };
+  }
+
+  const semMelhora = await tendencia("quentes-atrasados", atrasados);
+  if (semMelhora === 0) return { status: "ok", detail: `${atrasados} quente(s) atrasado(s), mas diminuindo` };
+  if (semMelhora < CHECAGENS_SEM_MELHORA) {
+    return { status: "ok", detail: `${atrasados} quente(s) atrasado(s), parado há ${semMelhora} verificação(ões)` };
+  }
+
+  const detalhe =
+    `${atrasados} produto(s) quente(s) atrasado(s) e o número NÃO cai há ` +
+    `${semMelhora} verificações (${semMelhora * INTERVALO_MIN} min)`;
+  await registrar("quentes", "sem-progresso", detalhe, "nenhuma-precisa-de-olho-humano");
+  return { status: "sem-progresso", detail: detalhe };
+}
+
 // LAÇO DE REINÍCIO — o outro ponto cego de 07/08/2026.
 //
 // O guardião já limita as PRÓPRIAS religadas (MAX_RELIGADAS_HORA). O que ele
@@ -421,6 +503,7 @@ async function verificar(): Promise<void> {
   // sozinho e nem chega a ser religado à toa.
   const banco = await conferirBanco();
   const laco = await conferirLacoDeReinicio();
+  const atrasados = await conferirAtrasados();
   const coletor = await conferirColetor();
   // Só vale conferir robô por robô se o coletor não estiver parado de
   // propósito — senão o guardião religaria o que o dono desligou no painel.
@@ -432,13 +515,13 @@ async function verificar(): Promise<void> {
   const vps = await conferirLimites();
   await talvezAuditar();
 
-  const problemas = [banco, laco, coletor, robos, site, vps].filter(
+  const problemas = [banco, laco, coletor, robos, site, vps, atrasados].filter(
     (v) => v.status !== "ok" && v.status !== "parado-pelo-usuario",
   );
   const status = problemas.length ? problemas[0].status : coletor.status === "ok" ? "ok" : coletor.status;
   const detalhe =
     `coletor: ${coletor.detail} · robôs: ${robos.detail} · site: ${site.detail}` +
-    ` · servidor: ${vps.detail} · banco: ${banco.detail}` +
+    ` · servidor: ${vps.detail} · banco: ${banco.detail} · ${atrasados.detail}` +
     (laco.status === "ok" ? "" : ` · ⚠ ${laco.detail}`);
   if (vps.status !== "ok") await registrar("servidor", vps.status, vps.detail, "nenhuma");
 

@@ -1,7 +1,6 @@
 > ⚠️ **Cópia sem as senhas.** Este arquivo é o histórico de trabalho do projeto,
 > guardado aqui como backup. As senhas foram trocadas por marcadores antes de
-> subir — repositório privado protege menos do que parece (um colaborador a
-> mais, um token vazado, um clique errado em "tornar público").
+> subir — repositório privado protege menos do que parece.
 > A versão completa vive só na máquina do dono.
 
 ---
@@ -53,7 +52,7 @@ Estado em **2026-08-05**. Os detalhes de cada item estão em [[icompras-projeto]
 15. **Navegador dos robôs vaza memória** — 1,1 GB num processo aberto há 10h. Paliativo: `pm2 restart` no robô. Conserto de fundo: fechar e reabrir o navegador a cada N produtos no `crawl.ts`.
 
 16. 🔜 **PASSAR O PROJETO PARA O GITHUB** — decidido por ele em 07/08/2026, é o próximo passo. ⚠️ **Conferir SEGREDOS antes de qualquer push**: `.env` com senha do banco, `AUTH_SECRET`, chaves. Segredo que entra no histórico do git não sai com um `rm` — tem que ser limpo antes do primeiro envio. Ver a seção do GitHub em [[icompras-projeto]].
-17. **Guardião: olhar TENDÊNCIA, não só valor.** Hoje ele grita com um número alto mesmo que esteja caindo (fila se recuperando). Comparar com a verificação anterior mata a maior parte do alarme falso. Proposto em 07/08 e não feito.
+17. ✅ ~~**Guardião: olhar TENDÊNCIA.**~~ **FEITO em 07/08** — migration 044 + `conferirAtrasados()`. Fica quieto enquanto a fila cai; avisa se não melhorar por 3 verificações (15 min). Testado nos dois cenários.
 18. **PYIA** — a ideia dele de acionar uma IA no incidente. Fica DEPOIS do guardião juntar evidências: aí a IA entra só no caso desconhecido, já com o trabalho pronto. Riscos anotados em [[icompras-projeto]] (injeção pelos dados, custo por acionamento, e o perigo de deixar a IA CONSERTAR sozinha).
 
 ## ⏸️ PAUSADO POR ELE
