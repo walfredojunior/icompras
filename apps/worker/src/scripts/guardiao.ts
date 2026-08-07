@@ -59,6 +59,17 @@ function numZeroOk(valor: string | undefined, padrao: number, max: number): numb
 const AUDIT_DIA = numZeroOk(process.env.GUARD_AUDIT_DAY, 0, 6); // 0 = domingo
 const AUDIT_HORA = numZeroOk(process.env.GUARD_AUDIT_HOUR, 6, 23);
 
+// Transação que bloqueia alguém há mais tempo que isto = encerrar.
+//
+// 5 minutos é folgado: tudo que roda longo aqui (classificação, resumo
+// diário) foi cortado em pedaços de segundos em 07/08/2026. Transação
+// bloqueadora passando de 5 min é defeito, não trabalho.
+const TRAVA_SEG = num(process.env.GUARD_LOCK_SEC, 300);
+
+// Quantos reinícios NUM ÚNICO INTERVALO já contam como laço.
+// O intervalo padrão é 5 min; um app saudável reinicia zero vez nesse tempo.
+const REINICIOS_LACO = num(process.env.GUARD_RESTART_LOOP, 5);
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function registrar(target: string, status: string, detail: string, action: string): Promise<void> {
@@ -97,6 +108,135 @@ async function religar(app: string, target: string, motivo: string): Promise<str
 
 // ---------------------------------------------------------------------------
 // Verificações
+
+// O BANCO TRAVADO — a verificação que faltava, e que teria evitado 3h52 de
+// coleta parada em 07/08/2026.
+//
+// O QUE ACONTECEU: o `UPDATE` da classificação de prioridade ficou 3h52 rodando
+// com **1.091.353 linhas travadas**. Os robôs não conseguiam nem gravar produto
+// novo. O guardião VIU o sintoma ("robô sem sinal") e aplicou o único remédio
+// que tinha: reiniciar o robô. Mas o robô não estava doente — estava ESPERANDO.
+// Reiniciar quem espera não adianta; era preciso tirar o que bloqueia.
+//
+// A correção manual levou 15 segundos: um `KILL` na transação. É essa ação que
+// esta função automatiza.
+//
+// ⚠ DUAS TRAVAS antes de encerrar qualquer coisa:
+//   1. só transação que está BLOQUEANDO ALGUÉM (`innodb_lock_waits`).
+//      Transação longa sozinha não atrapalha ninguém e fica em paz — pode ser
+//      uma migration ou uma manutenção legítima.
+//   2. só depois de TRAVA_SEG. Disputa curta é normal e se resolve sozinha.
+//
+// É seguro desfazer: tudo que roda longo aqui é refeito na volta seguinte.
+// Encerrar não perde dado, só adia.
+async function conferirBanco(): Promise<{ status: string; detail: string }> {
+  // ⚠ PELA LINHA DE COMANDO, e não pelo pool da aplicação.
+  //
+  // Descoberto testando (07/08/2026): o usuário do site (`icompras_app`) tem
+  // permissão só no banco `icompras`. Sem o privilégio PROCESS ele **não
+  // enxerga transação de outra conexão** — a consulta volta vazia —, e sem o
+  // privilégio de administrar conexões também não conseguiria encerrar nada.
+  // A primeira versão usava `pool.query` e por isso não achou nada, mesmo com
+  // o travamento bem na frente. O teste é que mostrou.
+  //
+  // Dava para resolver dando os dois privilégios ao site. Preferi NÃO dar: o
+  // site inteiro passaria a poder ler consultas alheias e derrubar conexões,
+  // para sempre, por causa de uma tarefa do guardião. Aqui ele usa o cliente
+  // de linha de comando, que entra pelo soquete local como root — o guardião
+  // já roda como root e já chama o `pm2` do mesmo jeito.
+  //
+  // O filtro (quem bloqueia alguém, e há quanto tempo) fica no código e não no
+  // SQL: mais fácil de ler e de testar que um HAVING por posição de coluna.
+  const consulta =
+    "SELECT t.trx_mysql_thread_id, TIMESTAMPDIFF(SECOND, t.trx_started, NOW()), " +
+    "COALESCE(t.trx_rows_locked,0), " +
+    "(SELECT COUNT(*) FROM information_schema.innodb_lock_waits w WHERE w.blocking_trx_id = t.trx_id), " +
+    "COALESCE(LEFT(REPLACE(t.trx_query, CHAR(10), ' '),120),'(sem consulta)') " +
+    "FROM information_schema.innodb_trx t ORDER BY 2 DESC";
+
+  let saida: string[];
+  try {
+    // -N sem cabeçalho, -B separado por tabulação: fácil de partir.
+    const { stdout } = await execAsync(`mariadb -N -B -e ${JSON.stringify(consulta)}`, { timeout: 20000 });
+    saida = stdout.split("\n").map((l) => l.trim()).filter(Boolean);
+  } catch (e) {
+    return { status: "ok", detail: `banco: não deu para conferir (${(e as Error).message.slice(0, 40)})` };
+  }
+
+  const bloqueadoras = saida
+    .map((l) => l.split("\t"))
+    .map((c) => ({
+      conexao: Number(c[0]),
+      seg: Number(c[1]),
+      travadas: Number(c[2]),
+      esperando: Number(c[3]),
+      consulta: c[4] ?? "",
+    }))
+    // AS DUAS TRAVAS: só quem está bloqueando alguém, e só depois do tempo.
+    .filter((t) => Number.isFinite(t.conexao) && t.esperando > 0 && t.seg > TRAVA_SEG);
+
+  if (!bloqueadoras.length) return { status: "ok", detail: "banco sem travamento" };
+
+  const encerradas: string[] = [];
+  for (const t of bloqueadoras) {
+    // A EVIDÊNCIA vai para o histórico ANTES da ação: se o encerramento falhar,
+    // a informação do que estava travando não se perde.
+    const evidencia =
+      `conexão ${t.conexao} há ${Math.round(t.seg / 60)} min, ` +
+      `${t.travadas.toLocaleString("pt-BR")} linha(s) travada(s), ` +
+      `${t.esperando} esperando: ${t.consulta}`;
+    try {
+      await execAsync(`mariadb -e "KILL ${Number(t.conexao)}"`, { timeout: 15000 });
+      await registrar("banco", "travado", evidencia, "transacao-encerrada");
+      encerradas.push(`${t.conexao} (${Math.round(t.seg / 60)} min)`);
+    } catch (e) {
+      await registrar("banco", "travado", `${evidencia} — não consegui encerrar: ${(e as Error).message.slice(0, 60)}`, "nenhuma");
+    }
+  }
+
+  return encerradas.length
+    ? { status: "destravado", detail: `encerrei ${encerradas.length} transação(ões) que bloqueavam: ${encerradas.join(", ")}` }
+    : { status: "travado", detail: `${bloqueadoras.length} bloqueando e não consegui encerrar` };
+}
+
+// LAÇO DE REINÍCIO — o outro ponto cego de 07/08/2026.
+//
+// O guardião já limita as PRÓPRIAS religadas (MAX_RELIGADAS_HORA). O que ele
+// não enxergava é que **quem reiniciava 214 vezes era o PM2**, sozinho, porque
+// o processo morria ao subir. Do lado de fora tudo parecia "online".
+//
+// Reiniciar não conserta defeito de código. Aqui ele reconhece o laço, PARA de
+// tentar e deixa registrado — para o dono ver em vez de descobrir por acaso.
+const reiniciosAntes = new Map<string, number>();
+
+async function conferirLacoDeReinicio(): Promise<{ status: string; detail: string }> {
+  let apps: Array<{ name: string; pm2_env?: { restart_time?: number } }>;
+  try {
+    const { stdout } = await execAsync("pm2 jlist", { timeout: 20000, maxBuffer: 8 * 1024 * 1024 });
+    apps = JSON.parse(stdout);
+  } catch {
+    return { status: "ok", detail: "pm2 não respondeu" };
+  }
+
+  const emLaco: string[] = [];
+  for (const a of apps) {
+    const agora = Number(a.pm2_env?.restart_time ?? 0);
+    const antes = reiniciosAntes.get(a.name);
+    reiniciosAntes.set(a.name, agora);
+    // Primeira passagem só anota: sem "antes" não há como saber o ritmo.
+    if (antes == null) continue;
+    const novos = agora - antes;
+    if (novos >= REINICIOS_LACO) emLaco.push(`${a.name}: ${novos} reinícios desde a última conferência`);
+  }
+
+  if (!emLaco.length) return { status: "ok", detail: "sem laço de reinício" };
+  await registrar("laco-de-reinicio", "em-laco", emLaco.join(" · "), "nenhuma-nao-adianta-religar");
+  return {
+    status: "em-laco",
+    detail: `${emLaco.join(" · ")} — religar não resolve, precisa de olho humano`,
+  };
+}
+
 // ---------------------------------------------------------------------------
 
 // CONFERE CADA ROBÔ SEPARADAMENTE (05/08/2026).
@@ -272,6 +412,15 @@ async function talvezAuditar(): Promise<void> {
 }
 
 async function verificar(): Promise<void> {
+  // ⚠ O BANCO VEM PRIMEIRO, e a ordem não é detalhe.
+  //
+  // Em 07/08/2026 o robô aparecia "sem sinal" porque estava ESPERANDO uma
+  // transação travada. Se o guardião conferir o robô antes, ele conclui
+  // "travado" e reinicia — tratando o sintoma e deixando a causa de pé.
+  // Destravando o banco primeiro, na mesma passagem o robô costuma voltar
+  // sozinho e nem chega a ser religado à toa.
+  const banco = await conferirBanco();
+  const laco = await conferirLacoDeReinicio();
   const coletor = await conferirColetor();
   // Só vale conferir robô por robô se o coletor não estiver parado de
   // propósito — senão o guardião religaria o que o dono desligou no painel.
@@ -283,11 +432,14 @@ async function verificar(): Promise<void> {
   const vps = await conferirLimites();
   await talvezAuditar();
 
-  const problemas = [coletor, robos, site, vps].filter(
+  const problemas = [banco, laco, coletor, robos, site, vps].filter(
     (v) => v.status !== "ok" && v.status !== "parado-pelo-usuario",
   );
   const status = problemas.length ? problemas[0].status : coletor.status === "ok" ? "ok" : coletor.status;
-  const detalhe = `coletor: ${coletor.detail} · robôs: ${robos.detail} · site: ${site.detail} · servidor: ${vps.detail}`;
+  const detalhe =
+    `coletor: ${coletor.detail} · robôs: ${robos.detail} · site: ${site.detail}` +
+    ` · servidor: ${vps.detail} · banco: ${banco.detail}` +
+    (laco.status === "ok" ? "" : ` · ⚠ ${laco.detail}`);
   if (vps.status !== "ok") await registrar("servidor", vps.status, vps.detail, "nenhuma");
 
   await pool.query(
