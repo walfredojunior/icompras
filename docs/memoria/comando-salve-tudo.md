@@ -9,7 +9,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 76bdc89b-fae2-47aa-b6c1-ce2496535a4b
-  modified: 2026-08-07T21:27:48.640Z
+  modified: 2026-08-07T21:53:39.167Z
 ---
 
 Combinado com ele em **07/08/2026**: **"quando eu digitar `salve tudo`, você salva a memória das coisas que fizemos e envia as atualizações pro github"**.
@@ -31,7 +31,13 @@ Combinado com ele em **07/08/2026**: **"quando eu digitar `salve tudo`, você sa
 
 ⚠️ **`[SENHA-BANCO-LOCAL-REMOVIDA]` quase escapou** (07/08/2026) — é a senha do banco LOCAL do PC dele, e eu só filtrava `[SENHA-SSH-REMOVIDA]`. Chegou a subir no primeiro envio da memória e ficou no histórico do repositório.
 
-**Conferir com `grep -riE "[SENHA-BANCO-LOCAL-REMOVIDA]|guthub|[SENHA-ADMIN-REMOVIDA]"` que não sobrou nada ANTES de commitar** — e, quando aparecer senha nova durante o trabalho, somar à tabela acima na hora, não depois.
+**Conferir ANTES de commitar** que nenhum dos VALORES da tabela sobrou na cópia.
+
+⚠️ **Procurar o valor INTEIRO, não um pedaço dele.** Em 07/08/2026 a conferência acusou senha na cópia e não havia nenhuma: ela casou com a palavra `guthub` escrita **dentro desta própria instrução**. Verificador que grita por causa do texto do verificador é alarme falso — e alarme falso é o que faz a gente parar de olhar.
+
+⚠️ **Se a conferência acusar, PARAR.** Naquele dia o roteiro avisou e enviou assim mesmo, porque as duas coisas estavam em comandos separados. O envio tem de ser condicionado à conferência passar, não vir depois dela.
+
+Quando aparecer senha nova durante o trabalho, somar à tabela acima **na hora**, não depois.
 
 **3. Commitar e enviar, na VPS** (`/opt/icompras/app` — é lá que vive o `.git`; o PC dele só tem as fontes):
 
