@@ -16,6 +16,36 @@ export interface Queda {
 // Janelas oferecidas na página. 7 dias é o padrão: um produto que baixou há
 // 29 dias não é novidade — e provavelmente já subiu de novo.
 export const JANELAS = [1, 7, 30] as const;
+
+/**
+ * ORDENS OFERECIDAS NA PÁGINA.
+ *
+ * O padrão era "maior desconto (%)" e o topo virava bugiganga: medido em
+ * 07/08/2026, os três primeiros eram um adaptador USB de US$ 10 → 3, uma
+ * tomada de 8 → 3 e uma capa de celular de 1 → 0,50. Desconto de 70% que
+ * economiza sete dólares ocupava o lugar de destaque da página.
+ *
+ * O dono pediu o preço como padrão: "o de maior valor que tenha desconto,
+ * fica mais interessante". Faz sentido — quem entra em "baixaram de preço"
+ * está atrás de celular, câmera, TV; não de adaptador.
+ */
+export const ORDENS = {
+  preco: "d.agora DESC",
+  economia: "(d.antes - d.agora) DESC",
+  desconto: "d.pct DESC",
+  barato: "d.agora ASC",
+} as const;
+export type Ordem = keyof typeof ORDENS;
+export const ORDEM_PADRAO: Ordem = "preco";
+
+/**
+ * Economia mínima para a queda aparecer.
+ *
+ * A capa de celular que "baixou 50%" foi de US$ 1,00 para US$ 0,50. Em
+ * qualquer ordem isso é ruído: não é notícia para ninguém e ocupa espaço.
+ * Dois dólares é baixo o bastante para não esconder promoção de verdade.
+ */
+const ECONOMIA_MINIMA = 2;
 export type Janela = (typeof JANELAS)[number];
 
 // Produtos cujo MENOR preço caiu dentro da janela.
@@ -39,6 +69,7 @@ export async function getQuedas(
   dias: Janela,
   limite = 60,
   categoriaSlug?: string,
+  ordem: Ordem = ORDEM_PADRAO,
 ): Promise<Queda[]> {
   const params: any[] = [dias];
   const filtroCategoria = categoriaSlug ? `AND (c.slug = ? OR pai.slug = ?)` : "";
@@ -54,8 +85,12 @@ export async function getQuedas(
        LEFT JOIN category c ON c.id = p.category_id
        LEFT JOIN category pai ON pai.id = c.parent_id
       WHERE d.janela = ?
+        AND (d.antes - d.agora) >= ${ECONOMIA_MINIMA}
         ${filtroCategoria}
-      ORDER BY d.pct DESC
+      -- Vem de ORDENS, nunca do endereço: interpolar texto do visitante
+      -- num ORDER BY é convite a injeção. A página traduz o que veio na
+      -- URL para uma dessas chaves antes de chegar aqui.
+      ORDER BY ${ORDENS[ordem] ?? ORDENS[ORDEM_PADRAO]}
       LIMIT ?`,
     params,
   );

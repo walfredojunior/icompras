@@ -185,6 +185,11 @@
     "note": "Comparamos o menor preço de hoje com o menor preço no início do período. Quedas abaixo de 3% não entram na lista.",
     "homeTitle": "Baixaram de preço",
     "homeSeeAll": "Ver todos",
-    "storeCount": "{n, plural, =1 {# loja} other {# lojas}}"
+    "storeCount": "{n, plural, =1 {# loja} other {# lojas}}",
+    "sortBy": "Ordenar por",
+    "sort_preco": "Maior preço",
+    "sort_economia": "Maior economia",
+    "sort_desconto": "Maior desconto",
+    "sort_barato": "Menor preço"
   }
 }

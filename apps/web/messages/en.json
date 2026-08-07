@@ -185,6 +185,11 @@
     "note": "We compare today's lowest price with the lowest price at the start of the period. Drops under 3% are left out.",
     "homeTitle": "Price drops",
     "homeSeeAll": "See all",
-    "storeCount": "{n, plural, =1 {# store} other {# stores}}"
+    "storeCount": "{n, plural, =1 {# store} other {# stores}}",
+    "sortBy": "Sort by",
+    "sort_preco": "Highest price",
+    "sort_economia": "Biggest savings",
+    "sort_desconto": "Biggest discount",
+    "sort_barato": "Lowest price"
   }
 }

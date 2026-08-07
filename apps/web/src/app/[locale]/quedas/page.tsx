@@ -1,7 +1,7 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { Metadata } from "next";
 import { Link } from "@/i18n/navigation";
-import { getQuedas, contarQuedas, JANELAS, type Janela } from "@/lib/quedas";
+import { getQuedas, contarQuedas, JANELAS, ORDENS, ORDEM_PADRAO, type Janela, type Ordem } from "@/lib/quedas";
 import { getRates } from "@/lib/rates";
 import { registrarVisita } from "@/lib/analytics";
 import { MoneyStack } from "@/components/MoneyStack";
@@ -31,21 +31,34 @@ function janelaDaUrl(v: string | undefined): Janela {
   return (JANELAS as readonly number[]).includes(n) ? (n as Janela) : 7;
 }
 
+// ⚠ Traduz o que veio na URL para uma chave conhecida, e nada mais.
+// O texto do visitante NUNCA chega ao ORDER BY — o que vai para a consulta
+// é sempre um dos valores fixos de ORDENS.
+function ordemDaUrl(v: string | undefined): Ordem {
+  return v && v in ORDENS ? (v as Ordem) : ORDEM_PADRAO;
+}
+
 export default async function QuedasPage({
   params,
   searchParams,
 }: {
   params: Promise<{ locale: string }>;
-  searchParams: Promise<{ dias?: string }>;
+  searchParams: Promise<{ dias?: string; ordem?: string }>;
 }) {
   const { locale } = await params;
   setRequestLocale(locale);
-  const dias = janelaDaUrl((await searchParams).dias);
+  const busca = await searchParams;
+  const dias = janelaDaUrl(busca.dias);
+  const ordem = ordemDaUrl(busca.ordem);
 
   const t = await getTranslations("drops");
 
   void registrarVisita("quedas", String(dias));
-  const [itens, contagens, rates] = await Promise.all([getQuedas(dias), contarQuedas(), getRates()]);
+  const [itens, contagens, rates] = await Promise.all([
+    getQuedas(dias, 60, undefined, ordem),
+    contarQuedas(),
+    getRates(),
+  ]);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
@@ -78,6 +91,31 @@ export default async function QuedasPage({
               <span className={`ml-1.5 text-xs ${ativa ? "text-brand-green-dark/70" : "text-slate-400"}`}>
                 {contagens[d]}
               </span>
+            </Link>
+          );
+        })}
+      </div>
+
+      {/* ORDEM DA LISTA.
+
+          Links e não um <select>: o período ao lado já é link, o Google
+          consegue seguir, e funciona sem JavaScript. O período escolhido
+          viaja junto para não se perder ao trocar a ordem. */}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <span className="text-sm text-slate-500">{t("sortBy")}:</span>
+        {(Object.keys(ORDENS) as Ordem[]).map((o) => {
+          const ativa = o === ordem;
+          return (
+            <Link
+              key={o}
+              href={`/quedas?dias=${dias}&ordem=${o}`}
+              className={`rounded-full px-3 py-1.5 text-xs transition ${
+                ativa
+                  ? "bg-brand-navy font-semibold text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              {t(`sort_${o}`)}
             </Link>
           );
         })}
