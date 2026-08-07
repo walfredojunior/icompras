@@ -1,6 +1,5 @@
-> ⚠️ **Cópia sem as senhas.** Este arquivo é o histórico de trabalho do projeto,
-> guardado aqui como backup. As senhas foram trocadas por marcadores antes de
-> subir — repositório privado protege menos do que parece.
+> ⚠️ **Cópia sem as senhas.** Histórico de trabalho do projeto, guardado aqui
+> como backup. As senhas foram trocadas por marcadores antes de subir.
 > A versão completa vive só na máquina do dono.
 
 ---

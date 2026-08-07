@@ -1,6 +1,5 @@
-> ⚠️ **Cópia sem as senhas.** Este arquivo é o histórico de trabalho do projeto,
-> guardado aqui como backup. As senhas foram trocadas por marcadores antes de
-> subir — repositório privado protege menos do que parece.
+> ⚠️ **Cópia sem as senhas.** Histórico de trabalho do projeto, guardado aqui
+> como backup. As senhas foram trocadas por marcadores antes de subir.
 > A versão completa vive só na máquina do dono.
 
 ---
@@ -1371,3 +1370,23 @@ Atrasei 3 produtos quentes de propósito (guardando os valores originais em `zz_
 - **Fila caindo (3→2→1→0):** quieto o tempo todo, contador zerado a cada queda.
 
 ⚠️ Erro meu no meio do teste: escrevi `SET last_crawled_at = NOW() - INTERVAL 10 HOUR, last_crawled_at = last_crawled_at` — **definir a mesma coluna duas vezes faz a segunda anular a primeira**. O truque de suprimir o `ON UPDATE CURRENT_TIMESTAMP` só é necessário quando NÃO se está atribuindo a coluna; atribuindo, ele já não dispara.
+
+## 2026-08-07 — IDIOMA PELO PAÍS DE ORIGEM
+
+Pedido dele: Brasil → português, Argentina/Paraguai/América Latina → espanhol, resto → inglês. **Só a moldura do site** — nome de produto vem da fonte e continua como veio.
+
+**Estava tudo pronto para isso:** 516/516 categorias e 166/166 textos traduzidos nos três idiomas. Nenhum buraco.
+
+**De onde vem o país: `CF-IPCountry`**, cabeçalho que a Cloudflare põe em TODO pedido. De graça, sem banco de IP, sem tempo a mais. **Conferido antes de escrever código** com um `log_format` temporário no nginx (removido depois): chega como `PAIS=[PY]`. O nginx repassa sozinho — `proxy_set_header` só adiciona, não filtra.
+
+**A implementação é minúscula** porque o next-intl já escolhe assim: (1) URL, (2) cookie, (3) `accept-language`, (4) padrão. O middleware já apagava o (3) de propósito. Agora ele apaga e **põe no lugar o idioma do país** — o next-intl segue funcionando sem saber de nada. `apps/web/src/i18n/porPais.ts` tem a lista de países escrita à mão (o dono consegue ler e ajustar).
+
+⚠️ **A ordem cookie > país é o que evita o site discutir com o visitante:** argentino que prefira português troca UMA vez e não é "corrigido" na visita seguinte.
+
+⚠️⚠️ **ROBÔ DE BUSCA VÊ SEMPRE PORTUGUÊS — a linha que mais protege o negócio.** O Google rastreia quase sempre dos ESTADOS UNIDOS, que pela regra cairiam em inglês; sem a exceção, ele passaria a tratar o iCompras como site em inglês, enquanto quem precisa achá-lo é o brasileiro.
+
+**Testado na porta isolada antes de publicar, 13 casos, 13 certos:** BR/PT→pt-BR · PY/AR/MX→es · US/FR/XX→en · Googlebot de US, FR e PY→pt-BR · quem tem cookie mantém a escolha nos dois sentidos.
+
+⚠️ **Os pedidos que saem daqui são geolocalizados como PY** pela Cloudflare — então o site me responde `/es`. Não confundir com defeito ao testar; pedir para ele conferir do próprio navegador.
+
+⚠️ **Condição futura:** se um dia a Cloudflare passar a guardar páginas em cache (hoje tudo é `DYNAMIC`), o desvio de `/` precisa variar por país, senão ela serve o idioma do primeiro visitante para todo mundo.
