@@ -1390,3 +1390,23 @@ Pedido dele: Brasil → português, Argentina/Paraguai/América Latina → espan
 ✅ **O DONO ESTÁ NO PARAGUAI** (confirmado por ele em 07/08/2026, ao testar: *"abriu em espanhol e ta certo, eu estou no paraguai"*). Por isso **os pedidos que saem da máquina dele são geolocalizados como PY** e o site responde `/es` — é o comportamento certo, não defeito. Vale para qualquer teste futuro daqui: para ver o site em português é preciso mandar `CF-IPCountry: BR` direto na porta 3000, porque pelo domínio a Cloudflare sobrescreve o cabeçalho.
 
 ⚠️ **Condição futura:** se um dia a Cloudflare passar a guardar páginas em cache (hoje tudo é `DYNAMIC`), o desvio de `/` precisa variar por país, senão ela serve o idioma do primeiro visitante para todo mundo.
+
+## 2026-08-07 — "BAIXARAM DE PREÇO": ordem por MAIOR PREÇO como padrão
+
+Ele notou: *"seria interessante ordenar pelo maior preço, daí geralmente aparece os produtos que as pessoas se interessam mais"*. Estava certo — medi as três ordens antes de escolher:
+
+| Ordem | O que ficava no topo |
+|---|---|
+| **Maior desconto (%)** — era o padrão | adaptador USB $10→$3, tomada $8→$3, **capa de celular $1→$0,50** |
+| **Maior preço** | lente Sony $3.249, câmera Nikon, moto elétrica |
+| **Maior economia (US$)** | Nikon (−$246), Hikvision (−$237), moto (−$199) |
+
+Desconto de 70% que economiza sete dólares ocupava o lugar de destaque. Quem entra em "baixaram de preço" quer celular, câmera, TV — não adaptador.
+
+**Feito:** seletor com 4 ordens (`ORDENS` em `lib/quedas.ts`), padrão **maior preço** — escolha dele: *"o de maior valor que tenha desconto, fica mais interessante"*. Mais um piso de **US$ 2 de economia** para a queda aparecer, em qualquer ordem: a capa que "baixou 50%" era $1,00 → $0,50, ruído em qualquer ordenação.
+
+⚠️ **O texto da URL NUNCA chega ao `ORDER BY`.** A página traduz `?ordem=` para uma chave conhecida e o SQL recebe só valores fixos. **Testado com `?ordem=xxx OR 1=1` → cai no padrão.** Interpolar parâmetro de URL num ORDER BY é injeção clássica, e é o tipo de coisa que passa despercebida porque "é só uma ordenação".
+
+**Links e não `<select>`:** as abas de período ao lado já são links, o Google consegue seguir cada ordem, e funciona sem JavaScript. O período viaja junto na URL para não se perder ao trocar a ordem.
+
+⚠️ **Efeito colateral aceito:** por preço, entra produto caro com desconto pequeno (lente Sony com −4%) e equipamento técnico de nicho (OLT de rede). Se incomodar, o ajuste é um desconto mínimo para o padrão — não feito, porque ele quis ver assim primeiro.

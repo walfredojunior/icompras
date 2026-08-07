@@ -9,7 +9,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 76bdc89b-fae2-47aa-b6c1-ce2496535a4b
-  modified: 2026-08-07T17:00:30.620Z
+  modified: 2026-08-07T21:27:48.640Z
 ---
 
 Combinado com ele em **07/08/2026**: **"quando eu digitar `salve tudo`, você salva a memória das coisas que fizemos e envia as atualizações pro github"**.
@@ -20,7 +20,18 @@ Combinado com ele em **07/08/2026**: **"quando eu digitar `salve tudo`, você sa
 
 **1. Gravar a memória** do que foi feito na conversa. O de sempre: o *porquê*, o que foi medido, o que deu errado no caminho. Atualizar [[icompras-projeto]] e [[icompras-pendencias]]; ajustar o índice em `MEMORY.md` se algo importante mudou.
 
-**2. Refazer a cópia limpa** em `docs/memoria/` na VPS. **A cópia NÃO se atualiza sozinha.** Copiar os `.md` de `C:\Users\walfr\.claude\projects\C--projetos-icompras\memory\`, trocar `[SENHA-SSH-REMOVIDA]` por `[SENHA-SSH-REMOVIDA]` e `[SENHA-ADMIN-REMOVIDA]` por `[SENHA-ADMIN-REMOVIDA]`, e pôr o aviso no topo de cada arquivo. Conferir com `grep` que não sobrou senha **antes** de commitar.
+**2. Refazer a cópia limpa** em `docs/memoria/` na VPS. **A cópia NÃO se atualiza sozinha.** Copiar os `.md` de `C:\Users\walfr\.claude\projects\C--projetos-icompras\memory\`, pôr o aviso no topo de cada arquivo e trocar as senhas — **do padrão MAIS LONGO para o mais curto**, senão uma troca atropela a outra:
+
+| Procurar (sem diferenciar maiúscula) | Trocar por |
+|---|---|
+| `[SENHA-SSH-REMOVIDA]` | `[SENHA-SSH-REMOVIDA]` |
+| `[SENHA-BANCO-LOCAL-REMOVIDA]` (palavra inteira) | `[SENHA-BANCO-LOCAL-REMOVIDA]` |
+| `[SENHA-ADMIN-REMOVIDA]` | `[SENHA-ADMIN-REMOVIDA]` |
+| `[SENHA-REMOVIDA]` | `[SENHA-REMOVIDA]` |
+
+⚠️ **`[SENHA-BANCO-LOCAL-REMOVIDA]` quase escapou** (07/08/2026) — é a senha do banco LOCAL do PC dele, e eu só filtrava `[SENHA-SSH-REMOVIDA]`. Chegou a subir no primeiro envio da memória e ficou no histórico do repositório.
+
+**Conferir com `grep -riE "[SENHA-BANCO-LOCAL-REMOVIDA]|guthub|[SENHA-ADMIN-REMOVIDA]"` que não sobrou nada ANTES de commitar** — e, quando aparecer senha nova durante o trabalho, somar à tabela acima na hora, não depois.
 
 **3. Commitar e enviar, na VPS** (`/opt/icompras/app` — é lá que vive o `.git`; o PC dele só tem as fontes):
 
