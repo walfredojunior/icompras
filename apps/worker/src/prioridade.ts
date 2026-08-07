@@ -36,7 +36,42 @@ export const FAIXAS = {
   gelado: 72, // 1 loja: 0,1% de chance de mudar
 } as const;
 
+
 export async function classificarProdutos(): Promise<Record<string, number>> {
+  // ⚠⚠ ESTA CONSULTA PAROU A COLETA POR 3h52 (07/08/2026).
+  //
+  // Flagrada em produção: **3h52 de execução com 1.091.353 linhas travadas**,
+  // segurando toda a fila. O robô 0 não conseguia nem gravar produto novo, e o
+  // resumo diário estourava o limite de espera atrás dela. O dono percebeu
+  // antes de qualquer alarme nosso: "acho q um dos robos travou".
+  //
+  // ⚠ As 3h52 eram ESPERA, não conta. Solta, a consulta roda em segundos.
+  //
+  // Como achar de novo: `information_schema.innodb_trx` ordenado por
+  // `trx_started` mostra quem segura; `innodb_lock_waits` mostra quem espera.
+  // Transação com mais de um milhão de linhas travadas é sempre a culpada.
+  //
+  // Dois consertos:
+  //  1. ISOLAMENTO "READ COMMITTED" numa conexão dedicada. Em REPEATABLE READ,
+  //     `UPDATE ... JOIN (SELECT ...)` tranca também tudo que LÊ, para o log
+  //     binário poder repetir a operação. Aqui o `log_bin` está DESLIGADO
+  //     (conferido em 07/08/2026): essa trava não protege nada, só atrapalha.
+  //     A conexão precisa ser DEDICADA — `pool.query` sorteia uma a cada
+  //     chamada e o SET só vale na conexão onde rodou.
+  //  2. NUNCA DERRUBA. Classificação é sugestão de prioridade, não dado que o
+  //     site mostra. Se falhar, as faixas ficam como estavam e a próxima volta
+  //     refaz — o coletor não pode morrer por causa disto.
+  //
+  // ⚠⚠ NÃO DIVIDIR ESTA CONSULTA EM BLOCOS. Eu tentei, e rodou errado em
+  // produção antes de eu perceber: a subconsulta agrupa por `external_id` e
+  // conta LOJAS DISTINTAS. Qualquer corte que separe as ofertas de um mesmo
+  // código faz cada pedaço contar só uma parte, e o último a gravar vence com
+  // a conta pela metade. Medido: **3.859 códigos têm ofertas espalhadas por
+  // mais de 20 mil ids**, e o efeito apareceu no resultado — "morno" caiu de
+  // 1.292 para 549 porque produto de 10+ lojas passou a parecer ter menos.
+  // Cortar pelo número do código mantém os grupos inteiros, mas aí nenhum
+  // índice serve e viram centenas de varreduras da tabela: pior ainda.
+  //
   // UM comando só, sem tabela temporária.
   //
   // ⚠ A primeira versão usava CREATE TEMPORARY TABLE e quebrou em produção com
@@ -47,56 +82,96 @@ export async function classificarProdutos(): Promise<Record<string, number>> {
   //
   // Um produto pode ter várias ofertas com o mesmo external_id da fonte; o
   // GROUP BY resolve. `lojas` é a contagem de lojas distintas com oferta.
-  await pool.query(
-    `UPDATE scrape_log s
-       JOIN (
-         SELECT o.external_id AS ext,
-                COUNT(DISTINCT o.store_id) AS lojas,
-                MAX(h.product_id IS NOT NULL) AS mudou,
-                MAX(a.slug IS NOT NULL)  AS visto
-           FROM offer o
-           JOIN product_variant v ON v.id = o.variant_id
-           JOIN product p ON p.id = v.product_id
-           -- Mudou de preço na última semana? (o sinal mais confiável)
-           LEFT JOIN (
-             SELECT product_id
-               FROM product_price_daily
-              WHERE day >= CURDATE() - INTERVAL 7 DAY
-              GROUP BY product_id
-             HAVING COUNT(DISTINCT min_usd) > 1
-           ) h ON h.product_id = p.id
-           -- Alguém abriu a página deste produto nos últimos 30 dias?
-           LEFT JOIN (
-             SELECT DISTINCT slug FROM analytics_page
-              WHERE kind = 'produto' AND day > CURDATE() - INTERVAL 30 DAY
-           ) a ON a.slug = p.slug
-          WHERE o.source = 'scraped' AND o.external_id IS NOT NULL
-          GROUP BY o.external_id
-       ) x ON x.ext = s.external_id
-        SET s.intervalo_horas = CASE WHEN x.mudou THEN ?
-                                     WHEN x.visto OR x.lojas >= 10 THEN ?
-                                     WHEN x.lojas >= 5 THEN ?
-                                     WHEN x.lojas >= 2 THEN ?
-                                     ELSE ? END,
-            s.faixa           = CASE WHEN x.mudou THEN 'quente'
-                                     WHEN x.visto OR x.lojas >= 10 THEN 'morno'
-                                     WHEN x.lojas >= 5 THEN 'normal'
-                                     WHEN x.lojas >= 2 THEN 'frio'
-                                     ELSE 'gelado' END,
-            s.classificado_em = NOW(),
-            -- ⚠ ESTA LINHA É OBRIGATÓRIA, e a falta dela quase congelou o
-            -- coletor em produção (05/08/2026). A coluna last_crawled_at é
-            -- ON UPDATE CURRENT_TIMESTAMP: qualquer gravação na linha
-            -- reinicia o relógio de "quando visitei este produto". Como esta
-            -- classificação escreve em TODAS as 223 mil linhas e roda ao fim
-            -- de cada volta, ela fazia o coletor achar que tinha acabado de
-            -- visitar o catálogo inteiro — e ele pularia tudo, para sempre, a
-            -- cada volta. Atribuir a coluna a ela mesma suprime a atualização
-            -- automática (o MariaDB só age quando ninguém define a coluna).
-            s.last_crawled_at = s.last_crawled_at`,
-    [FAIXAS.quente, FAIXAS.morno, FAIXAS.normal, FAIXAS.frio, FAIXAS.gelado],
-  );
+  // Pedaço da GRAVAÇÃO. 5 mil linhas por transação: segundos de lock, não
+  // minutos. Os robôs escrevem em scrape_log a cada produto — eles passam
+  // entre um pedaço e outro.
+  const PEDACO = 5_000;
 
+  const conn = await pool.getConnection();
+  let pedacosComFalha = 0;
+  try {
+    // READ COMMITTED: sem travar tudo que a etapa 1 LÊ em `offer`.
+    await conn.query("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED");
+
+    // ETAPA 1 — calcular na mesa de apoio. Nenhum robô toca nesta tabela,
+    // então esta parte pode demorar o quanto precisar sem atrapalhar ninguém.
+    await conn.query("TRUNCATE TABLE prioridade_calc");
+    await conn.query(
+      `INSERT INTO prioridade_calc (ext, lojas, mudou, visto)
+       SELECT o.external_id AS ext,
+              COUNT(DISTINCT o.store_id) AS lojas,
+              MAX(h.product_id IS NOT NULL) AS mudou,
+              MAX(a.slug IS NOT NULL)  AS visto
+         FROM offer o
+         JOIN product_variant v ON v.id = o.variant_id
+         JOIN product p ON p.id = v.product_id
+         -- Mudou de preço na última semana? (o sinal mais confiável)
+         LEFT JOIN (
+           SELECT product_id
+             FROM product_price_daily
+            WHERE day >= CURDATE() - INTERVAL 7 DAY
+            GROUP BY product_id
+           HAVING COUNT(DISTINCT min_usd) > 1
+         ) h ON h.product_id = p.id
+         -- Alguém abriu a página deste produto nos últimos 30 dias?
+         LEFT JOIN (
+           SELECT DISTINCT slug FROM analytics_page
+            WHERE kind = 'produto' AND day > CURDATE() - INTERVAL 30 DAY
+         ) a ON a.slug = p.slug
+        WHERE o.source = 'scraped' AND o.external_id IS NOT NULL
+        GROUP BY o.external_id`,
+    );
+
+    // ETAPA 2 — gravar em `scrape_log` aos pedaços.
+    //
+    // ⚠ O corte é pelo `id` da MESA DE APOIO, onde cada código aparece UMA vez
+    // e já com a conta pronta. Cortar a etapa 1 seria o erro: lá a conta
+    // agrupa por código, e separar as ofertas de um mesmo código faria cada
+    // pedaço contar só uma parte das lojas (eu fiz isso e rodou errado em
+    // produção — "morno" caiu de 1.292 para 549). Aqui não há esse risco: cada
+    // linha é independente das outras.
+    const [{ maxId }] = await conn.query("SELECT COALESCE(MAX(id), 0) AS maxId FROM prioridade_calc");
+    for (let de = 1; de <= Number(maxId); de += PEDACO) {
+      try {
+        await conn.query(
+          `UPDATE scrape_log s
+             JOIN prioridade_calc x ON x.ext = s.external_id
+              SET s.intervalo_horas = CASE WHEN x.mudou THEN ?
+                                           WHEN x.visto OR x.lojas >= 10 THEN ?
+                                           WHEN x.lojas >= 5 THEN ?
+                                           WHEN x.lojas >= 2 THEN ?
+                                           ELSE ? END,
+                  s.faixa           = CASE WHEN x.mudou THEN 'quente'
+                                           WHEN x.visto OR x.lojas >= 10 THEN 'morno'
+                                           WHEN x.lojas >= 5 THEN 'normal'
+                                           WHEN x.lojas >= 2 THEN 'frio'
+                                           ELSE 'gelado' END,
+                  s.classificado_em = NOW(),
+                  -- ⚠ ESTA LINHA É OBRIGATÓRIA, e a falta dela quase congelou o
+                  -- coletor em produção (05/08/2026). last_crawled_at é
+                  -- ON UPDATE CURRENT_TIMESTAMP: qualquer gravação na linha
+                  -- reinicia o relógio de "quando visitei este produto", e como
+                  -- isto escreve em TODAS as linhas, o coletor acharia que
+                  -- acabou de visitar o catálogo inteiro e pularia tudo, para
+                  -- sempre. Atribuir a coluna a ela mesma suprime a atualização
+                  -- automática (o MariaDB só age quando ninguém define a coluna).
+                  s.last_crawled_at = s.last_crawled_at
+            WHERE x.id BETWEEN ? AND ?`,
+          [FAIXAS.quente, FAIXAS.morno, FAIXAS.normal, FAIXAS.frio, FAIXAS.gelado, de, de + PEDACO - 1],
+        );
+      } catch (e) {
+        // Pedaço que bateu em disputa: as faixas dele ficam como estavam e a
+        // próxima volta refaz. Melhor que derrubar o coletor.
+        pedacosComFalha++;
+      }
+      await new Promise((r) => setTimeout(r, 20));
+    }
+  } catch (e) {
+    console.log(`  ⚠ prioridade não pôde ser recalculada agora: ${(e as Error).message.slice(0, 80)}`);
+  } finally {
+    conn.release();
+  }
+  if (pedacosComFalha) console.log(`  ⚠ prioridade: ${pedacosComFalha} pedaço(s) ficaram para a próxima volta`);
   const linhas = await pool.query(
     "SELECT faixa, COUNT(*) n FROM scrape_log WHERE faixa IS NOT NULL GROUP BY faixa",
   );
