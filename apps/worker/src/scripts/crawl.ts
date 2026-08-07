@@ -2101,6 +2101,23 @@ async function loopQuentes(): Promise<void> {
         feitos++;
       } catch (e) {
         console.log(`  ! ${formas[0]}: ${(e as Error).message.slice(0, 80)}`);
+        // ⚠ MARCAR MESMO TENDO FALHADO — e isto não é varrer para baixo do tapete.
+        //
+        // O que acontecia sem esta linha (visto em 07/08/2026): o produto que
+        // falha não tem `last_crawled_at` atualizado, então continua sendo "o
+        // mais esquecido da lista" PARA SEMPRE. A cada volta ele é escolhido
+        // primeiro, falha de novo, e a idade dele cresce sem parar — o painel
+        // mostrava "produtos quentes atrasado 4,8 dias" por causa de cinco
+        // produtos que ninguém conseguia coletar, enquanto os outros 2.962
+        // estavam em dia.
+        //
+        // O indicador precisa responder "o robô está dando conta?". Sem esta
+        // linha ele responde "existe algum produto problemático?" — outra
+        // pergunta, e uma que ninguém consegue resolver olhando o painel.
+        //
+        // A falha não some: fica na linha de log acima, com o endereço. E o
+        // produto volta a ser tentado na volta seguinte, como qualquer outro.
+        await markCrawled(String(a.external_id)).catch(() => {});
       }
       if (feitos % 5 === 0) await ctlBeat(`quentes · ${feitos}/${alvos.length}`);
       // O MESMO placar que a volta normal já imprime. Sem ele, o robô dos
