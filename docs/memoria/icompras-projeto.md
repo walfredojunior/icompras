@@ -18,7 +18,7 @@ Plano completo em `C:\projetos\icompras\docs\PLANO.md`; como rodar em `docs\COMO
 
 **Decisões fechadas (2026-07-27):**
 - Stack: Next.js 16 + Tailwind + next-intl (pt-BR/es/en), Fastify (API), MariaDB 12.1, Meilisearch (busca), sharp+R2/CDN (imagens).
-- Banco: **MariaDB 12.1 na porta 3307** (serviço `MariaDB12.1`); root senha `infoserve`. App usa usuário `icompras_app` (senha no `.env`, gerada). Há também um MariaDB 11.5 na 3306 — não usar.
+- Banco: **MariaDB 12.1 na porta 3307** (serviço `MariaDB12.1`); root senha `[SENHA-BANCO-LOCAL-REMOVIDA]`. App usa usuário `icompras_app` (senha no `.env`, gerada). Há também um MariaDB 11.5 na 3306 — não usar.
 - Idiomas: UI + categorias nos 3; nome de produto fica no idioma original.
 - Pagamentos: adaptadores **Bancard + Pagopar** (PYG), configuráveis via `PAYMENT_PROVIDER`.
 - Público: vitrine pública + contas de usuário (alertas de queda de preço por e-mail/WhatsApp).
@@ -74,7 +74,7 @@ BANCARD FEITO (etapa 5, 2026-07-28) — CONFIG-GATED, NÃO TESTADO com credencia
 
 === COMO RETOMAR (ponto de parada 2026-07-28) ===
 ESTADO: MVP + sistema de cobrança COMPLETOS e testados. Catálogo com 3627 produtos / 98 lojas / 25767 ofertas reais por loja (crawler passou por TODAS as categorias; roda em ciclos monitor, ~72min entre ciclos). Migrations aplicadas até 015. Lista de Clientes ZERADA (limpei os testes). 1 plano ativo: "Plano Mensal" US$100/mês · US$1080/ano · trial 30d. Bancard implementado mas DESLIGADO (chaves vazias).
-PARA SUBIR O AMBIENTE (nova sessão, na ordem): (1) abrir Docker Desktop → `docker compose up -d redis meilisearch` (Redis 6379, Meili 7700); (2) MariaDB 12.1 serviço na 3307 (root/infoserve) — `npm run db:migrate` se faltar migration; (3) site: `cd apps/web && npm run dev` (porta 3000; usar npm.cmd no PowerShell do usuário); (4) crawler: ligar pelo Admin › Scraper (ou `npm run scrape:crawl`) — SEMPRE checar scrape_control.state/heartbeat antes p/ não duplicar; (5) só para receber lista de clientes via API: `npm run dev:api` (porta 3001) + worker `npm run dev:worker`. Admin: localhost:3000/es/admin/entrar · admin@icompras.local / [SENHA-ADMIN-REMOVIDA]. Testar no celular: http://192.168.68.109:3000/es (allowedDevOrigins já inclui o IP; liberar firewall porta 3000 como admin).
+PARA SUBIR O AMBIENTE (nova sessão, na ordem): (1) abrir Docker Desktop → `docker compose up -d redis meilisearch` (Redis 6379, Meili 7700); (2) MariaDB 12.1 serviço na 3307 (root/[SENHA-BANCO-LOCAL-REMOVIDA]) — `npm run db:migrate` se faltar migration; (3) site: `cd apps/web && npm run dev` (porta 3000; usar npm.cmd no PowerShell do usuário); (4) crawler: ligar pelo Admin › Scraper (ou `npm run scrape:crawl`) — SEMPRE checar scrape_control.state/heartbeat antes p/ não duplicar; (5) só para receber lista de clientes via API: `npm run dev:api` (porta 3001) + worker `npm run dev:worker`. Admin: localhost:3000/es/admin/entrar · admin@icompras.local / [SENHA-ADMIN-REMOVIDA]. Testar no celular: http://192.168.68.109:3000/es (allowedDevOrigins já inclui o IP; liberar firewall porta 3000 como admin).
 TAREFAS ABERTAS (nenhuma urgente, usuário decide a ordem): (a) DEPLOY NA VPS (próximo grande passo); (b) trocar senha admin por forte antes de produção; (c) normalizar moeda nos alertas de preço (hoje comparam moeda crua); (d) Bancard: preencher BANCARD_PUBLIC_KEY/PRIVATE_KEY no apps/web/.env.local + reiniciar + testar na homologação do Bancard + configurar webhook /api/bancard/webhook + conferir USD vs PYG; (e) opcional: página pública de preços dos planos, integrações reais de e-mail/WhatsApp (hoje provider 'log'), fixar MariaDB LTS. OBS: os processos em background desta sessão (dev server web, crawler) podem não sobreviver ao fim da sessão — reiniciar conforme acima.
 
 === DEPLOY VPS FEITO (2026-07-28) — SITE NO AR ===
@@ -1387,6 +1387,6 @@ Pedido dele: Brasil → português, Argentina/Paraguai/América Latina → espan
 
 **Testado na porta isolada antes de publicar, 13 casos, 13 certos:** BR/PT→pt-BR · PY/AR/MX→es · US/FR/XX→en · Googlebot de US, FR e PY→pt-BR · quem tem cookie mantém a escolha nos dois sentidos.
 
-⚠️ **Os pedidos que saem daqui são geolocalizados como PY** pela Cloudflare — então o site me responde `/es`. Não confundir com defeito ao testar; pedir para ele conferir do próprio navegador.
+✅ **O DONO ESTÁ NO PARAGUAI** (confirmado por ele em 07/08/2026, ao testar: *"abriu em espanhol e ta certo, eu estou no paraguai"*). Por isso **os pedidos que saem da máquina dele são geolocalizados como PY** e o site responde `/es` — é o comportamento certo, não defeito. Vale para qualquer teste futuro daqui: para ver o site em português é preciso mandar `CF-IPCountry: BR` direto na porta 3000, porque pelo domínio a Cloudflare sobrescreve o cabeçalho.
 
 ⚠️ **Condição futura:** se um dia a Cloudflare passar a guardar páginas em cache (hoje tudo é `DYNAMIC`), o desvio de `/` precisa variar por país, senão ela serve o idioma do primeiro visitante para todo mundo.
