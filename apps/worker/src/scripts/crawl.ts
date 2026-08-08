@@ -57,11 +57,23 @@ const DELAY = Number(process.env.CRAWL_DELAY_MS ?? Math.round((1000 * WORKERS) /
  * Vazio = só o caminho direto, e um bloqueio vira aviso no log e no painel.
  * Preenchido = ao detectar bloqueio, o coletor passa a sair por aqui.
  *
- * No dia a dia ele NÃO usa o proxy: sair direto é mais rápido, mais barato e
- * não depende de terceira máquina. O proxy é reserva, não caminho padrão.
+ * ⚠ DECISÃO DO DONO (08/08/2026): **toda a coleta sai pelo proxy.**
+ * "o ip da vps onde ta o icompras não será mais usado, essa é a ideia."
+ *
+ * O objetivo é que a fonte nunca veja o endereço da máquina que serve o
+ * site, e que o padrão de acesso mude sozinho (o servidor de saída troca de
+ * IP a cada 5 horas e também quando ele mesmo detecta bloqueio).
+ *
+ * ⚠⚠ POR ISSO NÃO EXISTE VOLTA AUTOMÁTICA PARA O CAMINHO DIRETO.
+ *
+ * Seria a reação natural — "o proxy caiu, então sai direto e a coleta
+ * continua" — e destruiria justamente o que ele pediu: bastaria o servidor
+ * de saída piscar para o IP da VPS aparecer na fonte, sem ninguém perceber.
+ * Quando o proxy não responde, a coleta trava e grita. Parar é reversível;
+ * expor o endereço não é.
  */
 const PROXY = process.env.CRAWL_PROXY ?? "";
-let saindoPeloProxy = false;
+let saindoPeloProxy = Boolean(PROXY);
 
 // O `fetch` do Node não usa proxy sozinho — precisa que a gente entregue o
 // "despachante". Criado uma vez só: cada ProxyAgent abre suas conexões, e um
@@ -735,10 +747,36 @@ async function fetchText(url: string, tentativa = 0): Promise<string | null> {
     if (res.ok) bloqueios403 = 0;
 
     if (!res.ok) return null;
+    falhasDeProxy = 0;
     return await res.text();
-  } catch {
+  } catch (e) {
+    // ⚠ FALHA DE REDE SAINDO PELO PROXY = o servidor de saída não respondeu.
+    //
+    // Aqui é onde a tentação mora: seria fácil "resolver" tentando de novo
+    // sem o proxy. Isso poria o IP da VPS na frente da fonte no primeiro
+    // soluço do servidor de Dallas — o oposto do que foi pedido. A coleta
+    // trava e o painel mostra o motivo; ninguém adivinha, e nada vaza.
+    if (saindoPeloProxy && PROXY) await anotarFalhaDeProxy(e);
     return null;
   }
+}
+
+let falhasDeProxy = 0;
+
+async function anotarFalhaDeProxy(e: unknown): Promise<void> {
+  falhasDeProxy++;
+  // As primeiras podem ser um pedido perdido — acontece. A partir de 10
+  // seguidas é o servidor de saída fora do ar, e aí precisa aparecer.
+  if (falhasDeProxy !== 10 && falhasDeProxy % 100 !== 0) return;
+  const motivo = e instanceof Error ? e.message.slice(0, 80) : "sem detalhe";
+  console.log(`  ⛔ o servidor de saída não responde (${falhasDeProxy} falhas): ${motivo}`);
+  console.log(`     A coleta fica parada até ele voltar — de propósito, para não`);
+  console.log(`     expor o IP desta VPS. Conferir o servidor de Dallas.`);
+  await pool
+    .query("UPDATE coletor_saida SET detalhe = ? WHERE id = 1", [
+      `servidor de saída sem resposta há ${falhasDeProxy} tentativas — coleta parada de propósito`,
+    ])
+    .catch(() => {});
 }
 
 /**
@@ -768,29 +806,26 @@ async function anotarBloqueio(url: string): Promise<void> {
     console.log(`  ⚠ recusa de acesso (403) — ${bloqueios403}ª seguida · ${url.slice(0, 60)}`);
     return;
   }
-  if (saindoPeloProxy) {
-    // Já estamos no proxy e continua bloqueado: trocar de novo não resolveria.
-    // O servidor de saída troca o IP dele sozinho; aqui só registramos, porque
-    // bloqueio que persiste depois da troca provavelmente não é por IP.
-    console.log(`  ⚠ ainda bloqueado mesmo pelo proxy — pode não ser por IP`);
-    bloqueios403 = 0;
-    return;
-  }
+  bloqueios403 = 0;
+
   if (!PROXY) {
+    // Sem saída alternativa configurada: só dá para avisar.
     console.log(`  ⛔ BLOQUEADO pela fonte e não há proxy configurado (CRAWL_PROXY)`);
-    bloqueios403 = 0;
     return;
   }
 
-  saindoPeloProxy = true;
-  bloqueios403 = 0;
-  await closeBrowser().catch(() => {});
-  console.log(`  🔀 BLOQUEADO — passando a sair pelo proxy`);
+  // Já estamos saindo pelo proxy — é o modo normal. O servidor de saída se
+  // vigia sozinho e troca de IP quando detecta bloqueio (a cada 10 min), além
+  // do rodízio de 5 em 5 horas. Daqui não há o que fazer além de registrar.
+  //
+  // ⚠ Bloqueio que PERSISTE depois de o IP mudar não é bloqueio por IP — é
+  // por comportamento. Trocar mais não resolve, e o painel precisa mostrar
+  // isso, senão alguém passa dias trocando IP atrás do problema errado.
+  console.log(`  ⚠ bloqueado mesmo pelo proxy — o servidor de saída vai trocar de IP`);
   await pool
     .query(
-      `UPDATE coletor_saida SET modo = 'proxy', trocas = trocas + 1, desde = NOW(),
-              detalhe = ? WHERE id = 1`,
-      [`troquei para o proxy depois de ${BLOQUEIOS_PARA_TROCAR} recusas seguidas`],
+      `UPDATE coletor_saida SET detalhe = ? WHERE id = 1`,
+      ["bloqueio recebido saindo pelo proxy — se repetir, pode não ser por IP"],
     )
     .catch(() => {});
 }
