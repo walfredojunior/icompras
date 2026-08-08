@@ -18,7 +18,19 @@ export async function Footer() {
           </div>
           <nav className="grid grid-cols-2 gap-x-10 gap-y-2 text-sm">
             <Link href="/" className="text-slate-600 hover:text-brand-navy">{f("home")}</Link>
+            {/* LISTA DE LOJAS TIRADA DO RODAPÉ (08/08/2026, decisão do dono).
+                Aquela página mostra TODAS as lojas com logo, cidade e quantos
+                produtos cada uma tem, ordenadas da maior para a menor — ou seja,
+                o raio-x da cobertura do iCompras. Um concorrente montaria a lista
+                de alvos dele em dois minutos.
+
+                ⚠ Só o LINK saiu. A página continua no ar e no mapa do site, e as
+                páginas de cada loja (/loja/slug) seguem intactas — são elas que
+                trazem visitante do Google e o destino do "Ver loja" das ofertas.
+                Ele pediu explicitamente só isto: "só esconda a opção de ver lojas
+                no rodapé do site, isso pra mim já basta".
             <Link href="/lojas" className="text-slate-600 hover:text-brand-navy">{f("stores")}</Link>
+            */}
             {/* CONTA DESLIGADA (2026-07-31) — ver o porquê no Header.tsx.
             <Link href="/entrar" className="text-slate-600 hover:text-brand-navy">{t("login")}</Link>
             <Link href="/cadastro" className="text-slate-600 hover:text-brand-navy">{t("register")}</Link>

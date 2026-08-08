@@ -71,10 +71,15 @@ export function MobileMenu({ user, labels }: { user: string | null; labels: Labe
             <House className={iconCls} />
             {labels.home}
           </Link>
+          {/* Mesma retirada do rodapé (ver Footer.tsx). Aqui também porque é o
+              MESMO item, só que na tela do celular — tirar num lugar e deixar no
+              outro esconderia a lista de quem usa computador e a deixaria à vista
+              justamente para a maioria, que entra pelo telefone.
           <Link href="/lojas" onClick={close} className={linkCls}>
             <Store className={iconCls} />
             {labels.stores}
           </Link>
+          */}
           {/* Fixo, como no cabeçalho do computador: é a página que muda todo dia.
               Único item colorido do menu — e o ícone acompanha, senão o verde
               sozinho parece só um link "errado". */}
