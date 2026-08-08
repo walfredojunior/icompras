@@ -13,6 +13,8 @@ import { MoneyStack } from "@/components/MoneyStack";
 import { getQuedas } from "@/lib/quedas";
 import type { Metadata } from "next";
 import { paginaMeta, enderecoDe, jsonLd, SITE_URL } from "@/lib/seo";
+import { lerYoutube } from "@/lib/youtube";
+import { AoVivo } from "@/components/AoVivo";
 
 export async function generateMetadata({
   params,
@@ -41,6 +43,11 @@ export default async function HomePage({
 
   void registrarVisita('home', '/');
   const heroBanners = await getActiveBanners("home_hero");
+  // Vídeo flutuante (câmera ao vivo da ponte). Entra pelo sistema de banners:
+  // o dono liga, desliga, agenda e troca o endereço pela tela de Banners, sem
+  // publicação nenhuma. Nenhum banner cadastrado = nada aparece.
+  const [videoBanner] = await getActiveBanners("video_flutuante");
+  const video = lerYoutube(videoBanner?.link_url);
   const featured = await getFeaturedProducts();
   const blocks = await getCategoryBlocks(locale);
   const rates = await getRates();
@@ -82,6 +89,19 @@ export default async function HomePage({
   return (
     <div>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(fichaDoSite) }} />
+
+      {/* Câmera ao vivo da ponte — primeira coisa abaixo do cabeçalho.
+          Fica SÓ na home porque este arquivo é a home: não foi para dentro do
+          Header justamente para as outras 224 mil páginas não carregarem uma
+          verificação que não usam. Sem banner cadastrado, nada aparece. */}
+      {video && (
+        <AoVivo
+          embed={video.embed}
+          capa={video.capa ?? videoBanner?.image_url ?? null}
+          titulo={videoBanner?.title || "Ao vivo"}
+          href={videoBanner ? `/ir/banner/${videoBanner.id}` : null}
+        />
+      )}
       {/* Hero + busca */}
       <section className="bg-gradient-to-b from-brand-green-light via-white to-slate-50">
         {/* Só o espaço de cima fica aqui; o de baixo saiu para a faixa de
@@ -265,6 +285,7 @@ export default async function HomePage({
           </div>
         </div>
       </section>
+
     </div>
   );
 }

@@ -296,6 +296,13 @@ export function BannerManager({
   // Mesma checagem que a API faz, só que antes de mandar — assim o erro
   // aparece no campo e não como mensagem depois de salvar.
   function faltando(d: Rascunho): string | null {
+    // No vídeo flutuante a capa vem do próprio YouTube (um quadro recente da
+    // transmissão), então a imagem é opcional — só vale como reserva quando o
+    // endereço é de canal, que não tem capa.
+    if (d.placement === "video_flutuante") {
+      if (!d.link_url?.trim()) return "Cole o endereço do vídeo no YouTube.";
+      return null;
+    }
     if (!d.image_url) return "Envie ou informe uma imagem.";
     if ((d.destino_tipo === "busca" || d.destino_tipo === "marca") && !d.busca.trim())
       return "Escreva o que a busca deve procurar.";
@@ -495,6 +502,7 @@ export function BannerManager({
           >
             <option value="home_hero">Topo da home (carrossel)</option>
             <option value="category">Topo de uma categoria</option>
+            <option value="video_flutuante">Vídeo flutuante na home (ao vivo)</option>
           </select>
         </label>
 
@@ -585,6 +593,7 @@ export function BannerManager({
                     >
                       <option value="home_hero">Topo da home (carrossel)</option>
                       <option value="category">Topo de uma categoria</option>
+                      <option value="video_flutuante">Vídeo flutuante na home (ao vivo)</option>
                     </select>
                   </label>
                   {rascunho.placement === "category" && (

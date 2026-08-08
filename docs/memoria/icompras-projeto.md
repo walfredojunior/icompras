@@ -9,7 +9,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: ce2fa394-0b2c-4043-b6bc-350c598dbbf7
-  modified: 2026-08-08T15:18:27.382Z
+  modified: 2026-08-08T23:41:45.886Z
 ---
 
 **iCompras**: comparador de preços estilo PriceRunner para o Paraguai, com painel B2B (lojas + planos mensais), API de ingestão de listas de preço, camada de IA configurável, e módulo de seed/scraper.
@@ -39,6 +39,36 @@ O que fechou o diagnóstico foi **ler o registro do nginx no servidor**: os pedi
 
 ### Painel da Cloudflare dele
 Não tem "Security Events" — só **Overview, Analytics, Web assets, Security rules, Settings**. As regras próprias ficam em **Security rules**.
+
+## 📹 CÂMERA AO VIVO DA PONTE DA AMIZADE NA HOME (2026-08-08) — NO AR
+
+Ideia dele. **Não é publicidade, é utilidade:** brasileiro que vai comprar no Paraguai quer ver a fila da ponte antes de sair de casa. É motivo para voltar ao site todo dia, e nenhum concorrente tem.
+
+**Vídeo em uso:** `https://www.youtube.com/watch?v=Tldo8RNCT-0` — canal *TRANSMISSÃO AO VIVO CIDADE* (@TVC-BR), "PARAGUAI AO VIVO | CAMERA CIUDAD DEL ESTE". Confirmado embutível pelo oEmbed do YouTube ANTES de cadastrar (`/oembed?url=...&format=json` devolvendo 200 = pode embutir).
+
+### Como ele liga e desliga sozinho
+**Admin › Banners**, tipo **"Vídeo flutuante na home (ao vivo)"** (`placement = 'video_flutuante'`). Cola o endereço no campo Link. **Não precisou de migração** — `banner.placement` é texto livre. Ele ganha de brinde: ligar/desligar, agendar (`starts_at`/`ends_at`) e a **contagem de cliques** que já existia para banner. Desligar = um botão, sem publicação.
+
+⚠️ A imagem é opcional só neste tipo (a capa vem do YouTube) — a validação do BannerManager abre exceção para ele.
+
+### O desenho, em três versões — e o que ensinou
+1. **Caixa flutuante com a imagem sempre visível.** Mostrava mais, mas cobria conteúdo; no celular pesou. Ele olhou e pediu o contrário.
+2. **Faixa + player pequeno (210/300px).** Errado pelo outro lado: numa câmera de trânsito o que importa é ver **se a fila anda**, e nesse tamanho não dava. Eu tinha dimensionado para "não atrapalhar" quando o vídeo era o objetivo.
+3. **Atual: faixa fina no topo + vídeo grande com fundo escuro**, página parada atrás. A frase dele que fechou a questão: **"a pessoa ou vê a fila ou vê a ponte, os dois não."**
+
+💡 **A lição:** eu otimizei duas vezes para "não incomodar" e errei o tamanho nas duas. Quando o recurso É o objetivo do clique, dimensionar para discrição é o defeito, não a virtude.
+
+### Decisões que valem guardar
+- **A home NÃO carrega nada do YouTube antes do clique.** O iframe deles arrasta ~1,5 MB por visita, e a home é a página que o Google acabou de começar a rastrear (ver a seção da Cloudflare). Conferido no ar: `iframe` = 0, script do YouTube = 0, home em 143 KB.
+- **A faixa mora na home (`[locale]/page.tsx`), não no `Header`** — o Header é o mesmo em todas as 224 mil páginas e carregaria uma verificação que não usam.
+- **Camadas:** cabeçalho `z-40`, vídeo `z-50`, menu do celular / busca / filtros `z-[60]`. O menu vence sem código coordenando.
+- **Fecha por três caminhos** (X grande de 40px numa barra branca ACIMA do vídeo, clique no fundo, Esc) e **trava a rolagem** do fundo, como o MobileMenu já fazia.
+- 💡 **A capa de uma transmissão ao vivo SE ATUALIZA sozinha** — medido em 08/08: mudou entre 21:04 e 21:05, ~a cada poucos minutos. Ficou sem uso no desenho atual, mas é a razão pela qual a versão 1 mostrava a ponte sem clicar; se um dia quiser esse efeito de volta, o mecanismo existe (`i.ytimg.com/vi/<id>/hqdefault.jpg`, 18 KB).
+- **Endereços aceitos** (`lib/youtube.ts`): `watch?v=`, `youtu.be/`, `/live/`, `/embed/`, `/shorts/` e canal por id `UC...`. ⚠️ **NÃO funciona `youtube.com/@canal/live`** — nesse formato o YouTube não revela o id do vídeo e só uma chave de API resolveria.
+
+⚠️ **O canal é de terceiros.** Se ele encerrar ou trocar de endereço, a caixinha mostra erro em vez da ponte. Não quebra o site. Ofereci fazer o guardião conferir uma vez por dia e desligar o banner sozinho — **ele ainda não pediu**.
+
+⚠️ **`[locale]/page.tsx` tem quebra de linha do Windows (CRLF).** Meu script Python casando com `\n` falhou nele. Nesses arquivos, usar a ferramenta de edição, não busca por texto com `\n`.
 
 ## 📦 OFERTA QUE A LOJA PAROU DE ANUNCIAR SAI DO AR (2026-08-08) — NO AR, com um susto no meio
 
