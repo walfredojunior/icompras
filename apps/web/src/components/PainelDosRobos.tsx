@@ -1,6 +1,6 @@
 "use client";
 
-import { Radar, Flame, Sparkles } from "lucide-react";
+import { Radar, Flame, Sparkles, Route } from "lucide-react";
 
 // OS TRÊS PAINÉIS — um por função do coletor (pedido do dono, 05/08/2026).
 //
@@ -22,6 +22,15 @@ export interface RobosInfo {
   normal: { categorias: number; recentes: number; maisAntigaH: number | null };
   quentes: { naLista: number; maisVelhoMin: number | null; faixas: Array<{ faixa: string; n: number }> };
   novos: { hoje: number; semana: number };
+  /** Por onde o coletor está saindo. Null se o banco ainda não tem a tabela. */
+  saida?: {
+    modo: string;
+    trocas: number;
+    bloqueios: number;
+    ultimo403Min: number | null;
+    desdeMin: number | null;
+    detalhe: string | null;
+  } | null;
 }
 
 const tempo = (min: number | null) => {
@@ -130,6 +139,35 @@ export function PainelDosRobos({ r }: { r: RobosInfo | null }) {
           <p className="truncate pt-1 text-[11px] text-slate-400">{porPapel("normal")[0].message}</p>
         )}
       </Cartao>
+
+      {/* POR ONDE O COLETOR SAI — pedido dele em 07/08/2026: "quero no
+          monitor quantas vezes trocou de ip pra eu saber".
+
+          Só aparece se houver algo a contar. Cartão que mostra "0 trocas"
+          para sempre vira ruído, e o painel já tem informação demais. */}
+      {r.saida && (r.saida.modo !== "direto" || r.saida.bloqueios > 0) && (
+        <Cartao
+          icone={<Route className="h-4 w-4 text-brand-navy" />}
+          titulo="Saída do coletor"
+          selo={
+            <Selo
+              ok={r.saida.modo === "direto"}
+              alerta={r.saida.modo !== "direto"}
+              texto={r.saida.modo === "direto" ? "direto" : "pelo proxy"}
+            />
+          }
+        >
+          <Linha rotulo="Trocas de IP" valor={r.saida.trocas.toLocaleString("pt-BR")} />
+          <Linha rotulo="Bloqueios (403)" valor={r.saida.bloqueios.toLocaleString("pt-BR")} />
+          <Linha
+            rotulo="Último bloqueio"
+            valor={r.saida.ultimo403Min == null ? "nunca" : tempo(r.saida.ultimo403Min)}
+          />
+          {r.saida.detalhe && (
+            <p className="truncate pt-1 text-[11px] text-slate-400">{r.saida.detalhe}</p>
+          )}
+        </Cartao>
+      )}
 
       <Cartao
         icone={<Flame className="h-4 w-4 text-orange-500" />}

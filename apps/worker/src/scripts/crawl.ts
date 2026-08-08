@@ -2,6 +2,7 @@ import "../env.js";
 import { chromium, type Browser, type Page } from "playwright";
 import { pool } from "@icompras/db";
 import { syncProducts } from "@icompras/search";
+import { ProxyAgent } from "undici";
 import { getEmbeddingProvider, ingestImageFromUrl } from "@icompras/core";
 import { categoryFromProductSlug, fetchSourceTree } from "../taxonomy.js";
 import { buildBrandIndex, brandFromName, type BrandIndex } from "../brands.js";
@@ -49,6 +50,28 @@ const PAPEL: Papel = (PAPEIS as string[]).includes(process.env.CRAWL_PAPEL ?? ""
 const RPS = Number(process.env.CRAWL_RPS ?? 2);
 // CRAWL_DELAY_MS ainda manda, se alguém quiser fixar na mão.
 const DELAY = Number(process.env.CRAWL_DELAY_MS ?? Math.round((1000 * WORKERS) / RPS));
+
+/**
+ * POR ONDE SAIR quando a fonte fechar a porta.
+ *
+ * Vazio = só o caminho direto, e um bloqueio vira aviso no log e no painel.
+ * Preenchido = ao detectar bloqueio, o coletor passa a sair por aqui.
+ *
+ * No dia a dia ele NÃO usa o proxy: sair direto é mais rápido, mais barato e
+ * não depende de terceira máquina. O proxy é reserva, não caminho padrão.
+ */
+const PROXY = process.env.CRAWL_PROXY ?? "";
+let saindoPeloProxy = false;
+
+// O `fetch` do Node não usa proxy sozinho — precisa que a gente entregue o
+// "despachante". Criado uma vez só: cada ProxyAgent abre suas conexões, e um
+// novo por requisição desperdiçaria a reutilização que deixa a coleta rápida.
+let despachante: import("undici").ProxyAgent | null = null;
+function pelaSaidaAtual(): Record<string, unknown> {
+  if (!saindoPeloProxy || !PROXY) return {};
+  if (!despachante) despachante = new ProxyAgent(PROXY);
+  return { dispatcher: despachante };
+}
 // Quanto tempo uma categoria fica reservada antes de outro robô poder assumir.
 // Tem que ser bem maior que a categoria mais demorada — hoje há categorias com
 // 16 páginas e centenas de produtos.
@@ -91,6 +114,12 @@ async function launchBrowser(): Promise<void> {
   browser = await chromium.launch({
     headless: true,
     args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+    // O navegador precisa sair pelo MESMO caminho das leituras rápidas.
+    // Se um sair direto e o outro pelo proxy, a fonte veria dois IPs
+    // diferentes coletando o mesmo catálogo — exatamente o padrão que a
+    // gente quer evitar. Por isso trocar de saída fecha o navegador: ele
+    // reabre já pelo caminho novo.
+    ...(saindoPeloProxy && PROXY ? { proxy: { server: PROXY } } : {}),
   });
   page = await browser.newPage({ userAgent: UA });
   // Bloqueia imagens/mídia/fontes para ir mais rápido (pegamos as URLs do DOM).
@@ -639,7 +668,10 @@ async function fetchText(url: string, tentativa = 0): Promise<string | null> {
   aliviarAtraso();
   if (atrasoExtra) await sleep(atrasoExtra);
   try {
-    const res = await fetch(url, { headers: { "User-Agent": UA, "Accept-Language": "es,pt;q=0.8" } });
+    const res = await fetch(url, {
+      headers: { "User-Agent": UA, "Accept-Language": "es,pt;q=0.8" },
+      ...pelaSaidaAtual(),
+    } as RequestInit);
 
     // 429 e 503 são as duas formas de a fonte dizer "espera" — e nos DOIS casos
     // esperar é a resposta certa. Mas eles NÃO significam a mesma coisa, e
@@ -678,11 +710,89 @@ async function fetchText(url: string, tentativa = 0): Promise<string | null> {
       return tentativa < 2 ? fetchText(url, tentativa + 1) : null;
     }
 
+    // ⚠ 403 = "VOCÊ NÃO É BEM-VINDO" — e até 07/08/2026 isto era INVISÍVEL.
+    //
+    // A linha abaixo era só `if (!res.ok) return null`, ou seja: "bloqueado" e
+    // "essa página não existe" davam no mesmo. Se a fonte nos barrasse, o
+    // coletor seguiria rodando, marcando produto como visitado e colhendo
+    // ZERO — com o painel todo verde. O dono descobriria dias depois, pelos
+    // preços parados.
+    //
+    // A distinção que importa, e que o código já fazia para os outros dois:
+    //   429 → "devagar"      → freiar  (é sobre ritmo)
+    //   503 → "estou fora"   → esperar (é sobre eles)
+    //   403 → "não entra"    → trocar de saída (é sobre quem somos)
+    //
+    // Um 403 sozinho não significa nada — pode ser uma página específica. O que
+    // conta é a SEQUÊNCIA em endereços diferentes; ver `anotarBloqueio`.
+    if (res.status === 403) {
+      await anotarBloqueio(url);
+      return null;
+    }
+
+    // Chegou resposta boa: o contador de bloqueios volta a zero. Sem isto, 403
+    // espalhados ao longo de horas somariam e disparariam a troca sem motivo.
+    if (res.ok) bloqueios403 = 0;
+
     if (!res.ok) return null;
     return await res.text();
   } catch {
     return null;
   }
+}
+
+/**
+ * O QUE FAZER QUANDO A FONTE FECHA A PORTA.
+ *
+ * Só age depois de `BLOQUEIOS_PARA_TROCAR` recusas seguidas — uma sozinha pode
+ * ser uma página protegida, e trocar de saída por causa dela seria queimar a
+ * reserva à toa.
+ *
+ * A troca em si é passar a sair pelo proxy de Dallas (ver a página de Anotações
+ * no admin). O IP daquele servidor se renova sozinho: a cada 5 horas por
+ * rodízio, e na hora se ele mesmo detectar bloqueio. Daqui não é preciso mandar
+ * nada — foi de propósito, para não existir nenhuma porta que execute comando.
+ */
+const BLOQUEIOS_PARA_TROCAR = Number(process.env.CRAWL_403_PARA_TROCAR) || 3;
+let bloqueios403 = 0;
+
+async function anotarBloqueio(url: string): Promise<void> {
+  bloqueios403++;
+  await pool
+    .query(
+      "UPDATE coletor_saida SET bloqueios = bloqueios + 1, ultimo_403_em = NOW() WHERE id = 1",
+    )
+    .catch(() => {});
+
+  if (bloqueios403 < BLOQUEIOS_PARA_TROCAR) {
+    console.log(`  ⚠ recusa de acesso (403) — ${bloqueios403}ª seguida · ${url.slice(0, 60)}`);
+    return;
+  }
+  if (saindoPeloProxy) {
+    // Já estamos no proxy e continua bloqueado: trocar de novo não resolveria.
+    // O servidor de saída troca o IP dele sozinho; aqui só registramos, porque
+    // bloqueio que persiste depois da troca provavelmente não é por IP.
+    console.log(`  ⚠ ainda bloqueado mesmo pelo proxy — pode não ser por IP`);
+    bloqueios403 = 0;
+    return;
+  }
+  if (!PROXY) {
+    console.log(`  ⛔ BLOQUEADO pela fonte e não há proxy configurado (CRAWL_PROXY)`);
+    bloqueios403 = 0;
+    return;
+  }
+
+  saindoPeloProxy = true;
+  bloqueios403 = 0;
+  await closeBrowser().catch(() => {});
+  console.log(`  🔀 BLOQUEADO — passando a sair pelo proxy`);
+  await pool
+    .query(
+      `UPDATE coletor_saida SET modo = 'proxy', trocas = trocas + 1, desde = NOW(),
+              detalhe = ? WHERE id = 1`,
+      [`troquei para o proxy depois de ${BLOQUEIOS_PARA_TROCAR} recusas seguidas`],
+    )
+    .catch(() => {});
 }
 
 // Deixa registrado — freio que ninguém vê não serve de aviso.

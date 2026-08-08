@@ -264,6 +264,20 @@ export async function GET(req: Request) {
       "SELECT faixa, COUNT(*) n FROM scrape_log WHERE faixa IS NOT NULL GROUP BY faixa",
     );
 
+    // POR ONDE O COLETOR ESTÁ SAINDO. Pedido dele em 07/08/2026: "quero no
+    // monitor quantas vezes trocou de ip pra eu saber".
+    //
+    // O número de trocas conta mais do que parece: 2 numa semana é normal;
+    // 2 por hora significa que o bloqueio NÃO é por IP e trocar só está
+    // queimando endereço. Por isso vem junto com os bloqueios e a data do
+    // último — um número sozinho não conta a história.
+    const [saida] = await pool.query(
+      `SELECT modo, trocas, bloqueios,
+              TIMESTAMPDIFF(MINUTE, ultimo_403_em, NOW()) AS ultimo403Min,
+              TIMESTAMPDIFF(MINUTE, desde, NOW()) AS desdeMin, detalhe
+         FROM coletor_saida WHERE id = 1`,
+    ).catch(() => [null]);
+
     // Novos: quantos entraram, e em quanto tempo (o número que prova o valor
     // do robô de descoberta — antes um produto novo levava até 4 dias).
     const [novos] = await pool.query(
@@ -287,6 +301,16 @@ export async function GET(req: Request) {
         recentes: Number(cats?.recentes ?? 0),
         maisAntigaH: cats?.maisAntigaH == null ? null : Number(cats.maisAntigaH),
       },
+      saida: saida
+        ? {
+            modo: String(saida.modo),
+            trocas: Number(saida.trocas ?? 0),
+            bloqueios: Number(saida.bloqueios ?? 0),
+            ultimo403Min: saida.ultimo403Min == null ? null : Number(saida.ultimo403Min),
+            desdeMin: saida.desdeMin == null ? null : Number(saida.desdeMin),
+            detalhe: saida.detalhe ?? null,
+          }
+        : null,
       quentes: {
         naLista: Number(quentes?.n ?? 0),
         maisVelhoMin: quentes?.maisVelhoMin == null ? null : Number(quentes.maisVelhoMin),
