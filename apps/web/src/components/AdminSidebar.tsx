@@ -1,6 +1,6 @@
 "use client";
 
-import { Radar, ChartLine, Gauge, CreditCard, Users, BookOpen, Images, LayoutGrid, Star, Coins, Store, KeyRound, LogOut } from "lucide-react";
+import { Radar, ChartLine, Gauge, CreditCard, Users, BookOpen, Images, LayoutGrid, Star, Coins, Store, KeyRound, NotebookPen, LogOut } from "lucide-react";
 import { Link, usePathname, useRouter } from "@/i18n/navigation";
 
 const ITEMS = [
@@ -15,6 +15,9 @@ const ITEMS = [
   { href: "/admin/destaques", label: "Destaques", Icon: Star },
   { href: "/admin/cambio", label: "Câmbio", Icon: Coins },
   { href: "/admin/leads", label: "Lojas (leads)", Icon: Store },
+  // Anotações fica junto de "Trocar senha": as duas são sobre acesso — e a
+  // primeira coisa que a página de anotações pede é justamente trocar a senha.
+  { href: "/admin/anotacoes", label: "Anotações", Icon: NotebookPen },
   { href: "/admin/senha", label: "Trocar senha", Icon: KeyRound },
 ];
 
