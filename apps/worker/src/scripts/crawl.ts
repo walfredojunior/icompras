@@ -2,7 +2,21 @@ import "../env.js";
 import { chromium, type Browser, type Page } from "playwright";
 import { pool } from "@icompras/db";
 import { syncProducts } from "@icompras/search";
-import { ProxyAgent } from "undici";
+// ⚠ O `fetch` VEM DO undici, e não é o global do Node — e isso não é preferência.
+//
+// O Node 24 traz uma cópia PRÓPRIA do undici embutida. Entregar ao `fetch`
+// global um "despachante" criado pelo undici do npm dá
+// `invalid onRequestStart method`: são duas versões diferentes da mesma
+// biblioteca, com interfaces incompatíveis por dentro.
+//
+// O sintoma foi traiçoeiro (08/08/2026): TODO pedido pelo proxy falhava, o
+// coletor concluía "servidor de saída fora do ar" e voltava a sair direto —
+// exatamente o comportamento de queda, sem queda nenhuma. E como a coleta
+// continuava normalmente, nada parecia errado. Só apareceu ao derrubar o
+// proxy de propósito e ver que ele "voltava" e caía em seguida, para sempre.
+//
+// Usando o fetch do MESMO pacote, os dois lados falam a mesma língua.
+import { fetch as buscarNaWeb, ProxyAgent } from "undici";
 import { getEmbeddingProvider, ingestImageFromUrl } from "@icompras/core";
 import { categoryFromProductSlug, fetchSourceTree } from "../taxonomy.js";
 import { buildBrandIndex, brandFromName, type BrandIndex } from "../brands.js";
@@ -64,13 +78,17 @@ const DELAY = Number(process.env.CRAWL_DELAY_MS ?? Math.round((1000 * WORKERS) /
  * site, e que o padrão de acesso mude sozinho (o servidor de saída troca de
  * IP a cada 5 horas e também quando ele mesmo detecta bloqueio).
  *
- * ⚠⚠ POR ISSO NÃO EXISTE VOLTA AUTOMÁTICA PARA O CAMINHO DIRETO.
+ * SE DALLAS CAIR, sai direto — e volta assim que ele responder de novo.
  *
- * Seria a reação natural — "o proxy caiu, então sai direto e a coleta
- * continua" — e destruiria justamente o que ele pediu: bastaria o servidor
- * de saída piscar para o IP da VPS aparecer na fonte, sem ninguém perceber.
- * Quando o proxy não responde, a coleta trava e grita. Parar é reversível;
- * expor o endereço não é.
+ * Eu tinha feito o contrário: a coleta travava para nunca expor o IP da VPS.
+ * Ele preferiu continuidade: *"caso cair Dallas entra a VPS, e quando Dallas
+ * voltar daí volta pra Dallas"*. O custo é conhecido — nas horas em que o
+ * servidor de saída estiver fora, a fonte vê o endereço da VPS.
+ *
+ * ⚠ A volta é automática e rápida DE PROPÓSITO: o modo direto é a exceção,
+ * não um estado onde se acomodar. Sem o teste periódico, uma queda de dois
+ * minutos deixaria a coleta saindo direto até alguém perceber — e ninguém
+ * percebe, porque nesse estado tudo funciona.
  */
 const PROXY = process.env.CRAWL_PROXY ?? "";
 let saindoPeloProxy = Boolean(PROXY);
@@ -676,14 +694,15 @@ function esperaPedida(res: Response): number {
 
 async function fetchText(url: string, tentativa = 0): Promise<string | null> {
   if (!permitidoPeloRobots(url)) return null;
+  await talvezVoltarAoProxy();
   await respeitarFreio();
   aliviarAtraso();
   if (atrasoExtra) await sleep(atrasoExtra);
   try {
-    const res = await fetch(url, {
+    const res = await buscarNaWeb(url, {
       headers: { "User-Agent": UA, "Accept-Language": "es,pt;q=0.8" },
       ...pelaSaidaAtual(),
-    } as RequestInit);
+    } as Parameters<typeof buscarNaWeb>[1]);
 
     // 429 e 503 são as duas formas de a fonte dizer "espera" — e nos DOIS casos
     // esperar é a resposta certa. Mas eles NÃO significam a mesma coisa, e
@@ -763,20 +782,68 @@ async function fetchText(url: string, tentativa = 0): Promise<string | null> {
 
 let falhasDeProxy = 0;
 
+/** Falhas seguidas até desistir do proxy. As primeiras podem ser um pedido perdido. */
+const FALHAS_PARA_DESISTIR = Number(process.env.CRAWL_PROXY_FALHAS) || 10;
+/** De quanto em quanto tempo conferir se o servidor de saída voltou. */
+const TESTAR_VOLTA_MS = (Number(process.env.CRAWL_PROXY_TESTE_MIN) || 3) * 60 * 1000;
+let proximoTeste = 0;
+
 async function anotarFalhaDeProxy(e: unknown): Promise<void> {
   falhasDeProxy++;
-  // As primeiras podem ser um pedido perdido — acontece. A partir de 10
-  // seguidas é o servidor de saída fora do ar, e aí precisa aparecer.
-  if (falhasDeProxy !== 10 && falhasDeProxy % 100 !== 0) return;
-  const motivo = e instanceof Error ? e.message.slice(0, 80) : "sem detalhe";
-  console.log(`  ⛔ o servidor de saída não responde (${falhasDeProxy} falhas): ${motivo}`);
-  console.log(`     A coleta fica parada até ele voltar — de propósito, para não`);
-  console.log(`     expor o IP desta VPS. Conferir o servidor de Dallas.`);
+  if (falhasDeProxy < FALHAS_PARA_DESISTIR) return;
+
+  const motivo = e instanceof Error ? e.message.slice(0, 60) : "sem detalhe";
+  saindoPeloProxy = false;
+  despachante = null;
+  proximoTeste = Date.now() + TESTAR_VOLTA_MS;
+  falhasDeProxy = 0;
+  await closeBrowser().catch(() => {});
+  console.log(`  ⚠ servidor de saída não responde (${motivo}) — saindo direto até ele voltar`);
   await pool
-    .query("UPDATE coletor_saida SET detalhe = ? WHERE id = 1", [
-      `servidor de saída sem resposta há ${falhasDeProxy} tentativas — coleta parada de propósito`,
-    ])
+    .query(
+      `UPDATE coletor_saida SET modo = 'direto', trocas = trocas + 1, desde = NOW(),
+              detalhe = ? WHERE id = 1`,
+      [`servidor de saída fora do ar — saindo pelo IP da VPS até ele voltar`],
+    )
     .catch(() => {});
+}
+
+/**
+ * O servidor de saída voltou? Confere de tempos em tempos e retoma.
+ *
+ * O teste é uma conexão ao próprio proxy, não à fonte: quem precisa estar de
+ * pé é ele. Bater na fonte aqui gastaria pedido do nosso teto por um teste
+ * que nada tem a ver com ela.
+ */
+async function talvezVoltarAoProxy(): Promise<void> {
+  if (saindoPeloProxy || !PROXY || Date.now() < proximoTeste) return;
+  proximoTeste = Date.now() + TESTAR_VOLTA_MS;
+  try {
+    const teste = new ProxyAgent(PROXY);
+    // `/ip` e não a raiz: sem o cabeçalho certo o serviço devolve a página
+    // HTML inteira, e o log ficaria com "<!DOCTYPE html>" no lugar do IP.
+    const r = await buscarNaWeb("https://ifconfig.co/ip", {
+      dispatcher: teste,
+      headers: { Accept: "text/plain" },
+      signal: AbortSignal.timeout(20000),
+    } as Parameters<typeof buscarNaWeb>[1]);
+    if (!r.ok) return;
+    const ip = (await r.text()).trim().slice(0, 40);
+    saindoPeloProxy = true;
+    despachante = null;
+    await closeBrowser().catch(() => {});
+    console.log(`  ✓ servidor de saída voltou — coletando por ele de novo (IP ${ip})`);
+    await pool
+      .query(
+        `UPDATE coletor_saida SET modo = 'proxy', trocas = trocas + 1, desde = NOW(),
+                detalhe = ? WHERE id = 1`,
+        [`voltei ao servidor de saída (IP ${ip})`],
+      )
+      .catch(() => {});
+  } catch {
+    // Continua fora. Tenta de novo no próximo intervalo, sem alarde: um log
+    // por tentativa encheria o registro justamente quando ele precisa ser lido.
+  }
 }
 
 /**

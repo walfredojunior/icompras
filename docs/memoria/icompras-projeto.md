@@ -1447,3 +1447,35 @@ Agora: 403 repetido (3 seguidos) → passa a sair pelo proxy, fecha o navegador 
 Proxy HTTP e SOCKS5 da VPS: IP visto = o da VPN (`155.2.219.204`), fonte respondeu **200 com as 11 ofertas**. Rotação demonstrada ao vivo: `155.2.219.25` → `155.2.219.204`, site no ar o tempo todo.
 
 ⚠️ **Cellshop bloqueia IP de datacenter** ("Sorry, you have been blocked") — da VPS, do Dallas e de qualquer VPN. Só o IP residencial do dono passou. Ou seja: **o projeto dos sites de loja pertence à máquina dele, não a estas VPS.**
+
+## 2026-08-08 — COLETA SAI SEMPRE POR DALLAS (e volta sozinha se ele cair)
+
+Decisão dele: *"o coletor sempre vai usar o proxy, o IP da VPS onde tá o iCompras não será mais usado"*. Eu tinha montado o proxy como reserva e argumentei que IP estável e comportado costuma levantar MENOS suspeita que datacenter rotativo — ele manteve a escolha, e é dele.
+
+Depois refinou: *"caso cair Dallas entra a VPS, e quando Dallas voltar daí volta pra Dallas"*. Ou seja, preferiu continuidade a sigilo. Implementado assim:
+
+| Situação | O que acontece |
+|---|---|
+| Normal | sai por Dallas → Mullvad |
+| Dallas cai (10 falhas seguidas) | passa a sair direto, conta a troca, registra o motivo |
+| A cada 3 min saindo direto | testa o proxy; se voltou, retoma e conta a troca |
+
+O teste de volta bate no PRÓPRIO proxy, não na fonte — quem precisa estar de pé é ele, e bater na fonte gastaria pedido do nosso teto por um teste que nada tem a ver com ela.
+
+### 🔴 O DEFEITO QUE SÓ APARECEU PORQUE DERRUBEI O PROXY DE PROPÓSITO
+
+`invalid onRequestStart method`: **o Node 24 traz uma cópia PRÓPRIA do undici embutida**, e entregar ao `fetch` global um `ProxyAgent` criado pelo undici do npm quebra — duas versões da mesma biblioteca, interfaces incompatíveis por dentro.
+
+**O sintoma era perfeito disfarce:** todo pedido pelo proxy falhava, o coletor concluía "servidor de saída fora do ar" e voltava a sair direto. A coleta continuava normalmente, os números do painel ficavam bons, e **nada parecia errado** — o IP da VPS é que estava sendo usado o tempo todo, exatamente o que ele não queria.
+
+Só apareceu ao derrubar o tinyproxy de propósito e ver o coletor "voltar" e cair em seguida, para sempre. **Teste de mentira não teria pego: o `curl` funcionava.**
+
+✅ **Conserto:** usar o `fetch` do MESMO pacote (`import { fetch as buscarNaWeb, ProxyAgent } from "undici"`). Os dois lados falam a mesma língua.
+
+⚠️ **Lição:** quando um componente tem cópia embutida no runtime (undici, zlib, sqlite), misturar com a versão do npm quebra de formas que não parecem erro de versão.
+
+### Provado com medição, não com log
+
+Tráfego pelo túnel WireGuard **1,6 MB em 40 segundos** com os robôs trabalhando, 3 conexões da VPS abertas, IP de saída `155.2.219.204`. Log dizendo "está usando o proxy" não prova nada — o tráfego prova.
+
+⚠️ Detalhe bobo que confundiu: `https://ifconfig.co` sem `Accept: text/plain` devolve a página HTML inteira, e o log registrava `<!DOCTYPE html>` no lugar do IP. Usar `/ip`.
