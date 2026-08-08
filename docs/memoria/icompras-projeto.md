@@ -1479,3 +1479,13 @@ Só apareceu ao derrubar o tinyproxy de propósito e ver o coletor "voltar" e ca
 Tráfego pelo túnel WireGuard **1,6 MB em 40 segundos** com os robôs trabalhando, 3 conexões da VPS abertas, IP de saída `155.2.219.204`. Log dizendo "está usando o proxy" não prova nada — o tráfego prova.
 
 ⚠️ Detalhe bobo que confundiu: `https://ifconfig.co` sem `Accept: text/plain` devolve a página HTML inteira, e o log registrava `<!DOCTYPE html>` no lugar do IP. Usar `/ip`.
+
+### ⚠️ O túnel tem de subir PELO systemd, não por `wg-quick` na mão
+
+Achado na conferência final (08/08/2026): `systemctl is-active wg-quick@wg0` dizia **inactive** com o túnel funcionando perfeitamente — porque `trocar-ip.sh` chamava `wg-quick down/up` direto. O systemd ficava sem saber que a interface existia.
+
+**Por que importa:** num reinício ele tentaria subir por cima do que já está no ar, e o erro é exatamente esse — `wg-quick: 'wg0' already exists`, serviço em `failed` com o túnel de pé. Qualquer conferência por `systemctl` daria leitura errada.
+
+✅ Agora o script usa `systemctl restart wg-quick@wg0` (com `wg-quick` na mão só como último recurso). Para consertar um estado já bagunçado: `wg-quick down` + `ip link del wg0` + `ip rule del ...` + `systemctl reset-failed` e só então `systemctl start`.
+
+**Confirmado depois:** duas trocas seguidas, systemd `active` nas duas, regra de rota intacta, coleta seguindo pelo túnel (IP `103.139.178.78`, fonte respondendo 200 com as 11 ofertas).
