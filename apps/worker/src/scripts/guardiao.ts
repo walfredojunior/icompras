@@ -561,6 +561,78 @@ async function conferirSite(): Promise<{ status: string; detail: string }> {
 // guardião não pode ficar esse tempo sem vigiar o coletor. O registro
 // "iniciada" entra no banco antes de soltar o processo, e é ele que impede
 // uma segunda largada — mesmo que a auditoria morra no meio, não repete.
+// REDE DE SEGURANÇA: oferta que ninguém vê há muito tempo sai do ar.
+//
+// A marcação EXATA é do coletor (ver `marcarQueSumiram` em crawl.ts): leu a
+// página, a loja não estava na lista, tirou do ar na hora. Isto aqui cobre o
+// que o coletor não consegue nem abrir — página que virou 404, produto que
+// saiu inteiro da fonte. Aí não há lista com que comparar, e só sobra o tempo.
+//
+// ⚠ O PRAZO É FOLGADO DE PROPÓSITO. Medido em 08/08/2026: 93,7% das ofertas
+// foram vistas nos últimos 7 dias, mas 6,4% estavam entre 7 e 30 dias — e a
+// volta completa do coletor às vezes passa de uma semana. Um prazo de 7 dias
+// tiraria do ar 20 mil ofertas boas na primeira noite. Por isso 21 dias: nesta
+// faixa não sobra quase nada que seja só atraso de coleta. Dá para apertar
+// depois, com a evidência do monitor (quantas voltam) — não antes.
+const BAIXA_DIAS = num(process.env.GUARD_BAIXA_DIAS, 21);
+const BAIXA_HORA = num(process.env.GUARD_BAIXA_HORA, 4); // 4h: ninguém olhando
+// Mesmo teto do coletor, pelo mesmo motivo. Ver TETO_BAIXA_PCT em crawl.ts.
+const BAIXA_TETO_PCT = num(process.env.GUARD_BAIXA_TETO_PCT, 5);
+
+async function talvezTirarDoArPorTempo(): Promise<void> {
+  const agora = new Date();
+  if (agora.getHours() !== BAIXA_HORA) return;
+  // O guardião passa aqui a cada 5 min: sem esta janela seriam 12 execuções
+  // na mesma hora.
+  const [j] = await pool.query(
+    "SELECT COUNT(*) n FROM watchdog_log WHERE target = 'baixas' AND status IN ('varredura','teto-atingido') AND happened_at > NOW() - INTERVAL 12 HOUR",
+  );
+  if (Number(j.n) > 0) return;
+
+  // Quantas SERIAM tiradas do ar — conta antes de mexer, para o teto poder
+  // barrar. Contar e depois marcar não é atômico, mas o teto é um freio de
+  // ordem de grandeza; alguns segundos de diferença não mudam a decisão.
+  const [c] = await pool.query(
+    `SELECT (SELECT COUNT(*) FROM offer
+              WHERE in_stock = 1 AND source = 'scraped'
+                AND (last_seen_at IS NULL OR last_seen_at < NOW() - INTERVAL ? DAY)) AS alvo,
+            (SELECT COUNT(*) FROM offer) AS total`,
+    [BAIXA_DIAS],
+  );
+  const alvo = Number(c?.alvo ?? 0);
+  const total = Number(c?.total ?? 0) || 1;
+  if (!alvo) {
+    await registrar("baixas", "varredura", `nenhuma oferta parada há mais de ${BAIXA_DIAS} dias`, "nenhuma");
+    return;
+  }
+
+  const pct = (100 * alvo) / total;
+  if (pct >= BAIXA_TETO_PCT) {
+    await registrar(
+      "baixas",
+      "teto-atingido",
+      `${alvo} ofertas passariam de ${BAIXA_DIAS} dias (${pct.toFixed(1)}% do catálogo, teto ${BAIXA_TETO_PCT}%) — NÃO marquei nada`,
+      "parei-de-marcar",
+    );
+    return;
+  }
+
+  const r = await pool.query(
+    `UPDATE offer
+        SET in_stock = 0, gone_at = NOW(), gone_reason = 'tempo'
+      WHERE in_stock = 1 AND source = 'scraped'
+        AND (last_seen_at IS NULL OR last_seen_at < NOW() - INTERVAL ? DAY)`,
+    [BAIXA_DIAS],
+  );
+  const n = Number(r?.affectedRows ?? 0);
+  await registrar(
+    "baixas",
+    "varredura",
+    `${n} oferta(s) fora do ar: ninguém as via há mais de ${BAIXA_DIAS} dias (${pct.toFixed(1)}% do catálogo)`,
+    "marcadas",
+  );
+}
+
 async function talvezAuditar(): Promise<void> {
   const agora = new Date();
   if (agora.getDay() !== AUDIT_DIA || agora.getHours() !== AUDIT_HORA) return;
@@ -611,6 +683,7 @@ async function verificar(): Promise<void> {
   // Fora da lista de problemas de propósito: só ANOTA por qual IP a coleta
   // está saindo. Ver o comentário da função.
   const saida = await conferirIpDaSaida();
+  await talvezTirarDoArPorTempo();
   await talvezAuditar();
 
   const problemas = [banco, laco, coletor, robos, site, vps, atrasados].filter(

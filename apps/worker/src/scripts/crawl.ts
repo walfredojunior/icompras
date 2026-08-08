@@ -1725,8 +1725,23 @@ async function ingestProduct(page: () => Promise<Page>, path: string, ourCategor
       });
     }
   }
+  // LOJAS QUE SAEM DA LISTA MAS **NÃO** SUMIRAM DA FONTE.
+  //
+  // Daqui para baixo, três filtros removem lojas de `byStore`. Nenhum deles
+  // quer dizer "a loja parou de vender": quer dizer "não vou gravar o preço
+  // dela agora". A marcação de oferta que sumiu (ver `marcarQueSumiram`) usa
+  // exatamente a ausência em `byStore` como sinal — então, sem esta lista, ela
+  // tiraria do ar oferta boa por engano, e ela voltaria na volta seguinte,
+  // enchendo o monitor de falso "sumiu / voltou".
+  const descartadas = new Set<string>();
+
   // Clientes que enviam a própria lista (self_managed): o scraper os ignora.
-  for (const s of [...byStore.keys()]) if (selfManagedSlugs.has(slugify(s))) byStore.delete(s);
+  for (const s of [...byStore.keys()]) {
+    if (selfManagedSlugs.has(slugify(s))) {
+      byStore.delete(s);
+      descartadas.add(s); // o preço dela vem da API, não daqui
+    }
+  }
 
   // CINTO E SUSPENSÓRIO: preço absurdo é suspeito, não promoção.
   //
@@ -1752,6 +1767,7 @@ async function ingestProduct(page: () => Promise<Page>, path: string, ourCategor
           `  ⚠ preço suspeito ignorado: ${loja} US$ ${info.price} (${name.slice(0, 40)} vale ~US$ ${precoRef})`,
         );
         byStore.delete(loja);
+        descartadas.add(loja); // existe na fonte, só não confiamos no preço
       }
     }
   }
@@ -1785,6 +1801,7 @@ async function ingestProduct(page: () => Promise<Page>, path: string, ourCategor
           `  ⚠ fora da fila, ignorado: ${loja} US$ ${info.price} (as outras lojas pedem ~US$ ${mediana})`,
         );
         byStore.delete(loja);
+        descartadas.add(loja); // existe na fonte, só está anunciando outra coisa
       }
     }
   }
@@ -1835,6 +1852,10 @@ async function ingestProduct(page: () => Promise<Page>, path: string, ourCategor
   const idM = path.match(/_(\d+)\/$/);
   const ext = idM ? `cp-${idM[1]}` : path;
 
+  // Lojas cuja oferta foi gravada AGORA. O que não estiver aqui nem em
+  // `descartadas` deixou de ser anunciado — ver `marcarQueSumiram` no fim.
+  const presentes: number[] = [];
+
   for (const [storeName, info] of byStore) {
     // `siteDaLoja` tambem aqui porque o valor vindo do NAVEGADOR chega cru
     // (a limpeza nao pode rodar dentro do page.evaluate). E idempotente:
@@ -1870,6 +1891,18 @@ async function ingestProduct(page: () => Promise<Page>, path: string, ourCategor
          -- loja mudou a pagina do produto, seguir o velho daria 404. O COALESCE
          -- so evita apagar o que ja temos quando a leitura desta vez veio vazia.
          store_url = COALESCE(VALUES(store_url), offer.store_url),
+         -- A OFERTA VOLTOU: estava fora do ar e a loja anunciou de novo.
+         --
+         -- ⚠ A ORDEM DESTAS QUATRO LINHAS E OBRIGATORIA. No MariaDB as
+         -- atribuicoes do ON DUPLICATE KEY UPDATE valem da esquerda para a
+         -- direita, entao o "offer.in_stock" lido aqui ainda e o valor ANTIGO.
+         -- Se a linha "in_stock = 1" subisse para cima, as tres de cima leriam
+         -- 1 e nenhuma volta seria registrada -- justamente o numero que mais
+         -- importa no monitor.
+         voltou_at   = IF(offer.in_stock = 0, NOW(), offer.voltou_at),
+         gone_at     = IF(offer.in_stock = 0, NULL, offer.gone_at),
+         gone_reason = IF(offer.in_stock = 0, NULL, offer.gone_reason),
+         in_stock    = 1,
          last_seen_at = NOW()`,
       [
         variantId,
@@ -1885,8 +1918,135 @@ async function ingestProduct(page: () => Promise<Page>, path: string, ourCategor
       ],
     );
     await pool.query("INSERT IGNORE INTO product_store (product_id, store_id) VALUES (?, ?)", [productId, storeId]);
+    presentes.push(storeId);
   }
+
+  await marcarQueSumiram(ext, presentes, descartadas);
   return byStore.size;
+}
+
+// ---------------------------------------------------------------------------
+// OFERTA QUE A LOJA PAROU DE ANUNCIAR
+// ---------------------------------------------------------------------------
+
+// TETO POR DIA — a parte que eu não abriria mão.
+//
+// Se uma passagem for tirar do ar mais que esta fatia do catálogo, ela PARA e
+// avisa, em vez de marcar. Motivo: no dia em que a fonte nos bloquear por uma
+// semana, ou a leitura quebrar, a regra concluiria "sumiu tudo" e esvaziaria o
+// comparador em silêncio, com o painel todo verde. Já vimos essa cara aqui: um
+// 403 tratado como "página não existe" deixou o coletor colhendo zero sem
+// ninguém perceber (ver migração 046).
+//
+// Marcar de menos mostra um preço velho. Marcar demais destrói o site. Os dois
+// erros NÃO custam a mesma coisa, e o teto é o que reconhece isso.
+const TETO_BAIXA_PCT = Number(process.env.CRAWL_MAX_BAIXA_PCT ?? 5);
+/** Interruptor: `CRAWL_MARCAR_SUMIDAS=0` desliga sem publicar código. */
+const MARCAR_QUE_SUMIU = (process.env.CRAWL_MARCAR_SUMIDAS ?? "1") !== "0";
+
+let travaVistaEm = 0;
+let travada = false;
+
+/** O teto do dia já estourou? Conferido no máximo uma vez por minuto. */
+async function travouAsBaixas(): Promise<boolean> {
+  // Sem o cache isto seria uma contagem por produto — 224 mil por volta, vezes
+  // quatro robôs. Uma vez por minuto é resolução de sobra para um freio.
+  if (Date.now() - travaVistaEm < 60_000) return travada;
+  travaVistaEm = Date.now();
+  try {
+    const [t] = await pool.query(
+      `SELECT (SELECT COUNT(*) FROM offer WHERE in_stock = 0 AND gone_at >= CURDATE()) AS hoje,
+              (SELECT COUNT(*) FROM offer) AS total`,
+    );
+    const hoje = Number(t?.hoje ?? 0);
+    const total = Number(t?.total ?? 0) || 1;
+    const pct = (100 * hoje) / total;
+    const estourou = pct >= TETO_BAIXA_PCT;
+    if (estourou && !travada) {
+      const aviso = `${hoje} ofertas tiradas do ar hoje (${pct.toFixed(1)}% do catálogo) — teto de ${TETO_BAIXA_PCT}%, parei de marcar`;
+      console.log(`⛔ TRAVA DAS BAIXAS: ${aviso}`);
+      await pool
+        .query(
+          "INSERT INTO watchdog_log (target, status, detail, action) VALUES ('baixas', 'teto-atingido', ?, 'parei-de-marcar')",
+          [aviso],
+        )
+        .catch(() => {});
+    }
+    travada = estourou;
+  } catch {
+    // Não conseguiu conferir o teto? Então NÃO marca. Freio que não sabe se
+    // deve frear, freia.
+    travada = true;
+  }
+  return travada;
+}
+
+/** Ids das lojas isentas (nome → id), para não marcá-las por engano. */
+async function idsDasLojas(nomes: Set<string>): Promise<number[]> {
+  if (!nomes.size) return [];
+  const slugs = [...nomes].map((n) => slugify(n));
+  const linhas = await pool
+    .query(`SELECT id FROM store WHERE slug IN (${slugs.map(() => "?").join(",")})`, slugs)
+    .catch(() => []);
+  return linhas.map((l: { id: number }) => Number(l.id));
+}
+
+/**
+ * Tira do ar as ofertas deste produto cujas lojas não estão mais anunciando.
+ *
+ * Este é o sinal EXATO, e é o motivo de a marcação morar aqui e não num robô
+ * separado: neste ponto o coletor acabou de ler a página e tem em mãos a lista
+ * completa das lojas que anunciam o produto AGORA. Loja que existe no banco e
+ * não está na lista parou de vender — hoje, sem esperar prazo nenhum.
+ *
+ * O que NÃO entra:
+ *  • lojas da plataforma (`source` diferente de 'scraped') — o preço delas vem
+ *    da API, elas nunca apareceriam na lista e seriam todas apagadas;
+ *  • lojas que os filtros anti-ruído removeram — existem na fonte, só com
+ *    preço em que não confiamos (ver `descartadas`).
+ *
+ * ⚠ O ESCOPO É O ANÚNCIO (`external_id`), NÃO O PRODUTO. Esta linha custou uma
+ * publicação desfeita em 08/08/2026.
+ *
+ * A primeira versão marcava por `variant_id`, o que parecia mais natural: "as
+ * ofertas deste produto". Mas o MESMO produto existe sob VÁRIOS endereços na
+ * fonte, cada um listando um conjunto diferente de lojas, e todos caem no
+ * mesmo produto aqui (mesmo nome → mesmo slug → mesma variante). Resultado: a
+ * leitura do endereço A tirava do ar as lojas do endereço B, e a de B tirava
+ * as de A — 41 ofertas foram marcadas SEGUNDOS depois de terem sido vistas.
+ *
+ * A chave única de `offer` é (store_id, external_id): as ofertas de um mesmo
+ * `ext` são exatamente as lojas daquele anúncio. É esse o conjunto com o qual
+ * a lista lida agora pode ser comparada — e nenhum outro.
+ */
+async function marcarQueSumiram(
+  ext: string,
+  presentes: number[],
+  descartadas: Set<string>,
+): Promise<void> {
+  if (!MARCAR_QUE_SUMIU) return;
+  // Leitura que não gravou NENHUMA oferta não prova nada — pode ser página
+  // meio carregada, bloqueio ou mudança de layout. Só marcamos quando temos
+  // uma lista de verdade com que comparar.
+  if (!presentes.length) return;
+  if (await travouAsBaixas()) return;
+
+  const isentas = await idsDasLojas(descartadas);
+  const manter = [...new Set([...presentes, ...isentas])];
+  try {
+    const r = await pool.query(
+      `UPDATE offer
+          SET in_stock = 0, gone_at = NOW(), gone_reason = 'ausente'
+        WHERE external_id = ? AND in_stock = 1 AND source = 'scraped'
+          AND store_id NOT IN (${manter.map(() => "?").join(",")})`,
+      [ext, ...manter],
+    );
+    const n = Number(r?.affectedRows ?? 0);
+    if (n) console.log(`  ↓ ${n} oferta(s) tirada(s) do ar: a loja não anuncia mais`);
+  } catch (e) {
+    // Nunca derruba a coleta por causa disto: o preço é o produto principal.
+    console.log(`  ⚠ não consegui marcar as que sumiram: ${(e as Error).message}`);
+  }
 }
 
 async function refreshCatalog(): Promise<void> {

@@ -1,6 +1,6 @@
 "use client";
 
-import { Radar, Flame, Sparkles, Route } from "lucide-react";
+import { Radar, Flame, Sparkles, Route, PackageX } from "lucide-react";
 
 // OS TRÊS PAINÉIS — um por função do coletor (pedido do dono, 05/08/2026).
 //
@@ -34,6 +34,18 @@ export interface RobosInfo {
     trocasIp: number;
     ultimaTrocaIpMin: number | null;
     ipVistoMin: number | null;
+  } | null;
+  /** Ofertas que saíram do ar. Null se o banco ainda não tem as colunas. */
+  baixas?: {
+    foraDoAr: number;
+    hoje: number;
+    semana: number;
+    voltaramHoje: number;
+    voltaramSemana: number;
+    porAusencia: number;
+    porTempo: number;
+    lojas: Array<{ nome: string; n: number }>;
+    freio: { status: string; detalhe: string | null; haMin: number } | null;
   } | null;
 }
 
@@ -197,6 +209,69 @@ export function PainelDosRobos({ r }: { r: RobosInfo | null }) {
           )}
           {r.saida.detalhe && (
             <p className="truncate pt-1 text-[11px] text-slate-400">{r.saida.detalhe}</p>
+          )}
+        </Cartao>
+      )}
+
+      {/* OFERTAS QUE SAÍRAM DO AR — pedido dele em 08/08/2026: "daí teríamos um
+          monitor de produtos desativados".
+
+          Não é enfeite: é o instrumento que prova que a regra está se
+          comportando. Sem ele, a marcação acontece no escuro e não dá para
+          saber se hoje saíram 12 ofertas ou 12 mil. */}
+      {r.baixas && (
+        <Cartao
+          icone={<PackageX className="h-4 w-4 text-slate-500" />}
+          titulo="Saíram do ar"
+          selo={
+            r.baixas.freio?.status === "teto-atingido" && r.baixas.freio.haMin < 1440 ? (
+              <Selo ok={false} alerta texto="trava disparou" />
+            ) : undefined
+          }
+        >
+          <Linha rotulo="Hoje" valor={r.baixas.hoje.toLocaleString("pt-BR")} />
+          <Linha rotulo="Na semana" valor={r.baixas.semana.toLocaleString("pt-BR")} />
+          <Linha rotulo="Fora do ar no total" valor={r.baixas.foraDoAr.toLocaleString("pt-BR")} />
+          {/* O NÚMERO MAIS IMPORTANTE DA TELA. Oferta que sai e volta é oferta
+              boa derrubada por engano. Fica em verde quando é zero e em âmbar
+              quando passa de 5% do que saiu — aí o prazo está curto. */}
+          <Linha
+            rotulo="Voltaram (semana)"
+            valor={
+              <span
+                className={
+                  r.baixas.voltaramSemana > Math.max(10, r.baixas.semana * 0.05)
+                    ? "text-amber-600"
+                    : "text-emerald-600"
+                }
+              >
+                {r.baixas.voltaramSemana.toLocaleString("pt-BR")}
+              </span>
+            }
+          />
+          <Linha
+            rotulo="Motivo"
+            valor={
+              <span className="text-[12px] font-normal text-slate-500">
+                {r.baixas.porAusencia.toLocaleString("pt-BR")} sumiu da loja ·{" "}
+                {r.baixas.porTempo.toLocaleString("pt-BR")} por tempo
+              </span>
+            }
+          />
+          {r.baixas.lojas.length > 0 && (
+            <p className="truncate pt-1 text-[11px] text-slate-400">
+              semana: {r.baixas.lojas.map((l) => `${l.nome} (${l.n})`).join(" · ")}
+            </p>
+          )}
+          {r.baixas.freio && (
+            <p
+              className={`pt-1 text-[11px] ${
+                r.baixas.freio.status === "teto-atingido" ? "text-amber-600" : "text-slate-400"
+              }`}
+            >
+              {r.baixas.freio.status === "teto-atingido" ? "⛔ " : ""}
+              {r.baixas.freio.detalhe} — {tempo(r.baixas.freio.haMin)}
+            </p>
           )}
         </Cartao>
       )}

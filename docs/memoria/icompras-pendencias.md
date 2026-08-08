@@ -9,7 +9,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 76bdc89b-fae2-47aa-b6c1-ce2496535a4b
-  modified: 2026-08-08T12:32:53.465Z
+  modified: 2026-08-08T14:00:38.105Z
 ---
 
 Estado em **2026-08-08**. Os detalhes de cada item estão em [[icompras-projeto]], na seção do dia em que o assunto apareceu.
@@ -53,7 +53,8 @@ Estado em **2026-08-08**. Os detalhes de cada item estão em [[icompras-projeto]
 16. ✅ ~~**PASSAR O PROJETO PARA O GITHUB**~~ — **FEITO em 07/08/2026**, repositório privado `icompras`, com a memória junto (cópia sem senhas em `docs/memoria/`). Virou rotina: quando ele digitar **"salve tudo"**, ver [[comando-salve-tudo]]. ⚠️ **Conferir SEGREDOS antes de todo push**: `.env`, `AUTH_SECRET`, `servidores.txt` (esse fica fora do Git).
 17. ✅ ~~**Guardião: olhar TENDÊNCIA.**~~ **FEITO em 07/08** — migration 044 + `conferirAtrasados()`. Fica quieto enquanto a fila cai; avisa se não melhorar por 3 verificações (15 min). Testado nos dois cenários.
 18. ✅ ~~**Título e descrição próprios em cada página.**~~ **FEITO em 08/08** — ver a seção do assunto em [[icompras-projeto]]. **O que resta é esperar:** o Google leva de dias a semanas para reindexar 224 mil páginas. Acompanhar em Search Console › Páginas; o número de "indexadas" tem que subir. Se daqui a 2-3 semanas continuar baixo, o próximo suspeito é o tempo de resposta das páginas de produto sob rastreamento pesado, não o título.
-19. **PYIA** — a ideia dele de acionar uma IA no incidente. Fica DEPOIS do guardião juntar evidências: aí a IA entra só no caso desconhecido, já com o trabalho pronto. Riscos anotados em [[icompras-projeto]] (injeção pelos dados, custo por acionamento, e o perigo de deixar a IA CONSERTAR sozinha).
+19. 🔜 **SUBIR O TETO DAS BAIXAS DE 1% PARA 5%** — combinado em 08/08/2026, quando a marcação de oferta sumida entrou no ar. O teto está apertado só para a estreia. **Condição para subir:** um dia inteiro com o número "Voltaram" do monitor perto de zero. Enquanto estiver em 1%, a trava dispara todo dia (~3.200 ofertas) e a faxina das cinco semanas acumuladas anda devagar. Ver a seção das baixas em [[icompras-projeto]].
+20. **PYIA** — a ideia dele de acionar uma IA no incidente. Fica DEPOIS do guardião juntar evidências: aí a IA entra só no caso desconhecido, já com o trabalho pronto. Riscos anotados em [[icompras-projeto]] (injeção pelos dados, custo por acionamento, e o perigo de deixar a IA CONSERTAR sozinha).
 
 ## ⏸️ PAUSADO POR ELE
 

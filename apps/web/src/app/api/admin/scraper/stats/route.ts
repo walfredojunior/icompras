@@ -280,6 +280,45 @@ export async function GET(req: Request) {
          FROM coletor_saida WHERE id = 1`,
     ).catch(() => [null]);
 
+    // OFERTAS QUE SAÍRAM DO AR — o monitor que ele pediu em 08/08/2026.
+    //
+    // ⚠ Todas as contagens saem dos índices `idx_offer_baixa` e
+    // `idx_offer_volta` (migração 048), sem varrer as 321 mil ofertas: esta
+    // rota é consultada de poucos em poucos segundos enquanto o painel está
+    // aberto, e uma consulta pesada aqui viraria carga permanente no banco.
+    //
+    // `voltaram` é o número que mais importa: oferta que sai do ar e volta na
+    // volta seguinte é oferta boa que a regra derrubou por engano. Se subir,
+    // o prazo está curto demais.
+    const [baixas] = await pool.query(
+      `SELECT (SELECT COUNT(*) FROM offer WHERE in_stock = 0) AS foraDoAr,
+              (SELECT COUNT(*) FROM offer WHERE in_stock = 0 AND gone_at >= CURDATE()) AS hoje,
+              (SELECT COUNT(*) FROM offer WHERE in_stock = 0 AND gone_at > NOW() - INTERVAL 7 DAY) AS semana,
+              (SELECT COUNT(*) FROM offer WHERE voltou_at >= CURDATE()) AS voltaramHoje,
+              (SELECT COUNT(*) FROM offer WHERE voltou_at > NOW() - INTERVAL 7 DAY) AS voltaramSemana,
+              (SELECT COUNT(*) FROM offer WHERE in_stock = 0 AND gone_reason = 'ausente') AS porAusencia,
+              (SELECT COUNT(*) FROM offer WHERE in_stock = 0 AND gone_reason = 'tempo') AS porTempo`,
+    ).catch(() => [null]);
+
+    // Quais lojas mais perderam oferta na semana. Loja inteira caindo de uma
+    // vez quase nunca é a loja fechando — é a nossa leitura que quebrou.
+    const lojasQueCairam = await pool
+      .query(
+        `SELECT s.name, COUNT(*) AS n
+           FROM offer o JOIN store s ON s.id = o.store_id
+          WHERE o.in_stock = 0 AND o.gone_at > NOW() - INTERVAL 7 DAY
+          GROUP BY s.id ORDER BY n DESC LIMIT 5`,
+      )
+      .catch(() => []);
+
+    // A trava disparou? E o que a última varredura da madrugada fez.
+    const [freio] = await pool
+      .query(
+        `SELECT status, detail, TIMESTAMPDIFF(MINUTE, happened_at, NOW()) AS haMin
+           FROM watchdog_log WHERE target = 'baixas' ORDER BY id DESC LIMIT 1`,
+      )
+      .catch(() => [null]);
+
     // Novos: quantos entraram, e em quanto tempo (o número que prova o valor
     // do robô de descoberta — antes um produto novo levava até 4 dias).
     const [novos] = await pool.query(
@@ -317,6 +356,21 @@ export async function GET(req: Request) {
             trocasIp: Number(saida.trocasIp ?? 0),
             ultimaTrocaIpMin: saida.ultimaTrocaIpMin == null ? null : Number(saida.ultimaTrocaIpMin),
             ipVistoMin: saida.ipVistoMin == null ? null : Number(saida.ipVistoMin),
+          }
+        : null,
+      baixas: baixas
+        ? {
+            foraDoAr: Number(baixas.foraDoAr ?? 0),
+            hoje: Number(baixas.hoje ?? 0),
+            semana: Number(baixas.semana ?? 0),
+            voltaramHoje: Number(baixas.voltaramHoje ?? 0),
+            voltaramSemana: Number(baixas.voltaramSemana ?? 0),
+            porAusencia: Number(baixas.porAusencia ?? 0),
+            porTempo: Number(baixas.porTempo ?? 0),
+            lojas: lojasQueCairam.map((l: any) => ({ nome: String(l.name), n: Number(l.n) })),
+            freio: freio
+              ? { status: String(freio.status), detalhe: freio.detail ?? null, haMin: Number(freio.haMin ?? 0) }
+              : null,
           }
         : null,
       quentes: {

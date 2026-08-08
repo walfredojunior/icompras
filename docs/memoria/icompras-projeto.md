@@ -9,7 +9,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: ce2fa394-0b2c-4043-b6bc-350c598dbbf7
-  modified: 2026-08-08T13:13:53.992Z
+  modified: 2026-08-08T14:00:30.613Z
 ---
 
 **iCompras**: comparador de preços estilo PriceRunner para o Paraguai, com painel B2B (lojas + planos mensais), API de ingestão de listas de preço, camada de IA configurável, e módulo de seed/scraper.
@@ -39,6 +39,43 @@ O que fechou o diagnóstico foi **ler o registro do nginx no servidor**: os pedi
 
 ### Painel da Cloudflare dele
 Não tem "Security Events" — só **Overview, Analytics, Web assets, Security rules, Settings**. As regras próprias ficam em **Security rules**.
+
+## 📦 OFERTA QUE A LOJA PAROU DE ANUNCIAR SAI DO AR (2026-08-08) — NO AR, com um susto no meio
+
+**O estado até hoje:** produto que a loja deixava de vender ficava no iCompras **para sempre**. O campo `in_stock` existia desde a migração 001 e **nunca havia sido escrito com 0** — as 321.449 ofertas estavam todas "disponíveis". A única defesa era o `last_seen_at > 3 DAY` do resumo diário, que protegia **só** a página "Baixaram de preço"; a página do produto, a busca e o "a partir de" não tinham nenhuma.
+
+**Medido ANTES de mexer** (o número que justificou o trabalho): 5.497 produtos (2,2%) com todas as ofertas passando de 7 dias, e **453 onde o menor preço mostrado era fantasma** — o preço real era em média **9% mais caro**. Parecia pouco porque o site tinha 5 semanas; como nada expirava, só cresceria.
+
+### O desenho (ideia dele, refinada na conversa)
+Ele perguntou se fazia um robô só para isso, de 3 em 3 dias ou de madrugada. **Robô separado não era preciso** — é varredura de banco, segundos, sem navegador. Ficaram duas camadas:
+1. **No coletor, na hora** (`marcarQueSumiram` em crawl.ts) — leu a página, a loja não está na lista, sai do ar. Exato, sem prazo.
+2. **No guardião, às 4h** (`talvezTirarDoArPorTempo`) — rede de segurança para o que o coletor não consegue nem abrir. **Prazo de 21 dias**, medido: 6,4% das ofertas estavam entre 7 e 30 dias sem serem vistas, então 7 dias derrubaria 20 mil ofertas boas na primeira noite.
+3. **Monitor** (pedido dele: *"daí teríamos um monitor de produtos desativados"*) em Admin › Robôs, cartão "Saíram do ar".
+
+⚠️ **MARCA, NÃO APAGA** (migração 048: `gone_at`, `gone_reason`, `voltou_at`). O histórico de preço continua valendo e a oferta que volta é reaproveitada. **Foi essa decisão que salvou o dia** — ver abaixo.
+
+⚠️ **O NÚMERO QUE IMPORTA NO MONITOR É "VOLTARAM", não "saíram".** Oferta que sai e volta é oferta boa derrubada por engano. Enquanto estiver perto de zero, a regra está certa.
+
+### 🐛 O DEFEITO QUE APARECEU NA PUBLICAÇÃO — e a lição de fundo
+Publiquei e fiquei olhando: 211 ofertas em 3 minutos, e **41 marcadas SEGUNDOS depois de terem sido vistas**. Impossível numa loja de verdade.
+
+**Causa:** eu marcava por `variant_id` ("as ofertas deste produto"), que parecia o natural. Mas **o mesmo produto existe sob VÁRIOS endereços na fonte**, cada um listando um conjunto diferente de lojas, e todos caem no mesmo produto aqui (mesmo nome → mesmo slug → mesma variante). A leitura do endereço A tirava do ar as lojas do endereço B, e a de B as de A.
+
+**Conserto:** o escopo é o **anúncio**, não o produto. **A chave única de `offer` é `(store_id, external_id)`** — as ofertas de um mesmo `ext` são exatamente as lojas daquele anúncio, e é só com elas que a lista lida agora pode ser comparada. **Guardar isto: `offer` NÃO é única por variante.**
+
+**Depois do conserto:** 24 em 3 min (era 211), **zero** no balde "marcada em menos de 10 min", 75% vistas havia mais de 2 dias, zero voltas, espalhado entre muitas lojas.
+
+**Desfazer foi UM comando** (`UPDATE offer SET in_stock=1, gone_at=NULL, gone_reason=NULL WHERE gone_reason='ausente' AND gone_at >= CURDATE()`) e as 321 mil voltaram intactas. Se eu tivesse apagado, teria destruído o catálogo.
+
+### Interruptores (no `.env` da VPS)
+| Variável | Hoje | Para quê |
+|---|---|---|
+| `CRAWL_MARCAR_SUMIDAS` | `1` | `0` desliga a marcação sem publicar código |
+| `CRAWL_MAX_BAIXA_PCT` | `1` | teto por dia. **Apertado de propósito na estreia; subir para 5 depois de um dia com "voltaram" em zero** |
+| `GUARD_BAIXA_DIAS` | `21` | prazo da varredura das 4h |
+| `GUARD_BAIXA_TETO_PCT` | `5` | mesmo teto, do lado do guardião |
+
+⚠️ **A trava VAI disparar nos primeiros dias** — há cinco semanas de sujeira acumulada e o teto de 1% são ~3.200 ofertas. É a faxina pingando devagar, **não é incidente**. O painel mostra "trava disparou"; não confundir com defeito.
 
 ## 🔁 O PAINEL MOSTRAVA "0 TROCAS DE IP" COM SETE TROCAS NO MESMO DIA (2026-08-08) — CORRIGIDO, NO AR
 
