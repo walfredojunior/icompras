@@ -9,7 +9,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: ce2fa394-0b2c-4043-b6bc-350c598dbbf7
-  modified: 2026-08-08T12:23:24.574Z
+  modified: 2026-08-08T13:13:53.992Z
 ---
 
 **iCompras**: comparador de preços estilo PriceRunner para o Paraguai, com painel B2B (lojas + planos mensais), API de ingestão de listas de preço, camada de IA configurável, e módulo de seed/scraper.
@@ -39,6 +39,23 @@ O que fechou o diagnóstico foi **ler o registro do nginx no servidor**: os pedi
 
 ### Painel da Cloudflare dele
 Não tem "Security Events" — só **Overview, Analytics, Web assets, Security rules, Settings**. As regras próprias ficam em **Security rules**.
+
+## 🔁 O PAINEL MOSTRAVA "0 TROCAS DE IP" COM SETE TROCAS NO MESMO DIA (2026-08-08) — CORRIGIDO, NO AR
+
+Ele pediu para eu conferir se o rodízio de IP (5 em 5 horas + quando bloqueado) estava mesmo funcionando. **Estava** — o registro de Dallas tinha 7 trocas e 6 IPs diferentes só naquele dia, incluindo uma disparada por bloqueio às 10h que se resolveu sozinha. **Mas o painel dele mostrava `Trocas de IP: 0`.**
+
+**A causa:** o rótulo mentia. A coluna `trocas` (migração 046) conta quantas vezes o coletor trocou de **caminho** (Dallas caiu → saiu pela VPS → voltou). As trocas de **IP** acontecem dentro de Dallas, no rodízio da Mullvad, e o iCompras nunca ficava sabendo. Justamente o número que ele queria olhar era o que não chegava.
+
+**A solução (migração 047 + `conferirIpDaSaida()` no guardião):** o guardião pergunta *"por qual IP eu estou saindo?"* **através do próprio proxy**, de 5 em 5 minutos, e conta quando muda. Escolhi isso em vez de Dallas avisar o iCompras porque não abre porta, não inventa senha entre servidores, e mede do ponto de vista de quem interessa. O painel agora mostra **IP de saída agora, Trocas de IP, Última troca**, e "Trocas de caminho" ganhou o nome certo.
+
+**Provado de verdade:** disparei `trocar-ip.sh` em Dallas (149.88.104.27 Santiago → 149.88.22.135 Querétaro) e o guardião registrou `saída trocou de IP` e subiu o contador para 1.
+
+### ⚠ Duas lições
+1. **Eu chutei o tempo de espera e a verificação falhou calada.** Pus 20s; a medida nunca funcionava. Medindo 8 chamadas: as 3 primeiras levaram 13,2s / 14,5s / 9,7s e as 5 seguintes 1,6s — é o custo de abrir caminho pelo túnel (pior caso visto: 28,7s). Como o guardião faz UMA chamada a cada 5 min, a dele é sempre a fria. Ficou em **45s**, com o número medido escrito no comentário. **É a segunda vez que erro um limite por chutar antes de medir** (a primeira foram os dois limites do painel dos quentes).
+2. **O `catch` era mudo.** Falhava toda vez e não havia uma linha dizendo por quê. Agora deixa rastro no log. Verificação que falha em silêncio é pior que verificação nenhuma.
+
+### Estado do proxy, medido em 08/08
+Túnel de pé, aperto de mão a cada poucos segundos; a fonte responde 200 através dele; o IP da VPS **não** aparece na saída. Firewall de Dallas com `INPUT DROP` e `Allow 179.198.101.162` no tinyproxy — só a VPS usa o proxy. ⚠ **Testar o proxy DE DENTRO de Dallas dá `HTTP 000`** e não é defeito: é o próprio firewall. Testar sempre a partir da VPS. Passar pelo proxy custa ~1,6s contra 0,14s direto, mas a coleta não caiu.
 
 ## 🔤 TÍTULO E DESCRIÇÃO PRÓPRIOS EM CADA PÁGINA (2026-08-08) — NO AR
 
@@ -671,6 +688,13 @@ Hoje o robô reconfere todos os produtos igual, e por isso a volta demora dias. 
 **Pré-requisitos:** catálogo completo (a volta 12 precisa fechar) e histórico de preço. Em 02/08 já havia **6 dias e 122 mil registros** — dá para decidir com dado (`offer_price_history`), não com achismo. Começar medindo: quantos % dos produtos mudaram de preço em 1, 7 e 30 dias.
 
 **2. PWA PARTE 2 — notificações push.** Ele também pediu para eu lembrar, mas só QUANDO ELE DISSER que o projeto está pronto.
+
+**3. SESSÃO DO ADMIN + `AUTH_SECRET` — ele pediu em 08/08/2026: _"me lembra disso depois"_.** Ofereci fazer na hora, ele preferiu adiar para ver outro assunto. **Cobrar de novo.** São quatro coisas pequenas (uma tarde), e ficaram mais sérias porque **Admin › Anotações guarda as senhas de todos os servidores**:
+- dar prazo de validade à sessão do admin (hoje não expira nunca);
+- fazer a troca de senha **derrubar as sessões antigas** — ele trocou a senha em 08/08 às 10:49 e quem já estivesse dentro continuaria dentro;
+- botão "sair de todos os aparelhos" (o "Sair" de hoje não desconecta de verdade);
+- fazer o app **recusar subir** sem `AUTH_SECRET`, em vez de cair calado em `"dev-secret-troque"` — com essa chave conhecida, qualquer um forja cookie de administrador.
+Detalhes do diagnóstico original na seção "AUDITORIA DO LOGIN DO ADMIN (2026-08-04)".
 
 ## BANNER COM DESTINO ESCOLHIDO + CONTADOR DE CLIQUES (2026-08-03) — ✅ **PUBLICADO E CONFERIDO NA VPS**
 

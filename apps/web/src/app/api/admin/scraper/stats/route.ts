@@ -272,9 +272,11 @@ export async function GET(req: Request) {
     // queimando endereço. Por isso vem junto com os bloqueios e a data do
     // último — um número sozinho não conta a história.
     const [saida] = await pool.query(
-      `SELECT modo, trocas, bloqueios,
+      `SELECT modo, trocas, bloqueios, ip_atual AS ipAtual, trocas_ip AS trocasIp,
               TIMESTAMPDIFF(MINUTE, ultimo_403_em, NOW()) AS ultimo403Min,
-              TIMESTAMPDIFF(MINUTE, desde, NOW()) AS desdeMin, detalhe
+              TIMESTAMPDIFF(MINUTE, desde, NOW()) AS desdeMin,
+              TIMESTAMPDIFF(MINUTE, ultima_troca_ip, NOW()) AS ultimaTrocaIpMin,
+              TIMESTAMPDIFF(MINUTE, ip_visto_em, NOW()) AS ipVistoMin, detalhe
          FROM coletor_saida WHERE id = 1`,
     ).catch(() => [null]);
 
@@ -309,6 +311,12 @@ export async function GET(req: Request) {
             ultimo403Min: saida.ultimo403Min == null ? null : Number(saida.ultimo403Min),
             desdeMin: saida.desdeMin == null ? null : Number(saida.desdeMin),
             detalhe: saida.detalhe ?? null,
+            // Quem escreve estes três é o guardião, medindo pelo próprio
+            // proxy de 5 em 5 minutos (ver migração 047).
+            ipAtual: saida.ipAtual ?? null,
+            trocasIp: Number(saida.trocasIp ?? 0),
+            ultimaTrocaIpMin: saida.ultimaTrocaIpMin == null ? null : Number(saida.ultimaTrocaIpMin),
+            ipVistoMin: saida.ipVistoMin == null ? null : Number(saida.ipVistoMin),
           }
         : null,
       quentes: {

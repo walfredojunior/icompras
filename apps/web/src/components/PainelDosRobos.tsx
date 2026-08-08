@@ -30,6 +30,10 @@ export interface RobosInfo {
     ultimo403Min: number | null;
     desdeMin: number | null;
     detalhe: string | null;
+    ipAtual: string | null;
+    trocasIp: number;
+    ultimaTrocaIpMin: number | null;
+    ipVistoMin: number | null;
   } | null;
 }
 
@@ -157,12 +161,40 @@ export function PainelDosRobos({ r }: { r: RobosInfo | null }) {
             />
           }
         >
-          <Linha rotulo="Trocas de IP" valor={r.saida.trocas.toLocaleString("pt-BR")} />
+          {/* O IP DE AGORA vem primeiro: é a pergunta que ele faz ao abrir a
+              tela ("estou saindo por onde?"). Fonte fixa para não dançar a
+              cada troca. */}
+          <Linha
+            rotulo="IP de saída agora"
+            valor={
+              <span className="font-mono text-[12px]">
+                {r.saida.ipAtual ?? "—"}
+              </span>
+            }
+          />
+          <Linha rotulo="Trocas de IP" valor={r.saida.trocasIp.toLocaleString("pt-BR")} />
+          <Linha
+            rotulo="Última troca de IP"
+            valor={r.saida.ultimaTrocaIpMin == null ? "nenhuma ainda" : tempo(r.saida.ultimaTrocaIpMin)}
+          />
+          {/* Trocar de CAMINHO é outra coisa, e mais grave: significa que
+              Dallas caiu e a coleta voltou a sair pelo IP da VPS. Ficava com o
+              rótulo "Trocas de IP" até 08/08/2026, o que explicava o painel
+              mostrar 0 enquanto Dallas trocava de IP sete vezes no mesmo dia. */}
+          <Linha rotulo="Trocas de caminho" valor={r.saida.trocas.toLocaleString("pt-BR")} />
           <Linha rotulo="Bloqueios (403)" valor={r.saida.bloqueios.toLocaleString("pt-BR")} />
           <Linha
             rotulo="Último bloqueio"
             valor={r.saida.ultimo403Min == null ? "nunca" : tempo(r.saida.ultimo403Min)}
           />
+          {/* Medida velha = o guardião não está conseguindo perguntar pelo
+              proxy. O número acima continua na tela, e sem este aviso pareceria
+              atual. Ele mede de 5 em 5 min; 20 já é atraso de verdade. */}
+          {r.saida.ipVistoMin != null && r.saida.ipVistoMin > 20 && (
+            <p className="pt-1 text-[11px] text-amber-600">
+              ⚠ medida de {tempo(r.saida.ipVistoMin)} atrás — o proxy pode estar fora do ar
+            </p>
+          )}
           {r.saida.detalhe && (
             <p className="truncate pt-1 text-[11px] text-slate-400">{r.saida.detalhe}</p>
           )}

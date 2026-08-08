@@ -13,6 +13,12 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { pool } from "@icompras/db";
+// ⚠ `fetch` E `ProxyAgent` do MESMO pacote. O Node 24 traz um undici próprio
+// embutido no `fetch` global; misturar o ProxyAgent do undici instalado com o
+// fetch global estoura "invalid onRequestStart method" e TODA requisição pelo
+// proxy falha. Em 08/08/2026 isso enganou o coletor por horas: ele concluía
+// "Dallas caiu" e voltava a sair pelo IP da VPS, calado.
+import { fetch as buscarNaWeb, ProxyAgent } from "undici";
 import { coletarMetrica, conferirLimites } from "../metricas.js";
 
 const execAsync = promisify(exec);
@@ -37,6 +43,20 @@ const INTERVALO_MIN = num(process.env.GUARD_INTERVAL_MIN, 5);
 const SEM_SINAL_SEG = num(process.env.GUARD_STALE_SEC, 300);
 const MAX_RELIGADAS_HORA = num(process.env.GUARD_MAX_RESTARTS, 3);
 const SITE_URL = process.env.GUARD_SITE_URL ?? "http://127.0.0.1:3000/es";
+
+// Quem responde "qual é o meu IP". Serviço de texto puro, resposta minúscula.
+const ONDE_PERGUNTO_MEU_IP = process.env.GUARD_IP_ECHO ?? "https://api.ipify.org";
+// QUANTO ESPERAR — número MEDIDO, não chutado.
+//
+// Primeiro pus 20s e nunca funcionou: gravava sempre "IP não medido". Medindo
+// 8 chamadas seguidas pelo proxy em 08/08/2026, o padrão apareceu: as três
+// primeiras levaram 13,2s / 14,5s / 9,7s e as cinco seguintes 1,6s. É o custo
+// de abrir caminho pelo túnel (a mais lenta que vi foi 28,7s). Como o guardião
+// faz UMA chamada a cada 5 minutos, a dele é sempre a chamada fria — a cara é
+// a que conta. 45s deixa folga sobre o pior caso e cabe de sobra no intervalo.
+const ESPERA_DO_IP_MS = num(process.env.GUARD_IP_TIMEOUT_MS, 45_000);
+// Reaproveitado entre as verificações: abrir um por vez vaza conexão.
+let despachante: ProxyAgent | undefined;
 
 // Desde a v1.1 o coletor são QUATRO processos (icompras-crawler-0..3), não um.
 // O `/` do pm2 é busca por padrão, então isto religa os quatro de uma vez.
@@ -446,6 +466,81 @@ async function conferirColetor(): Promise<{ status: string; detail: string }> {
   return { status: "ok", detail: mensagem };
 }
 
+// POR QUAL IP O COLETOR ESTÁ SAINDO — e quantas vezes isso mudou.
+//
+// O dono pediu isso ao montar o proxy: "quero no monitor quantas vezes trocou
+// de IP pra eu saber". Em 08/08/2026 fui conferir e o painel mostrava ZERO
+// enquanto o registro de Dallas tinha SETE trocas no mesmo dia. O rodízio
+// funcionava; o contador é que media outra coisa (ver migração 047).
+//
+// A pergunta é feita ATRAVÉS DO PRÓPRIO PROXY. Isso tem três vantagens sobre
+// mandar Dallas avisar o iCompras: não abre porta nenhuma, não inventa senha
+// entre os dois servidores, e mede do ponto de vista de quem interessa — se o
+// coletor consegue sair, a medida sai junto; se não consegue, o silêncio já é
+// a informação.
+//
+// ⚠ NUNCA devolve status diferente de "ok". Trocar de IP é o comportamento
+// esperado, não é incidente — se isto acendesse alarme, o guardião passaria a
+// gritar de 5 em 5 horas por causa do rodízio normal.
+async function conferirIpDaSaida(): Promise<{ status: string; detail: string }> {
+  const proxy = process.env.CRAWL_PROXY ?? "";
+  if (!proxy) return { status: "ok", detail: "saída direta" };
+
+  let ip: string | null = null;
+  try {
+    if (!despachante) despachante = new ProxyAgent(proxy);
+    const res = await buscarNaWeb(ONDE_PERGUNTO_MEU_IP, {
+      dispatcher: despachante,
+      signal: AbortSignal.timeout(ESPERA_DO_IP_MS),
+    });
+    if (res.ok) {
+      const texto = (await res.text()).trim();
+      // Só aceita o que TEM CARA de endereço. Se o serviço responder uma
+      // página de erro, gravar aquilo como "IP atual" contaria uma troca
+      // falsa agora e outra quando voltasse ao normal.
+      if (/^[0-9a-fA-F.:]{7,45}$/.test(texto)) ip = texto;
+    }
+  } catch (e) {
+    /* Dallas lento ou fora do ar. Não é problema DAQUI: quem trata a queda do
+       proxy é o coletor, que passa a sair direto e registra em `modo`. Aqui
+       apenas não medimos desta vez — e `ip_visto_em` fica velho, que é o que
+       o painel mostra.
+
+       ⚠ Mas DEIXA RASTRO. Na primeira versão este catch era mudo, o limite de
+       espera estava curto demais e a medida falhava toda vez: o painel ficava
+       vazio e não havia uma linha sequer dizendo por quê. Uma verificação que
+       falha em silêncio é pior que verificação nenhuma. */
+    console.log(`saída: não consegui medir o IP pelo proxy — ${(e as Error).message}`);
+  }
+
+  if (!ip) return { status: "ok", detail: "IP não medido" };
+
+  const [linha] = await pool.query("SELECT ip_atual FROM coletor_saida WHERE id = 1");
+  const anterior: string | null = linha?.ip_atual ?? null;
+
+  if (anterior === ip) {
+    await pool.query("UPDATE coletor_saida SET ip_visto_em = NOW() WHERE id = 1");
+    return { status: "ok", detail: `IP ${ip}` };
+  }
+
+  // A PRIMEIRA medida não é troca: não havia com o que comparar. Sem esta
+  // ressalva, todo reinício do guardião inventaria uma troca.
+  if (anterior == null) {
+    await pool.query("UPDATE coletor_saida SET ip_atual = ?, ip_visto_em = NOW() WHERE id = 1", [ip]);
+    return { status: "ok", detail: `IP ${ip}` };
+  }
+
+  await pool.query(
+    `UPDATE coletor_saida
+        SET ip_atual = ?, ip_visto_em = NOW(),
+            trocas_ip = trocas_ip + 1, ultima_troca_ip = NOW()
+      WHERE id = 1`,
+    [ip],
+  );
+  console.log(`saída trocou de IP: ${anterior} → ${ip}`);
+  return { status: "ok", detail: `IP mudou: ${anterior} → ${ip}` };
+}
+
 async function conferirSite(): Promise<{ status: string; detail: string }> {
   try {
     const ctrl = AbortSignal.timeout(15000);
@@ -513,6 +608,9 @@ async function verificar(): Promise<void> {
       : await conferirRobos();
   const site = await conferirSite();
   const vps = await conferirLimites();
+  // Fora da lista de problemas de propósito: só ANOTA por qual IP a coleta
+  // está saindo. Ver o comentário da função.
+  const saida = await conferirIpDaSaida();
   await talvezAuditar();
 
   const problemas = [banco, laco, coletor, robos, site, vps, atrasados].filter(
@@ -522,6 +620,7 @@ async function verificar(): Promise<void> {
   const detalhe =
     `coletor: ${coletor.detail} · robôs: ${robos.detail} · site: ${site.detail}` +
     ` · servidor: ${vps.detail} · banco: ${banco.detail} · ${atrasados.detail}` +
+    ` · saída: ${saida.detail}` +
     (laco.status === "ok" ? "" : ` · ⚠ ${laco.detail}`);
   if (vps.status !== "ok") await registrar("servidor", vps.status, vps.detail, "nenhuma");
 

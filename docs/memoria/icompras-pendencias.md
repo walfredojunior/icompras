@@ -9,7 +9,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 76bdc89b-fae2-47aa-b6c1-ce2496535a4b
-  modified: 2026-08-08T12:24:21.310Z
+  modified: 2026-08-08T12:32:53.465Z
 ---
 
 Estado em **2026-08-08**. Os detalhes de cada item estão em [[icompras-projeto]], na seção do dia em que o assunto apareceu.
@@ -17,7 +17,7 @@ Estado em **2026-08-08**. Os detalhes de cada item estão em [[icompras-projeto]
 ## 🔴 DEPENDE DELE — cobrar
 
 1. ~~**BACKUP automático não existe.**~~ ❌ **EU ESTAVA ERRADO — ele corrigiu em 06/08: a hospedagem é HOSTINGER e tem BACKUP DIÁRIO automático da VPS inteira.** Parei de cobrar isso. Também há uma cópia manual de 02/08 em `/opt/icompras/backups/`, testada por restauração. **O que ainda não sei e vale confirmar com ele um dia:** quantos dias o Hostinger guarda, e que é imagem da máquina toda — ótimo para desastre, mas para desfazer um estrago pontual no banco (uma tabela errada há 2 horas) o certo seria um dump do MariaDB. Só propor se fizer sentido; não insistir.
-2. **Senha do admin é `[SENHA-ADMIN-REMOVIDA]`** em produção — confirmado ENTRANDO com ela em 03/08. Um minuto dele em Admin › Trocar senha. É a que mais reduz risco. ⚠️ **Ficou mais urgente em 07/08:** a página **Admin › Anotações** agora tem as senhas de TODOS os servidores escritas, a pedido dele.
+2. ✅ ~~**Senha do admin é `[SENHA-ADMIN-REMOVIDA]`**~~ — **ELE TROCOU em 08/08/2026, às 10:49.** Conferido de duas formas: existe linha em `admin_user` (id 1, hash de 161 caracteres) e o `POST /api/admin/login` com `[SENHA-ADMIN-REMOVIDA]` devolve **401**. A partir do momento em que existe linha nessa tabela, a senha do `.env` deixa de valer — para recuperar acesso, apagar a linha de `admin_user`. **A senha nova eu NÃO sei, e não preciso saber.** ⚠️ Se precisar de acesso administrativo para algum diagnóstico, PEDIR a ele — não tentar contornar.
 3. ✅ **Google Search Console — RESOLVIDO em 08/08.** Ele verificou o domínio pelo registro TXT e enviou o `sitemap.xml`. **A verificação e o mapa só passaram depois de consertar a regra da Cloudflare** — ver a seção do Google em [[icompras-projeto]]. **O que ainda depende dele (opcional):** cadastrar os 25 mapas de produto (`produto/sitemap/0.xml` … `24.xml`) no Search Console. **Não é necessário** — o `robots.txt` já os declara e o Google os busca sozinho; serve só para ver o relatório separado de cada um. Ele disse "haa então não precisa".
 4. **A lista própria de lojas** que ele mencionou em 02/08 — abriria coletar direto das lojas em vez do concorrente.
 5. **Chaves do Bancard**, quando tiver.
