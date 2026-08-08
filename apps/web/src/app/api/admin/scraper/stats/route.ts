@@ -311,6 +311,15 @@ export async function GET(req: Request) {
       )
       .catch(() => []);
 
+    // O placar da última conferência contra a fonte (guardião, 5h).
+    const [conferencia] = await pool
+      .query(
+        `SELECT conferidas, erradas, mantidas_ok AS mantidasOk, mantidas, detalhe,
+                TIMESTAMPDIFF(HOUR, at, NOW()) AS haH
+           FROM baixa_auditoria ORDER BY day DESC LIMIT 1`,
+      )
+      .catch(() => [null]);
+
     // A trava disparou? E o que a última varredura da madrugada fez.
     const [freio] = await pool
       .query(
@@ -370,6 +379,16 @@ export async function GET(req: Request) {
             lojas: lojasQueCairam.map((l: any) => ({ nome: String(l.name), n: Number(l.n) })),
             freio: freio
               ? { status: String(freio.status), detalhe: freio.detail ?? null, haMin: Number(freio.haMin ?? 0) }
+              : null,
+            conferencia: conferencia
+              ? {
+                  conferidas: Number(conferencia.conferidas ?? 0),
+                  erradas: Number(conferencia.erradas ?? 0),
+                  mantidasOk: Number(conferencia.mantidasOk ?? 0),
+                  mantidas: Number(conferencia.mantidas ?? 0),
+                  detalhe: conferencia.detalhe ?? null,
+                  haH: Number(conferencia.haH ?? 0),
+                }
               : null,
           }
         : null,

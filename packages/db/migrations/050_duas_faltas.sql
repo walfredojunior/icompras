@@ -1,0 +1,30 @@
+-- Uma falta não condena: a loja só sai do ar na SEGUNDA leitura sem ela.
+--
+-- Contexto (08/08/2026, mesmo dia em que a regra entrou no ar). A conferência
+-- automática pegou, no primeiro dia, uma oferta tirada do ar que continuava na
+-- fonte: "Matrix Importados" no anúncio x_67905. E o HTML explicou a causa numa
+-- linha só:
+--
+--     'advertiser': 'Matrix Importados'
+--     'subdescription': 'Clique loja detalhe produto no modelo'
+--
+-- **A fonte lista as lojas por MODELO, não por anúncio.** Um anúncio de perfume
+-- tem "100ML", "50ML", "Edp", "Edt"; cada modelo tem as suas lojas. O coletor lê
+-- a lista de um modelo, e a loja que vende outro modelo do mesmo anúncio
+-- simplesmente não está ali — sem ter sumido de lugar nenhum.
+--
+-- O número que fechou o diagnóstico: das 527 ofertas marcadas até então, **509
+-- estavam em anúncios de vários modelos** — que são só 6% do catálogo (14.530
+-- de 256.678). Concentração de 97% em 6% não é acaso.
+--
+-- ⚠ POR QUE "DUAS FALTAS" E NÃO UM CONSERTO ESPECÍFICO DO MODELO: porque não é
+-- preciso adivinhar a causa. Modelo, página meio carregada, leitura truncada,
+-- lista paginada — tudo se parece com "a loja não está aqui agora", e tudo se
+-- desfaz na leitura seguinte. Exigir a falta em DUAS leituras separadas por um
+-- dia derruba todas essas causas de uma vez; o que sobrevive é loja que parou
+-- de vender mesmo.
+ALTER TABLE offer
+  -- Quando notei a ausência pela PRIMEIRA vez. Limpo assim que a loja
+  -- reaparece (ver o ON DUPLICATE KEY UPDATE em crawl.ts) — é o que faz uma
+  -- falta isolada não acumular com outra de duas semanas depois.
+  ADD COLUMN ausente_desde DATETIME NULL DEFAULT NULL AFTER voltou_at;

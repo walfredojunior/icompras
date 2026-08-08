@@ -1903,6 +1903,10 @@ async function ingestProduct(page: () => Promise<Page>, path: string, ourCategor
          gone_at     = IF(offer.in_stock = 0, NULL, offer.gone_at),
          gone_reason = IF(offer.in_stock = 0, NULL, offer.gone_reason),
          in_stock    = 1,
+         -- A loja apareceu: a falta anterior (se houve) fica sem efeito. Sem
+         -- esta linha, uma falta de hoje somaria com outra daqui a um mes e a
+         -- oferta cairia por "duas faltas" que nunca foram seguidas.
+         ausente_desde = NULL,
          last_seen_at = NOW()`,
       [
         variantId,
@@ -1943,6 +1947,13 @@ async function ingestProduct(page: () => Promise<Page>, path: string, ourCategor
 const TETO_BAIXA_PCT = Number(process.env.CRAWL_MAX_BAIXA_PCT ?? 5);
 /** Interruptor: `CRAWL_MARCAR_SUMIDAS=0` desliga sem publicar código. */
 const MARCAR_QUE_SUMIU = (process.env.CRAWL_MARCAR_SUMIDAS ?? "1") !== "0";
+/**
+ * Quanto tempo entre a primeira e a segunda falta. Um dia: precisa ser maior
+ * que o intervalo entre duas leituras do mesmo anúncio (~3 h nos produtos
+ * quentes), senão as "duas leituras" seriam a mesma passagem vista duas vezes
+ * e a regra não filtraria nada.
+ */
+const ESPERA_SEGUNDA_FALTA_H = Number(process.env.CRAWL_SEGUNDA_FALTA_H ?? 24);
 
 let travaVistaEm = 0;
 let travada = false;
@@ -2033,16 +2044,76 @@ async function marcarQueSumiram(
 
   const isentas = await idsDasLojas(descartadas);
   const manter = [...new Set([...presentes, ...isentas])];
+  const vagas = manter.map(() => "?").join(",");
+
   try {
+    // ⚠ NUNCA DERRUBAR A MAIORIA DAS LOJAS DE UM ANÚNCIO DE UMA VEZ.
+    //
+    // Este é o buraco que sobrava depois do conserto do escopo, e o dono
+    // perguntou exatamente por ele: "não corro risco de você tirar do ar um
+    // produto que está certo?".
+    //
+    // O risco real não é a loja sumir — é a LEITURA vir pela metade. Página
+    // que carregou só em parte, layout que mudou, lista que passou a ter
+    // paginação: em todos esses casos o coletor lê 3 lojas onde havia 10 e,
+    // sem esta trava, tiraria 7 ofertas boas do ar. Ele não tem como saber
+    // que leu pouco — a fonte não diz quantas deveria haver (o
+    // `ext_store_count` que existe é a própria lista lida, então não serve
+    // de conferência).
+    //
+    // A regra: se esta passagem for derrubar MAIS DA METADE das lojas que o
+    // anúncio tem no ar, ela não marca nada e registra. Uma loja saindo é
+    // rotina; a maioria saindo de uma vez é quase sempre defeito nosso.
+    // Quando for mesmo o produto inteiro saindo da fonte, quem resolve é a
+    // varredura das 4h, pelo tempo — devagar, mas sem chutar.
+    const [c] = await pool.query(
+      `SELECT COUNT(*) AS noAr, SUM(store_id NOT IN (${vagas})) AS sairiam
+         FROM offer
+        WHERE external_id = ? AND in_stock = 1 AND source = 'scraped'`,
+      [...manter, ext],
+    );
+    const noAr = Number(c?.noAr ?? 0);
+    const sairiam = Number(c?.sairiam ?? 0);
+    if (!sairiam) return;
+    if (sairiam * 2 > noAr) {
+      console.log(
+        `  ⚠ leitura suspeita: ${sairiam} de ${noAr} lojas sumiriam de ${ext} — não marquei nada`,
+      );
+      return;
+    }
+
+    // DUAS FALTAS, SEPARADAS POR UM DIA (ver migração 050).
+    //
+    // Primeira leitura sem a loja: só anota `ausente_desde` e não tira nada do
+    // ar. Se numa leitura seguinte, pelo menos um dia depois, ela continuar
+    // faltando, aí sim sai. Quando reaparece, o `ON DUPLICATE KEY UPDATE` do
+    // INSERT limpa a anotação e a contagem recomeça.
+    //
+    // ⚠ `ausente_desde` é atribuído POR ÚLTIMO. As três linhas de cima leem o
+    // valor ANTIGO — se a atualização subisse, toda primeira falta já viria
+    // com a data de agora e condenaria a oferta na hora, que é exatamente o
+    // defeito que esta migração conserta.
     const r = await pool.query(
       `UPDATE offer
-          SET in_stock = 0, gone_at = NOW(), gone_reason = 'ausente'
+          SET in_stock    = IF(ausente_desde < NOW() - INTERVAL ? HOUR, 0, in_stock),
+              gone_at     = IF(ausente_desde < NOW() - INTERVAL ? HOUR, NOW(), gone_at),
+              gone_reason = IF(ausente_desde < NOW() - INTERVAL ? HOUR, 'ausente', gone_reason),
+              ausente_desde = IFNULL(ausente_desde, NOW())
         WHERE external_id = ? AND in_stock = 1 AND source = 'scraped'
-          AND store_id NOT IN (${manter.map(() => "?").join(",")})`,
-      [ext, ...manter],
+          AND store_id NOT IN (${vagas})`,
+      [ESPERA_SEGUNDA_FALTA_H, ESPERA_SEGUNDA_FALTA_H, ESPERA_SEGUNDA_FALTA_H, ext, ...manter],
     );
-    const n = Number(r?.affectedRows ?? 0);
-    if (n) console.log(`  ↓ ${n} oferta(s) tirada(s) do ar: a loja não anuncia mais`);
+    void r;
+    // Conta só o que REALMENTE saiu do ar agora (o UPDATE acima também toca
+    // nas que estão apenas na primeira falta).
+    const [q] = await pool.query(
+      `SELECT COUNT(*) n FROM offer
+        WHERE external_id = ? AND in_stock = 0 AND gone_reason = 'ausente'
+          AND gone_at > NOW() - INTERVAL 1 MINUTE`,
+      [ext],
+    );
+    const n = Number(q?.n ?? 0);
+    if (n) console.log(`  ↓ ${n} oferta(s) fora do ar: faltou em duas leituras`);
   } catch (e) {
     // Nunca derruba a coleta por causa disto: o preço é o produto principal.
     console.log(`  ⚠ não consegui marcar as que sumiram: ${(e as Error).message}`);

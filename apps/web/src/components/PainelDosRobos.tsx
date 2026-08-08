@@ -46,6 +46,14 @@ export interface RobosInfo {
     porTempo: number;
     lojas: Array<{ nome: string; n: number }>;
     freio: { status: string; detalhe: string | null; haMin: number } | null;
+    conferencia: {
+      conferidas: number;
+      erradas: number;
+      mantidasOk: number;
+      mantidas: number;
+      detalhe: string | null;
+      haH: number;
+    } | null;
   } | null;
 }
 
@@ -258,6 +266,29 @@ export function PainelDosRobos({ r }: { r: RobosInfo | null }) {
               </span>
             }
           />
+          {/* A REGRA SE VIGIANDO. Todo dia às 5h o guardião pega uma amostra
+              do que saiu do ar, baixa a página na fonte e cruza os dois lados.
+              "0 erradas" sozinho não bastaria: uma leitura truncada sumiria com
+              loja boa sem acusar erro nenhum. Por isso o segundo número —
+              quantas das que MANTIVE realmente aparecem na fonte. */}
+          {r.baixas.conferencia && (
+            <Linha
+              rotulo="Conferido na fonte"
+              valor={
+                <span
+                  className={r.baixas.conferencia.erradas > 0 ? "text-amber-600" : "text-emerald-600"}
+                >
+                  {r.baixas.conferencia.erradas > 0
+                    ? `${r.baixas.conferencia.erradas} erro(s)`
+                    : `${r.baixas.conferencia.conferidas} ok`}
+                  <span className="font-normal text-slate-400">
+                    {" "}
+                    · {r.baixas.conferencia.mantidasOk}/{r.baixas.conferencia.mantidas} mantidas
+                  </span>
+                </span>
+              }
+            />
+          )}
           {r.baixas.lojas.length > 0 && (
             <p className="truncate pt-1 text-[11px] text-slate-400">
               semana: {r.baixas.lojas.map((l) => `${l.nome} (${l.n})`).join(" · ")}

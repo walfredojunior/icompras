@@ -633,6 +633,123 @@ async function talvezTirarDoArPorTempo(): Promise<void> {
   );
 }
 
+// CONFERÊNCIA DIÁRIA DAS BAIXAS — a regra se vigiando.
+//
+// Pega uma amostra do que foi tirado do ar, baixa a página do anúncio na fonte
+// e cruza os dois lados: as lojas que retirei não podem aparecer, e as que
+// mantive têm de aparecer. O segundo lado é o que pega o defeito silencioso —
+// leitura truncada some com loja boa sem nunca acusar erro.
+//
+// Roda às 5h, depois da varredura das 4h, para conferir inclusive o que ela
+// acabou de marcar.
+//
+// ⚠ SAI PELO PROXY, como todo o resto que fala com a fonte. São ~8 páginas por
+// dia — ao lado das milhares do coletor, é ruído.
+const CONF_HORA = num(process.env.GUARD_CONF_HORA, 5);
+const CONF_ANUNCIOS = num(process.env.GUARD_CONF_ANUNCIOS, 8);
+/** Teto de tempo: o guardião não pode ficar minutos sem vigiar o coletor. */
+const CONF_LIMITE_MS = num(process.env.GUARD_CONF_LIMITE_MS, 120_000);
+
+/**
+ * Nome curto demais vira coincidência dentro do HTML (uma loja "Ari" casaria
+ * com "Ariel", "Arica"...). Abaixo disto a conferência não opina.
+ */
+function nomeConferivel(nome: string) {
+  return nome.trim().length >= 4;
+}
+
+async function talvezConferirAsBaixas(): Promise<void> {
+  const agora = new Date();
+  if (agora.getHours() !== CONF_HORA) return;
+  const [j] = await pool.query("SELECT COUNT(*) n FROM baixa_auditoria WHERE day = CURDATE()");
+  if (Number(j?.n ?? 0) > 0) return;
+  const proxy = process.env.CRAWL_PROXY ?? "";
+  if (!proxy) return;
+
+  // Uma oferta retirada por anúncio, das mais recentes: é o que ainda não foi
+  // reconferido pelo próprio coletor.
+  const alvos = await pool.query(
+    `SELECT o.external_id AS ext, MIN(s.name) AS loja
+       FROM offer o JOIN store s ON s.id = o.store_id
+      WHERE o.in_stock = 0 AND o.gone_at > NOW() - INTERVAL 2 DAY
+      GROUP BY o.external_id
+      ORDER BY MAX(o.gone_at) DESC
+      LIMIT ?`,
+    [CONF_ANUNCIOS],
+  );
+  if (!alvos.length) return;
+
+  const ateQuando = Date.now() + CONF_LIMITE_MS;
+  let conferidas = 0;
+  let erradas = 0;
+  let mantidasOk = 0;
+  let mantidas = 0;
+  let anuncios = 0;
+  const problemas: string[] = [];
+
+  for (const a of alvos) {
+    if (Date.now() > ateQuando) break; // acabou o tempo: vale o que deu
+    const id = String(a.ext).replace(/^cp-/, "");
+    let html = "";
+    try {
+      if (!despachante) despachante = new ProxyAgent(proxy);
+      const res = await buscarNaWeb(`https://www.comprasparaguai.com.br/x_${id}/`, {
+        dispatcher: despachante,
+        signal: AbortSignal.timeout(60_000),
+        headers: { "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
+      });
+      if (res.ok) html = await res.text();
+    } catch {
+      /* página fora do ar ou proxy lento: esta não conta */
+    }
+    // Página curta demais é erro de carregamento, não catálogo. Contá-la diria
+    // "nenhuma loja aparece" e acusaria erro em tudo que mantive.
+    if (html.length < 5000) continue;
+    anuncios++;
+
+    const dentro = html.toLowerCase();
+    const lojas = await pool.query(
+      `SELECT s.name AS nome, o.in_stock AS noAr
+         FROM offer o JOIN store s ON s.id = o.store_id
+        WHERE o.external_id = ?`,
+      [a.ext],
+    );
+    for (const l of lojas) {
+      const nome = String(l.nome);
+      if (!nomeConferivel(nome)) continue;
+      const aparece = dentro.includes(nome.toLowerCase());
+      if (Number(l.noAr) === 0) {
+        conferidas++;
+        if (aparece) {
+          erradas++;
+          if (problemas.length < 4) problemas.push(`${nome} em x_${id}`);
+        }
+      } else {
+        mantidas++;
+        if (aparece) mantidasOk++;
+      }
+    }
+  }
+
+  if (!anuncios) return; // nem uma página baixou: não inventa placar
+
+  const detalhe = erradas
+    ? `⛔ ${erradas} de ${conferidas} ainda apareciam na fonte: ${problemas.join(", ")}`
+    : `${conferidas} retiradas conferidas, nenhuma na fonte · ${mantidasOk}/${mantidas} mantidas conferidas`;
+
+  await pool.query(
+    `INSERT INTO baixa_auditoria (day, conferidas, erradas, mantidas_ok, mantidas, anuncios, detalhe)
+     VALUES (CURDATE(), ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE conferidas = VALUES(conferidas), erradas = VALUES(erradas),
+       mantidas_ok = VALUES(mantidas_ok), mantidas = VALUES(mantidas),
+       anuncios = VALUES(anuncios), detalhe = VALUES(detalhe)`,
+    [conferidas, erradas, mantidasOk, mantidas, anuncios, detalhe.slice(0, 500)],
+  );
+  // Só vira incidente quando há erro; conferência limpa não polui o histórico.
+  if (erradas) await registrar("baixas", "conferencia-acusou", detalhe, "nenhuma");
+  console.log(`conferência das baixas: ${detalhe}`);
+}
+
 async function talvezAuditar(): Promise<void> {
   const agora = new Date();
   if (agora.getDay() !== AUDIT_DIA || agora.getHours() !== AUDIT_HORA) return;
@@ -684,6 +801,7 @@ async function verificar(): Promise<void> {
   // está saindo. Ver o comentário da função.
   const saida = await conferirIpDaSaida();
   await talvezTirarDoArPorTempo();
+  await talvezConferirAsBaixas();
   await talvezAuditar();
 
   const problemas = [banco, laco, coletor, robos, site, vps, atrasados].filter(
