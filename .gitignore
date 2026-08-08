@@ -30,3 +30,8 @@ apps/web/public/media/
 Thumbs.db
 .idea/
 .vscode/
+
+# anotacoes com senhas — nunca versionar
+servidores.txt
+senhas*.txt
+*.credenciais
