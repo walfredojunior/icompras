@@ -1,6 +1,23 @@
-import { setRequestLocale } from "next-intl/server";
+import { getTranslations, setRequestLocale } from "next-intl/server";
+import type { Metadata } from "next";
 import { Link } from "@/i18n/navigation";
 import { getStoresList } from "@/lib/stores";
+import { paginaMeta } from "@/lib/seo";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "seo" });
+  return paginaMeta({
+    locale,
+    caminho: "/lojas",
+    titulo: t("storesTitle"),
+    descricao: t("storesDesc"),
+  });
+}
 
 const LABELS: Record<string, { title: string; subtitle: (n: number) => string; products: string; empty: string; home: string }> = {
   "pt-BR": {

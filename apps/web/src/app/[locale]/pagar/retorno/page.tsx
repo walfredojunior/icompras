@@ -16,3 +16,7 @@ export default async function RetornoPage({ params }: { params: Promise<{ locale
     </div>
   );
 }
+
+// Página de conta: nada a indexar, e algumas exigem senha. `follow` desligado
+// porque daqui não sai link que interesse ao buscador.
+export const metadata = { robots: { index: false, follow: false } };

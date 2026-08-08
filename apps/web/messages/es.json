@@ -191,5 +191,22 @@
     "sort_economia": "Mayor ahorro",
     "sort_desconto": "Mayor descuento",
     "sort_barato": "Menor precio"
+  },
+  "seo": {
+    "homeTitle": "Comparador de precios del Paraguay",
+    "homeDesc": "Compará precios de las tiendas del Paraguay: celulares, electrónicos, perfumes y más. Mirá dónde está más barato en Ciudad del Este y Salto del Guairá.",
+    "productTitle": "{name} — precio en Paraguay",
+    "productDesc": "Compará el precio de {name} en {n, plural, one {# tienda} other {# tiendas}} del Paraguay. Desde {price}. Mirá dónde está más barato y el historial de precios en iCompras.",
+    "productDescSemOferta": "{name}: precios, fotos, ficha técnica y dónde comprarlo en Paraguay. Compará las tiendas de Ciudad del Este, Salto del Guairá y Pedro Juan Caballero en iCompras.",
+    "categoryTitle": "{name} — precios en Paraguay",
+    "categoryDesc": "Compará precios de {name} en las tiendas del Paraguay. {n, number} productos con precio actualizado todos los días. Mirá dónde está más barato en iCompras.",
+    "storeTitle": "{name} — precios y ofertas",
+    "storeDesc": "Productos de {name} con precio actualizado todos los días. Compará con las demás tiendas del Paraguay y mirá dónde está más barato en iCompras.",
+    "storesTitle": "Tiendas del Paraguay",
+    "storesDesc": "Todas las tiendas de Ciudad del Este, Salto del Guairá y Pedro Juan Caballero con precios comparados en iCompras.",
+    "categoriesTitle": "Categorías",
+    "categoriesDesc": "Navegá por categoría y compará precios de las tiendas del Paraguay: celulares, informática, perfumes, electrodomésticos y más.",
+    "searchTitle": "Búsqueda",
+    "searchDesc": "Buscá un producto y compará el precio en las tiendas del Paraguay."
   }
 }

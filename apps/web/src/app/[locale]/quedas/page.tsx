@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Link } from "@/i18n/navigation";
 import { getQuedas, contarQuedas, JANELAS, ORDENS, ORDEM_PADRAO, type Janela, type Ordem } from "@/lib/quedas";
 import { getRates } from "@/lib/rates";
+import { paginaMeta } from "@/lib/seo";
 import { registrarVisita } from "@/lib/analytics";
 import { MoneyStack } from "@/components/MoneyStack";
 import { TrendingDown } from "lucide-react";
@@ -23,7 +24,18 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: "drops" });
-  return { title: `${t("title")} — iCompras`, description: t("subtitle") };
+  // O " — iCompras" saiu do título: agora o modelo do layout põe " | iCompras"
+  // em todas as páginas, e escrito aqui apareceria duas vezes.
+  //
+  // O canônico aponta para /quedas sem nada atrás: os filtros de dias e de
+  // ordem são a MESMA página reorganizada, e sem isto o Google indexaria as
+  // dezoito combinações como páginas diferentes.
+  return paginaMeta({
+    locale,
+    caminho: "/quedas",
+    titulo: t("title"),
+    descricao: t("subtitle"),
+  });
 }
 
 function janelaDaUrl(v: string | undefined): Janela {

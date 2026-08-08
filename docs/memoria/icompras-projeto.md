@@ -9,12 +9,56 @@ metadata:
   node_type: memory
   type: project
   originSessionId: ce2fa394-0b2c-4043-b6bc-350c598dbbf7
-  modified: 2026-08-05T21:05:42.122Z
+  modified: 2026-08-08T12:23:24.574Z
 ---
 
 **iCompras**: comparador de preços estilo PriceRunner para o Paraguai, com painel B2B (lojas + planos mensais), API de ingestão de listas de preço, camada de IA configurável, e módulo de seed/scraper.
 
 Plano completo em `C:\projetos\icompras\docs\PLANO.md`; como rodar em `docs\COMO-RODAR.md`.
+
+## 🚨 GOOGLE: A REGRA DA CLOUDFLARE QUE BLOQUEAVA O SITE INTEIRO (2026-08-08) — RESOLVIDO
+
+**O sintoma:** o site estava no ar havia semanas e o Google não tinha indexado NADA. A verificação do Search Console falhava pelos dois métodos (arquivo HTML e registro TXT), e o envio do mapa do site dava **"Erro HTTP: 403"**.
+
+**A causa** — uma regra que ele mesmo criou na Cloudflare, para bloquear robôs de fora da região:
+
+```
+(ip.src.country ne "PY" and ip.src.country ne "AR" and ip.src.country ne "BR" and cf.client.bot)
+→ managed_challenge
+```
+
+⚠️ **`cf.client.bot` na Cloudflare quer dizer "robô VERIFICADO"** — ou seja, exatamente Googlebot, Bingbot e afins. A regra fazia o oposto do pretendido: deixava passar o visitante estrangeiro comum e os robôs falsos, e barrava só os buscadores de verdade. Como um robô não resolve o desafio, o `managed_challenge` virava 403.
+
+**O conserto foi uma palavra:** `not` antes de `cf.client.bot`. Ele aplicou às 11h57 de 08/08 e o registro do nginx confirmou na mesma hora — `/sitemap.xml` 200 (×3) e `/pt-BR` 200. Em poucos minutos o Googlebot passou de ~1 visita em semanas para 43 pedidos.
+
+### Como cheguei lá (o método vale mais que o conserto)
+
+O que fechou o diagnóstico foi **ler o registro do nginx no servidor**: os pedidos do Google **nunca chegavam**. Se não chegam ao servidor, o problema está antes dele — e antes dele só existe a Cloudflare. Isso descartou de uma vez toda a hipótese de aplicação.
+
+⚠️ **Uma pista que quase me enganou:** simulei o Googlebot a partir de Dallas e recebi 200. Não provava nada — o robô simulado **não é verificado**, então a regra não o pegava. Testar como robô falso não testa a regra de robô verdadeiro.
+
+### Painel da Cloudflare dele
+Não tem "Security Events" — só **Overview, Analytics, Web assets, Security rules, Settings**. As regras próprias ficam em **Security rules**.
+
+## 🔤 TÍTULO E DESCRIÇÃO PRÓPRIOS EM CADA PÁGINA (2026-08-08) — NO AR
+
+Com a porta aberta, apareceu o problema seguinte: **as 224 mil páginas se apresentavam ao Google com o MESMO título**, `iCompras — Comparador de precios`, e a mesma descrição — as do layout. Página repetida o buscador não guarda: ele indexa uma e descarta o resto. Nenhum mapa de site resolve isso.
+
+**Onde ficou:** `apps/web/src/lib/seo.ts` — `paginaMeta()` monta tudo num lugar só (título, descrição, canônico, hreflang, cartão de compartilhamento). Os textos ficam no bloco `seo` dos três `apps/web/messages/*.json`.
+
+O que cada página passou a ter:
+- **Produto** — `"<nome> — preço no Paraguai | iCompras"`; descrição com o preço e em quantas lojas. O sufixo só entra quando o nome tem ≤ 42 caracteres (título cortado pelo Google não ajuda).
+- **Categoria** — nome + quantos produtos; da página 2 em diante o número entra no título e no canônico.
+- **Loja** — nome + cidade (é assim que se procura: "Cellshop Ciudad del Este").
+- **JSON-LD**: `Product` + `AggregateOffer` (menor/maior preço, quantas lojas) e `BreadcrumbList` no produto; `Store` com endereço na loja; `Organization` + `WebSite`/SearchAction na home.
+- **Fora do índice**: busca (`noindex, follow` — texto digitado gera infinitas páginas), administração e páginas de conta.
+
+### Três armadilhas que custaram tempo
+1. ⚠️ **`title.template` do layout NÃO vale para a página que mora na mesma pasta dele.** A home saía sem o `| iCompras` e todas as outras com. Por isso `paginaMeta` usa `title: { absolute: ... }` e monta o nome inteiro — não depende do modelo.
+2. ⚠️ **O canônico aponta para a PRÓPRIA página, no idioma dela.** Apontar tudo para o português diria ao Google que espanhol e inglês não existem. Quem liga os três é o `hreflang`, não o canônico. Tem `x-default` → pt-BR.
+3. ⚠️ **JSON-LD escapa o sinal de "menor que"** (`jsonLd()` em seo.ts). O nome do produto vem de fora, do coletor; um nome com tag de fechamento fecharia o `<script>` e o resto viraria HTML.
+
+**Conferido no ar**, pelo domínio de verdade e com identidade de Googlebot: produto, categoria, loja, home nos 3 idiomas, canônico, hreflang e JSON-LD. Ver [[icompras-pendencias]].
 
 **Decisões fechadas (2026-07-27):**
 - Stack: Next.js 16 + Tailwind + next-intl (pt-BR/es/en), Fastify (API), MariaDB 12.1, Meilisearch (busca), sharp+R2/CDN (imagens).

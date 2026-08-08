@@ -11,6 +11,23 @@ import { registrarVisita } from "@/lib/analytics";
 import { getRates } from "@/lib/rates";
 import { MoneyStack } from "@/components/MoneyStack";
 import { getQuedas } from "@/lib/quedas";
+import type { Metadata } from "next";
+import { paginaMeta, enderecoDe, jsonLd, SITE_URL } from "@/lib/seo";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "seo" });
+  return paginaMeta({
+    locale,
+    caminho: "/",
+    titulo: t("homeTitle"),
+    descricao: t("homeDesc"),
+  });
+}
 
 export default async function HomePage({
   params,
@@ -34,8 +51,37 @@ export default async function HomePage({
   const blocksTitle =
     locale === "es" ? "Lo más buscado en Paraguay" : locale === "en" ? "Most searched in Paraguay" : "Mais procurados no Paraguai";
 
+  // Identidade do site para o Google. Duas coisas: quem é o iCompras (para o
+  // nome e a logo aparecerem no painel lateral da busca) e que o site tem
+  // busca própria — o que pode render uma caixa de pesquisa dentro do próprio
+  // resultado do Google.
+  const fichaDoSite = [
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      name: "iCompras",
+      url: SITE_URL,
+      logo: `${SITE_URL}/logo-full.png`,
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      name: "iCompras",
+      url: enderecoDe(locale, "/"),
+      potentialAction: {
+        "@type": "SearchAction",
+        target: {
+          "@type": "EntryPoint",
+          urlTemplate: `${enderecoDe(locale, "/search")}?q={search_term_string}`,
+        },
+        "query-input": "required name=search_term_string",
+      },
+    },
+  ];
+
   return (
     <div>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(fichaDoSite) }} />
       {/* Hero + busca */}
       <section className="bg-gradient-to-b from-brand-green-light via-white to-slate-50">
         {/* Só o espaço de cima fica aqui; o de baixo saiu para a faixa de

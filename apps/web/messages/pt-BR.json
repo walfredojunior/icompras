@@ -191,5 +191,22 @@
     "sort_economia": "Maior economia",
     "sort_desconto": "Maior desconto",
     "sort_barato": "Menor preço"
+  },
+  "seo": {
+    "homeTitle": "Comparador de preços do Paraguai",
+    "homeDesc": "Compare preços das lojas do Paraguai: celulares, eletrônicos, perfumes e mais. Veja onde está mais barato em Ciudad del Este e Salto del Guairá.",
+    "productTitle": "{name} — preço no Paraguai",
+    "productDesc": "Compare o preço de {name} em {n, plural, one {# loja} other {# lojas}} do Paraguai. A partir de {price}. Veja onde está mais barato e o histórico de preços no iCompras.",
+    "productDescSemOferta": "{name}: preços, fotos, ficha técnica e onde comprar no Paraguai. Compare as lojas de Ciudad del Este, Salto del Guairá e Pedro Juan Caballero no iCompras.",
+    "categoryTitle": "{name} — preços no Paraguai",
+    "categoryDesc": "Compare preços de {name} nas lojas do Paraguai. {n, number} produtos com preço atualizado todo dia. Veja onde está mais barato no iCompras.",
+    "storeTitle": "{name} — preços e ofertas",
+    "storeDesc": "Produtos da {name} com preço atualizado todo dia. Compare com as outras lojas do Paraguai e veja onde está mais barato no iCompras.",
+    "storesTitle": "Lojas do Paraguai",
+    "storesDesc": "Todas as lojas de Ciudad del Este, Salto del Guairá e Pedro Juan Caballero com preços comparados no iCompras.",
+    "categoriesTitle": "Categorias",
+    "categoriesDesc": "Navegue por categoria e compare preços das lojas do Paraguai: celulares, informática, perfumes, eletrodomésticos e mais.",
+    "searchTitle": "Busca",
+    "searchDesc": "Busque um produto e compare o preço nas lojas do Paraguai."
   }
 }

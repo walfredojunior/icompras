@@ -1,6 +1,8 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Link } from "@/i18n/navigation";
+import { paginaMeta, enderecoDe, cortar, precoUsd, jsonLd } from "@/lib/seo";
 import { BackButton } from "@/components/BackButton";
 import { getProductDetail, getRelatedProducts, getPriceHistory, getProductBreadcrumb } from "@/lib/products";
 import { getCurrentUser } from "@/lib/auth";
@@ -15,6 +17,58 @@ import { EsqueletoRelacionados } from "@/components/Esqueleto";
 // import { PriceAlertForm } from "@/components/PriceAlertForm";  // volta com o alerta
 import { FavoriteButton } from "@/components/FavoriteButton";
 import { isFavorite } from "@/lib/favorites";
+
+/** Os preços reais desta página (loja sem oferta não tem preço). */
+function precosDe(lojas: Array<{ priceUsd: number | null }>) {
+  return lojas
+    .map((l) => l.priceUsd)
+    .filter((p): p is number => typeof p === "number" && p > 0)
+    .sort((a, b) => a - b);
+}
+
+// TÍTULO E DESCRIÇÃO DE CADA PRODUTO.
+//
+// Isto é o que decide se as 224 mil páginas entram ou não no Google. Até
+// 08/08/2026 todas se apresentavam como "iCompras — Comparador de precios",
+// palavra por palavra — e página repetida o buscador não indexa.
+//
+// `getProductDetail` é chamado aqui E na página. Não é consulta dobrada: está
+// dentro de `unstable_cache` (ver lib/products.ts), então a segunda chamada
+// pega o resultado guardado.
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string; slug: string }>;
+}): Promise<Metadata> {
+  const { locale, slug } = await params;
+  const product = await getProductDetail(slug);
+  const t = await getTranslations({ locale, namespace: "seo" });
+
+  // Endereço que não existe: nada a indexar.
+  if (!product) return { title: t("searchTitle"), robots: { index: false, follow: false } };
+
+  const precos = precosDe(product.stores);
+  const preco = precoUsd(product.minUsd ?? (precos.length ? precos[0] : null));
+
+  // O nome vem na frente porque é o que a pessoa digita na busca. O sufixo
+  // "— preço no Paraguai" só entra quando sobra espaço: título cortado ao meio
+  // pelo Google não ajuda ninguém.
+  const nome = cortar(product.name, 60);
+  const titulo = product.name.length <= 42 ? t("productTitle", { name: nome }) : nome;
+
+  const descricao =
+    preco && precos.length
+      ? t("productDesc", { name: cortar(product.name, 55), n: precos.length, price: preco })
+      : t("productDescSemOferta", { name: cortar(product.name, 70) });
+
+  return paginaMeta({
+    locale,
+    caminho: `/produto/${slug}`,
+    titulo,
+    descricao,
+    imagem: product.image_url,
+  });
+}
 
 export default async function ProductPage({
   params,
@@ -48,8 +102,58 @@ export default async function ProductPage({
   ].filter(Boolean) as Array<{ k: string; v: string }>;
   const specs = product.specs.length ? product.specs : derivedSpecs;
 
+  // FICHA DO PRODUTO PARA O GOOGLE (JSON-LD).
+  //
+  // O título e a descrição dizem ao buscador do que a página trata; isto aqui
+  // entrega os DADOS: marca, foto, menor e maior preço e em quantas lojas. É o
+  // que permite o resultado aparecer com preço e estrela em vez de duas linhas
+  // de texto — e num comparador de preços é justamente esse o diferencial.
+  const precos = precosDe(product.stores);
+  const ficha = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: product.name,
+    url: enderecoDe(locale, `/produto/${slug}`),
+    ...(product.image_url ? { image: [product.image_url] } : {}),
+    ...(product.brand ? { brand: { "@type": "Brand", name: product.brand } } : {}),
+    // Sem preço real não se declara oferta: anunciar oferta vazia é motivo de
+    // penalidade nos dados estruturados do Google.
+    ...(precos.length
+      ? {
+          offers: {
+            "@type": "AggregateOffer",
+            priceCurrency: "USD",
+            lowPrice: precos[0],
+            highPrice: precos[precos.length - 1],
+            offerCount: precos.length,
+            availability: "https://schema.org/InStock",
+          },
+        }
+      : {}),
+  };
+
+  // A mesma trilha que aparece no topo da página, só que legível pelo Google —
+  // é o que faz o resultado mostrar "iCompras › Celulares › iPhone" no lugar do
+  // endereço cru.
+  const trilha = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: homeLabel, item: enderecoDe(locale, "/") },
+      ...crumbs.map((c, i) => ({
+        "@type": "ListItem",
+        position: i + 2,
+        name: c.name,
+        item: enderecoDe(locale, `/categorias/${c.slug}`),
+      })),
+      { "@type": "ListItem", position: crumbs.length + 2, name: product.name },
+    ],
+  };
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(ficha) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(trilha) }} />
       <nav className="mb-2 flex flex-wrap items-center gap-1 text-xs text-slate-400">
         <Link href="/" className="hover:text-brand-navy">
           {homeLabel}

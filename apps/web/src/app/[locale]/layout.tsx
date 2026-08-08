@@ -4,6 +4,7 @@ import { NextIntlClientProvider, hasLocale } from "next-intl";
 import { getMessages, setRequestLocale } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
+import { SITE_URL } from "@/lib/seo";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { ServiceWorker } from "@/components/ServiceWorker";
@@ -14,7 +15,18 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "iCompras — Comparador de precios",
+  // Base para os endereços dos metadados. Sem ela o Next avisa no build e
+  // monta os endereços de compartilhamento com "localhost".
+  metadataBase: new URL(SITE_URL),
+
+  // `template` vale para TODA página abaixo deste layout: cada uma devolve só
+  // o próprio título ("iPhone 15 — preço no Paraguai") e o " | iCompras" é
+  // acrescentado aqui. `default` é o que aparece se alguma página esquecer —
+  // era o título único de todas elas até 08/08/2026.
+  title: {
+    default: "iCompras — Comparador de precios del Paraguay",
+    template: "%s | iCompras",
+  },
   description: "Compará precios de las mejores tiendas del Paraguay.",
   // Instalação na tela do celular (PWA). O <link rel="manifest"> é colocado
   // automaticamente a partir de src/app/manifest.ts.

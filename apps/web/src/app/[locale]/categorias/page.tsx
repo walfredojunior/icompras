@@ -3,6 +3,23 @@ import { Link } from "@/i18n/navigation";
 import { CategorySidebar } from "@/components/CategorySidebar";
 import { getAllCategories } from "@/lib/categories";
 import { categoryIcon } from "@/lib/categoryIcons";
+import type { Metadata } from "next";
+import { paginaMeta } from "@/lib/seo";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "seo" });
+  return paginaMeta({
+    locale,
+    caminho: "/categorias",
+    titulo: t("categoriesTitle"),
+    descricao: t("categoriesDesc"),
+  });
+}
 
 export default async function CategoriasPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;

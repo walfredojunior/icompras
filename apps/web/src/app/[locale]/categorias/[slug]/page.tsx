@@ -1,5 +1,7 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { paginaMeta } from "@/lib/seo";
 import { LayoutGrid } from "lucide-react";
 import { CategorySidebar } from "@/components/CategorySidebar";
 import { ProductCard } from "@/components/ProductCard";
@@ -15,6 +17,41 @@ import { registrarVisita } from "@/lib/analytics";
 import { getRates } from "@/lib/rates";
 
 const ORDENACOES: SortOption[] = ["price_asc", "price_desc", "stores"];
+
+export async function generateMetadata({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ locale: string; slug: string }>;
+  searchParams: Promise<{ page?: string; sort?: string }>;
+}): Promise<Metadata> {
+  const { locale, slug } = await params;
+  const info = await getCategoryInfo(slug, locale);
+  const t = await getTranslations({ locale, namespace: "seo" });
+  if (!info) return { title: t("categoriesTitle"), robots: { index: false, follow: false } };
+
+  const sp = await searchParams;
+  const page = Math.max(1, Number(sp.page ?? 1) || 1);
+
+  // Só o total; `perPage: 1` para não trazer produto nenhum de volta.
+  const { total } = await search("", { categories: info.descendantSlugs, perPage: 1 });
+
+  // Da página 2 em diante o número entra no título e no endereço canônico.
+  // Sem isso, as 20 páginas de uma categoria grande se apresentariam com o
+  // mesmo título e o Google guardaria só uma.
+  const pagina = locale === "en" ? "page" : "página";
+  const titulo =
+    page > 1
+      ? `${t("categoryTitle", { name: info.name })} — ${pagina} ${page}`
+      : t("categoryTitle", { name: info.name });
+
+  return paginaMeta({
+    locale,
+    caminho: page > 1 ? `/categorias/${slug}?page=${page}` : `/categorias/${slug}`,
+    titulo,
+    descricao: t("categoryDesc", { name: info.name, n: total }),
+  });
+}
 
 export default async function CategoryPage({
   params,

@@ -1,11 +1,40 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getStore, getStoreProducts } from "@/lib/stores";
+import { paginaMeta, enderecoDe, cortar, jsonLd } from "@/lib/seo";
 import { registrarVisita } from "@/lib/analytics";
 import { getRates } from "@/lib/rates";
 import { ProductCard } from "@/components/ProductCard";
 import { BackButton } from "@/components/BackButton";
 import { Link } from "@/i18n/navigation";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string; slug: string }>;
+}): Promise<Metadata> {
+  const { locale, slug } = await params;
+  const store = await getStore(slug);
+  const t = await getTranslations({ locale, namespace: "seo" });
+  if (!store) return { title: t("storesTitle"), robots: { index: false, follow: false } };
+
+  // A cidade entra no título porque é assim que se procura: "Cellshop Ciudad
+  // del Este", não "Cellshop" sozinho.
+  const nome = store.city ? `${store.name} — ${store.city}` : store.name;
+
+  return paginaMeta({
+    locale,
+    caminho: `/loja/${slug}`,
+    titulo: t("storeTitle", { name: nome }),
+    // A descrição escrita pela própria loja vem primeiro, cortada em 160
+    // caracteres — que é o que o Google mostra.
+    descricao: store.description?.trim()
+      ? cortar(store.description, 160)
+      : t("storeDesc", { name: store.name }),
+    imagem: store.logo,
+  });
+}
 
 export default async function StorePage({
   params,
@@ -27,8 +56,32 @@ export default async function StorePage({
 
   const mapSrc = `https://maps.google.com/maps?q=${encodeURIComponent(store.mapsQuery)}&output=embed`;
 
+  // Ficha da loja para o Google. Loja é negócio com endereço físico: declarada
+  // assim, ela pode aparecer no mapa e nas buscas do tipo "loja de celular em
+  // Ciudad del Este" — que é de onde vem o visitante que já está na cidade.
+  const fichaDaLoja = {
+    "@context": "https://schema.org",
+    "@type": "Store",
+    name: store.name,
+    url: enderecoDe(locale, `/loja/${slug}`),
+    ...(store.logo ? { image: store.logo } : {}),
+    ...(store.phone ? { telephone: store.phone } : {}),
+    ...(store.website ? { sameAs: [store.website] } : {}),
+    ...(store.address || store.city
+      ? {
+          address: {
+            "@type": "PostalAddress",
+            ...(store.address ? { streetAddress: store.address } : {}),
+            ...(store.city ? { addressLocality: store.city } : {}),
+            addressCountry: "PY",
+          },
+        }
+      : {}),
+  };
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(fichaDaLoja) }} />
       <nav className="mb-2 flex flex-wrap items-center gap-1 text-xs text-slate-400">
         <Link href="/" className="hover:text-brand-navy">
           {locale === "es" ? "Inicio" : locale === "en" ? "Home" : "Início"}

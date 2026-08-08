@@ -191,5 +191,22 @@
     "sort_economia": "Biggest savings",
     "sort_desconto": "Biggest discount",
     "sort_barato": "Lowest price"
+  },
+  "seo": {
+    "homeTitle": "Paraguay price comparison",
+    "homeDesc": "Compare prices across stores in Paraguay: phones, electronics, perfumes and more. Find the cheapest in Ciudad del Este and Salto del Guairá.",
+    "productTitle": "{name} — price in Paraguay",
+    "productDesc": "Compare the price of {name} across {n, plural, one {# store} other {# stores}} in Paraguay. From {price}. See where it is cheapest and track price history on iCompras.",
+    "productDescSemOferta": "{name}: prices, photos, specs and where to buy in Paraguay. Compare stores in Ciudad del Este, Salto del Guairá and Pedro Juan Caballero on iCompras.",
+    "categoryTitle": "{name} — prices in Paraguay",
+    "categoryDesc": "Compare {name} prices across stores in Paraguay. {n, number} products with prices updated every day. Find the cheapest on iCompras.",
+    "storeTitle": "{name} — prices and deals",
+    "storeDesc": "Products from {name} with prices updated every day. Compare with other stores in Paraguay and find the cheapest on iCompras.",
+    "storesTitle": "Stores in Paraguay",
+    "storesDesc": "Every store in Ciudad del Este, Salto del Guairá and Pedro Juan Caballero with prices compared on iCompras.",
+    "categoriesTitle": "Categories",
+    "categoriesDesc": "Browse by category and compare prices across stores in Paraguay: phones, computers, perfumes, appliances and more.",
+    "searchTitle": "Search",
+    "searchDesc": "Search for a product and compare its price across stores in Paraguay."
   }
 }

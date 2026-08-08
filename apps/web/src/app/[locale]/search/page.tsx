@@ -1,5 +1,7 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
+import type { Metadata } from "next";
 import { search, type SortOption } from "@/lib/search";
+import { cortar } from "@/lib/seo";
 import { getActiveBanners } from "@/lib/banners";
 import { registrarVisita, registrarBusca } from "@/lib/analytics";
 import { getRates } from "@/lib/rates";
@@ -13,6 +15,31 @@ import { Paginacao } from "@/components/Paginacao";
 import { FiltrosMobile } from "@/components/FiltrosMobile";
 
 const ORDENACOES: SortOption[] = ["relevance", "price_asc", "price_desc", "stores"];
+
+// A BUSCA FICA DE FORA DO ÍNDICE — de propósito.
+//
+// Cada texto digitado gera um endereço novo, então são infinitas páginas
+// possíveis, quase todas repetindo produtos que já têm página própria. O
+// Google chama isso de "resultado de busca dentro do site" e desaconselha
+// indexar. `follow` continua ligado: ele segue os links dos produtos, só não
+// guarda esta página.
+export async function generateMetadata({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ locale: string }>;
+  searchParams: Promise<{ q?: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const { q } = await searchParams;
+  const t = await getTranslations({ locale, namespace: "seo" });
+  const termo = (q ?? "").trim();
+  return {
+    title: termo ? `${cortar(termo, 60)} — ${t("searchTitle")}` : t("searchTitle"),
+    description: t("searchDesc"),
+    robots: { index: false, follow: true },
+  };
+}
 
 export default async function SearchPage({
   params,
