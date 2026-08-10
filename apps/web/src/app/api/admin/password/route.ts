@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { getCurrentAdmin, checkAdminCredentials, setAdminPassword } from "@/lib/adminauth";
+import {
+  getCurrentAdmin,
+  checkAdminCredentials,
+  setAdminPassword,
+  createAdminSession,
+} from "@/lib/adminauth";
 
 const MINIMO = 10;
 
@@ -28,5 +33,10 @@ export async function POST(req: Request) {
   }
 
   await setAdminPassword(novaSenha);
-  return NextResponse.json({ ok: true });
+  // Trocar a senha derruba TODAS as sessões (ver setAdminPassword) — inclusive
+  // esta. Sem reemitir aqui, o dono seria desconectado no instante em que
+  // trocasse a própria senha, o que pareceria defeito. Ele continua; os outros
+  // aparelhos caem.
+  await createAdminSession();
+  return NextResponse.json({ ok: true, aviso: "Todas as outras sessões foram encerradas." });
 }

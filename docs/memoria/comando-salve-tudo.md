@@ -9,7 +9,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 76bdc89b-fae2-47aa-b6c1-ce2496535a4b
-  modified: 2026-08-08T01:51:01.456Z
+  modified: 2026-08-10T19:57:47.345Z
 ---
 
 Combinado com ele em **07/08/2026**: **"quando eu digitar `salve tudo`, você salva a memória das coisas que fizemos e envia as atualizações pro github"**.
@@ -40,6 +40,10 @@ Combinado com ele em **07/08/2026**: **"quando eu digitar `salve tudo`, você sa
 **Conferir ANTES de commitar** que nenhum dos VALORES da tabela sobrou na cópia.
 
 ⚠️ **Procurar o valor INTEIRO, não um pedaço dele.** Em 07/08/2026 a conferência acusou senha na cópia e não havia nenhuma: ela casou com a palavra `guthub` escrita **dentro desta própria instrução**. Verificador que grita por causa do texto do verificador é alarme falso — e alarme falso é o que faz a gente parar de olhar.
+
+⚠️ **A CONFERÊNCIA DO DIFF SÓ OLHA LINHAS ACRESCENTADAS (`^+`), NUNCA O DIFF INTEIRO.** Em 10/08/2026 removi uma senha padrão que estava no código; a trava barrou o envio porque a linha **apagada** aparece no diff com `-` na frente. Conferir o diff todo faz o ato de REMOVER um segredo parecer o ato de adicioná-lo — e aí a trava impede justamente o commit que conserta. O comando certo é `git diff --cached | grep "^+" | grep -iE "<segredos>"`.
+
+⚠️ **REENVIAR O PACOTE DA MEMÓRIA A CADA TENTATIVA.** O roteiro faz `rm -rf docs/memoria` e depois extrai o `.tgz`, apagando o arquivo em seguida. Se a primeira tentativa abortar (por exemplo, na trava de senha) e eu reexecutar o mesmo roteiro, o `rm -rf` roda de novo, o `.tgz` já não existe, e **a pasta fica vazia** — a mesma falha que em 08/08/2026 subiu uma `docs/memoria` vazia. Aconteceu de novo em 10/08. O commit abortou nas duas vezes, então nada foi perdido no GitHub, mas **conferir sempre `git status` antes de commitar: linhas `D docs/memoria/...` significam que o pacote não chegou.**
 
 ⚠️ **Se a conferência acusar, PARAR.** Naquele dia o roteiro avisou e enviou assim mesmo, porque as duas coisas estavam em comandos separados. O envio tem de ser condicionado à conferência passar, não vir depois dela.
 

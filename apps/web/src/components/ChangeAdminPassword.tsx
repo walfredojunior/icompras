@@ -13,6 +13,7 @@ export function ChangeAdminPassword({ email }: { email: string }) {
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [pronto, setPronto] = useState(false);
+  const [encerrando, setEncerrando] = useState(false);
 
   const curta = nova.length > 0 && nova.length < MINIMO;
   const diferente = confirmacao.length > 0 && nova !== confirmacao;
@@ -140,6 +141,32 @@ export function ChangeAdminPassword({ email }: { email: string }) {
         Não há recuperação por e-mail: o endereço do administrador é apenas um identificador. Se a senha for
         perdida, ela precisa ser redefinida direto no servidor.
       </p>
+
+      {/* SAIR DE TODOS OS APARELHOS.
+          Fica separado, com moldura própria e em âmbar: não é parte do
+          formulário de senha e não pode ser clicado por engano por quem só
+          queria trocar a senha — ele desconecta este navegador também. */}
+      <div className="mt-8 rounded-xl border border-amber-200 bg-amber-50 p-4">
+        <p className="text-sm font-semibold text-amber-900">Sair de todos os aparelhos</p>
+        <p className="mt-1 text-xs leading-relaxed text-amber-800">
+          Encerra <strong>todas</strong> as sessões abertas, em qualquer computador ou celular — inclusive
+          esta. Use se achar que alguém entrou, ou se esqueceu o painel aberto em outro lugar. Depois é só
+          entrar de novo com a sua senha.
+        </p>
+        <button
+          type="button"
+          onClick={async () => {
+            if (!confirm("Encerrar todas as sessões? Você vai precisar entrar de novo.")) return;
+            setEncerrando(true);
+            await fetch("/api/admin/sessoes", { method: "POST" }).catch(() => {});
+            window.location.href = "/pt-BR/admin/entrar";
+          }}
+          disabled={encerrando}
+          className="mt-3 rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+        >
+          {encerrando ? "Encerrando…" : "Encerrar todas as sessões"}
+        </button>
+      </div>
     </div>
   );
 }

@@ -658,6 +658,19 @@ function nomeConferivel(nome: string) {
   return nome.trim().length >= 4;
 }
 
+/**
+ * A loja aparece na página como VENDEDORA?
+ *
+ * ⚠ Compara o nome INTEIRO, entre aspas, na etiqueta `'advertiser': '...'`.
+ * A primeira versão procurava o nome solto no HTML, e em 10/08/2026 isso
+ * acusou "Mega Eletro" como erro por ele estar dentro de "Mega Eletrônicos" —
+ * um alarme falso em 4, num total de 25. Verificador que grita à toa é
+ * verificador que a gente aprende a ignorar, e aí ele não serve para nada.
+ */
+function apareceComoVendedora(html: string, loja: string) {
+  return html.includes(`'advertiser': '${loja.trim()}'`);
+}
+
 async function talvezConferirAsBaixas(): Promise<void> {
   const agora = new Date();
   if (agora.getHours() !== CONF_HORA) return;
@@ -707,7 +720,6 @@ async function talvezConferirAsBaixas(): Promise<void> {
     if (html.length < 5000) continue;
     anuncios++;
 
-    const dentro = html.toLowerCase();
     const lojas = await pool.query(
       `SELECT s.name AS nome, o.in_stock AS noAr
          FROM offer o JOIN store s ON s.id = o.store_id
@@ -717,7 +729,7 @@ async function talvezConferirAsBaixas(): Promise<void> {
     for (const l of lojas) {
       const nome = String(l.nome);
       if (!nomeConferivel(nome)) continue;
-      const aparece = dentro.includes(nome.toLowerCase());
+      const aparece = apareceComoVendedora(html, nome);
       if (Number(l.noAr) === 0) {
         conferidas++;
         if (aparece) {
@@ -748,6 +760,79 @@ async function talvezConferirAsBaixas(): Promise<void> {
   // Só vira incidente quando há erro; conferência limpa não polui o histórico.
   if (erradas) await registrar("baixas", "conferencia-acusou", detalhe, "nenhuma");
   console.log(`conferência das baixas: ${detalhe}`);
+}
+
+// O VÍDEO DA PONTE AINDA EXISTE?
+//
+// A câmera ao vivo da home é de um canal de TERCEIROS (ver a seção do vídeo na
+// memória). Se ele apagar a transmissão, torná-la privada ou desligar o
+// compartilhamento, a caixinha passa a mostrar erro em vez da ponte — e o dono
+// só descobriria abrindo o site.
+//
+// ⚠ O QUE ISTO DETECTA, E O QUE NÃO DETECTA. Uso o oEmbed do YouTube, que
+// responde 200 enquanto o vídeo existir e puder ser embutido. Isso pega vídeo
+// apagado, privado ou com embed bloqueado — as falhas que quebram a tela.
+//
+// **Não pega transmissão que simplesmente ACABOU**: para o YouTube ela vira um
+// vídeo gravado normal, e o oEmbed segue devolvendo 200. Saber que não está
+// mais ao vivo exigiria ler a página do vídeo, e o YouTube devolve
+// "LOGIN_REQUIRED" para pedidos vindos de servidor (testado em 08/08/2026).
+// Prefiro entregar a metade que funciona a fingir que cobre tudo.
+const VIDEO_HORA = num(process.env.GUARD_VIDEO_HORA, 6);
+
+async function talvezConferirOVideo(): Promise<void> {
+  const agora = new Date();
+  if (agora.getHours() !== VIDEO_HORA) return;
+  const [j] = await pool.query(
+    "SELECT COUNT(*) n FROM watchdog_log WHERE target = 'video' AND happened_at > NOW() - INTERVAL 12 HOUR",
+  );
+  if (Number(j?.n ?? 0) > 0) return;
+
+  const banners = await pool.query(
+    "SELECT id, title, link_url FROM banner WHERE placement = 'video_flutuante' AND active = 1",
+  );
+  if (!banners.length) return;
+
+  for (const b of banners) {
+    const url = String(b.link_url ?? "");
+    if (!url) continue;
+
+    let vivo = false;
+    try {
+      const res = await buscarNaWeb(
+        `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`,
+        { signal: AbortSignal.timeout(20_000) },
+      );
+      vivo = res.ok;
+    } catch {
+      vivo = false; // rede falhou: trata como suspeita, não como certeza
+    }
+
+    if (vivo) continue;
+
+    // DUAS FALHAS ANTES DE DESLIGAR. Uma falha isolada pode ser instabilidade
+    // do YouTube ou da nossa rede, e desligar o banner por causa disso seria
+    // trocar um problema pequeno por outro. Só desliga se ontem também falhou.
+    const [ontem] = await pool.query(
+      `SELECT COUNT(*) n FROM watchdog_log
+        WHERE target = 'video' AND status = 'suspeito'
+          AND detail LIKE ? AND happened_at > NOW() - INTERVAL 3 DAY`,
+      [`%${url}%`],
+    );
+    if (Number(ontem?.n ?? 0) === 0) {
+      await registrar("video", "suspeito", `não respondeu: ${url}`, "nenhuma");
+      continue;
+    }
+
+    await pool.query("UPDATE banner SET active = 0 WHERE id = ?", [b.id]);
+    await registrar(
+      "video",
+      "desligado",
+      `"${b.title}" saiu do ar no YouTube (segunda falha seguida) — banner desativado`,
+      "banner-desativado",
+    );
+    console.log(`vídeo "${b.title}" fora do ar no YouTube — desliguei o banner`);
+  }
 }
 
 async function talvezAuditar(): Promise<void> {
@@ -802,6 +887,7 @@ async function verificar(): Promise<void> {
   const saida = await conferirIpDaSaida();
   await talvezTirarDoArPorTempo();
   await talvezConferirAsBaixas();
+  await talvezConferirOVideo();
   await talvezAuditar();
 
   const problemas = [banco, laco, coletor, robos, site, vps, atrasados].filter(

@@ -1,0 +1,22 @@
+-- A partir de quando uma sessão de administrador vale.
+--
+-- Contexto: em 04/08/2026 uma auditoria do login provou que **trocar a senha
+-- não expulsava ninguém**. Quem já estivesse dentro continuava dentro, para
+-- sempre — o "Sair" também não desconectava de verdade, e o cookie não tinha
+-- prazo do lado do servidor. Ele trocou a senha em 08/08 às 10:49 acreditando
+-- ter fechado a porta; na prática, só trancou para quem chegasse depois.
+--
+-- Ficou mais sério em 07/08, quando a página **Admin › Anotações** passou a
+-- guardar as senhas de TODOS os servidores, a pedido dele. A conta de
+-- administrador virou a fechadura da casa inteira.
+--
+-- Como funciona: todo cookie de admin carrega a hora em que nasceu (`iat`).
+-- Sessão com `iat` anterior a esta data é recusada. Trocar a senha empurra a
+-- data para agora — e derruba, de uma vez, toda sessão aberta em qualquer
+-- aparelho. É o mesmo mecanismo do botão "sair de todos os aparelhos".
+--
+-- ⚠ NULL quer dizer "sem corte" — nenhuma sessão é invalidada por esta regra.
+-- É o valor de partida de propósito: aplicar a migração não pode derrubar quem
+-- está trabalhando no painel naquele instante.
+ALTER TABLE admin_user
+  ADD COLUMN sessions_from DATETIME NULL DEFAULT NULL AFTER password_hash;

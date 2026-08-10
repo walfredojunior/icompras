@@ -1012,6 +1012,33 @@ interface Extracted {
   }>;
   logos: Record<string, string>;
   specs: Array<{ k: string; v: string }>;
+  /**
+   * Nomes que a fonte declara nas etiquetas de estatística da própria página
+   * (`'advertiser': 'Fulano'`). Usado SÓ como lista de veto ao tirar oferta do
+   * ar — nunca como fonte de dado. Ver `lerAnunciantes`.
+   */
+  anunciantes: string[];
+}
+
+/**
+ * Tira da página os nomes declarados nas etiquetas `'advertiser'`.
+ *
+ * ⚠ NÃO É UMA LISTA DE LOJAS. Medido em 10/08/2026: essa etiqueta mistura
+ * vendedores com MARCAS. Numa página aparecem "Cellshop" e "Nissei" ao lado de
+ * "Adidas", "Apple" e "Canon"; noutras (as de id longo) vêm 17 etiquetas e
+ * **nenhuma** é loja — só marcas do menu do site.
+ *
+ * Por isso serve para uma coisa só: **impedir** que uma oferta saia do ar.
+ * Como só impede, marca a mais aqui nunca causa remoção errada — no máximo
+ * deixa de remover algo que devia sair, que é o erro barato dos dois.
+ */
+function lerAnunciantes(html: string): string[] {
+  const achados = new Set<string>();
+  for (const m of html.matchAll(/'advertiser':\s*'([^']+)'/g)) {
+    const n = m[1].trim();
+    if (n) achados.add(n);
+  }
+  return [...achados];
 }
 
 // ---------------------------------------------------------------------------
@@ -1172,7 +1199,7 @@ async function extractProductFast(url: string): Promise<Extracted | null> {
   // O anúncio de loja única já é lido por completo aqui (nome, preço, loja,
   // logo) — não cai mais para o navegador. Antes eu devolvia null nesse caso
   // porque não tinha achado o preço no HTML cru.
-  return { name, image, offers, logos, specs };
+  return { name, image, offers, logos, specs, anunciantes: lerAnunciantes(html) };
 }
 
 async function extractProduct(page: Page, url: string): Promise<Extracted> {
@@ -1197,7 +1224,7 @@ async function extractProduct(page: Page, url: string): Promise<Extracted> {
     .catch(() => {
       /* sem preço nesta visita — segue e deixa a lista de espera reconferir */
     });
-  return page.evaluate(() => {
+  const dados = await page.evaluate(() => {
     const name = document.querySelector('meta[property="og:title"]')?.getAttribute("content") ?? document.title;
     const image = document.querySelector('meta[property="og:image"]')?.getAttribute("content") ?? null;
     const logos: Record<string, string> = {};
@@ -1299,8 +1326,16 @@ async function extractProduct(page: Page, url: string): Promise<Extracted> {
         if (k && v) specs.push({ k, v });
       }
     });
-    return { name, image, offers, logos, specs };
+    return { name, image, offers, logos, specs, anunciantes: [] as string[] };
   });
+
+  // As etiquetas 'advertiser' saem do HTML JÁ RENDERIZADO, aqui fora.
+  //
+  // Não dá para fazer isso dentro do `page.evaluate` acima: aquele bloco roda
+  // DENTRO do navegador, onde as funções deste arquivo não existem. Pedir o
+  // conteúdo depois custa uma chamada e mantém a leitura num lugar só.
+  const html = await page.content();
+  return { ...dados, anunciantes: lerAnunciantes(html) };
 }
 
 const catCache = new Map<string, number | null>();
@@ -1925,7 +1960,7 @@ async function ingestProduct(page: () => Promise<Page>, path: string, ourCategor
     presentes.push(storeId);
   }
 
-  await marcarQueSumiram(ext, presentes, descartadas);
+  await marcarQueSumiram(ext, presentes, descartadas, data.anunciantes ?? []);
   return byStore.size;
 }
 
@@ -2034,6 +2069,7 @@ async function marcarQueSumiram(
   ext: string,
   presentes: number[],
   descartadas: Set<string>,
+  anunciantes: string[],
 ): Promise<void> {
   if (!MARCAR_QUE_SUMIU) return;
   // Leitura que não gravou NENHUMA oferta não prova nada — pode ser página
@@ -2042,8 +2078,50 @@ async function marcarQueSumiram(
   if (!presentes.length) return;
   if (await travouAsBaixas()) return;
 
+  // VETO PELAS ETIQUETAS DA FONTE — o conserto da terceira tentativa (10/08/2026).
+  //
+  // As duas primeiras versões erraram 12% e foram desfeitas. A causa: a fonte
+  // lista as lojas POR MODELO, e o coletor lê um modelo só. Nem o escopo por
+  // anúncio nem a exigência de duas faltas resolveram — a loja de outro modelo
+  // some de TODA leitura, então faltar duas vezes não prova nada.
+  //
+  // O que enfim funciona é uma segunda opinião vinda da própria página: as
+  // etiquetas de estatística citam vendedores que a nossa leitura não pegou.
+  // Testado contra os 3 erros conhecidos — teria barrado os três.
+  //
+  // ⚠ DUAS CONDIÇÕES, e a segunda é a que me faltava:
+  //
+  //  (a) loja citada na etiqueta NÃO sai do ar;
+  //
+  //  (b) se NENHUMA loja deste anúncio aparecer na etiqueta, não marca NADA.
+  //      Medido: nas páginas de id longo vêm 17 etiquetas e todas são MARCAS
+  //      (Adidas, Apple, Canon) — nenhum vendedor. Ali a etiqueta não serve de
+  //      opinião, e uma lista vazia de lojas não é "ninguém vende": é "não
+  //      consegui ler". Sem esta condição, o veto seria inútil justamente onde
+  //      eu mais precisava dele, e a regra marcaria tudo.
+  const citados = new Set(anunciantes.map((n) => n.trim().toLowerCase()));
+  const todasDoAnuncio = await pool
+    .query(
+      `SELECT s.name FROM offer o JOIN store s ON s.id = o.store_id
+        WHERE o.external_id = ? AND o.source = 'scraped'`,
+      [ext],
+    )
+    .catch(() => []);
+  const algumaCitada = todasDoAnuncio.some((l: { name: string }) =>
+    citados.has(String(l.name).trim().toLowerCase()),
+  );
+  if (!algumaCitada) return; // a etiqueta não fala de lojas nesta página
+
+  const protegidas = await idsDasLojas(
+    new Set(
+      todasDoAnuncio
+        .map((l: { name: string }) => String(l.name))
+        .filter((n: string) => citados.has(n.trim().toLowerCase())),
+    ),
+  );
+
   const isentas = await idsDasLojas(descartadas);
-  const manter = [...new Set([...presentes, ...isentas])];
+  const manter = [...new Set([...presentes, ...isentas, ...protegidas])];
   const vagas = manter.map(() => "?").join(",");
 
   try {

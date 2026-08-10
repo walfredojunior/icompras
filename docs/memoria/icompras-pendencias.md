@@ -9,7 +9,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 76bdc89b-fae2-47aa-b6c1-ce2496535a4b
-  modified: 2026-08-08T15:18:41.053Z
+  modified: 2026-08-10T08:41:50.368Z
 ---
 
 Estado em **2026-08-08**. Os detalhes de cada item estão em [[icompras-projeto]], na seção do dia em que o assunto apareceu.
@@ -64,6 +64,7 @@ Estado em **2026-08-08**. Os detalhes de cada item estão em [[icompras-projeto]
 ## ⛔ DESCARTADO — NÃO PROPOR DE NOVO
 
 - ❌ ~~**Proxy / VPN / IP rotativo**~~ **ISTO AQUI FICOU ERRADO — ele MUDOU DE IDEIA e mandou construir em 07-08/08/2026.** Está NO AR: servidor em Dallas (InterServer, US$ 3) com Mullvad + dante + tinyproxy, troca de IP a cada 5 horas e também quando leva 403; se Dallas cair o coletor usa o IP da VPS e volta para Dallas quando ela se recuperar. Ver [[icompras-projeto]] e `infra/dallas/` no repositório. **Deixei o item aqui, riscado, como lembrete de que decisão descartada não é decisão eterna** — foi por isso que eu insisti contra e ele decidiu assim mesmo.
+- **Semáforo de fila da Ponte da Amizade por API de trânsito** — ele levantou a ideia em 09/08/2026 e **abandonou em 10/08**, depois da análise. Não chegou a existir código nem conta criada. Guardado só para não refazer o raciocínio: o caminho seria Routes API do Google (tempo com trânsito × tempo livre) ou, mais barato e mais direto, a **TomTom** (velocidade atual × velocidade normal do trecho, com franquia gratuita maior). **O custo nunca foi o problema** — com cache de 20 min o número de consultas não cresce com os visitantes: ~2.000/mês, e dá para travar cota no painel do provedor. **O obstáculo real era outro: ninguém sabe se essas APIs enxergam uma fila de ADUANA**, que é caminhão e pedestre parado, não congestionamento de avenida. Eu tinha proposto medir antes de construir. Ele preferiu não seguir. ⚠️ **Decisão dele, de 10/08 — não é eterna** (ver o item do proxy acima, que eu tinha anotado como descartado e ele mandou construir depois). Só retomar se ELE trouxer o assunto.
 - **Aparar a margem branca das fotos** ("ficou bom assim").
 - **Login social** (Google/Meta/Apple) e login por WhatsApp — analisados em 31/07; ele preferiu não mexer em conta agora.
 - ⚠️ ~~**Bloqueio total por país na Cloudflare — "em 02/08 confirmei que o Googlebot passa".**~~ **ESSA CONFIRMAÇÃO ESTAVA ERRADA e custou semanas de indexação.** A regra dele barrava justamente o Googlebot, e eu "confirmei" que passava porque testei com um Googlebot SIMULADO — que a Cloudflare não considera verificado, então a regra não o pegava. **Lição: teste com robô falso não prova nada sobre regra de robô verdadeiro; o que prova é o registro do nginx mostrando se o pedido chegou.** Detalhes na seção do Google em [[icompras-projeto]].

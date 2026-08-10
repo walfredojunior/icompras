@@ -9,7 +9,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: ce2fa394-0b2c-4043-b6bc-350c598dbbf7
-  modified: 2026-08-08T23:41:45.886Z
+  modified: 2026-08-10T19:52:31.524Z
 ---
 
 **iCompras**: comparador de preços estilo PriceRunner para o Paraguai, com painel B2B (lojas + planos mensais), API de ingestão de listas de preço, camada de IA configurável, e módulo de seed/scraper.
@@ -40,6 +40,19 @@ O que fechou o diagnóstico foi **ler o registro do nginx no servidor**: os pedi
 ### Painel da Cloudflare dele
 Não tem "Security Events" — só **Overview, Analytics, Web assets, Security rules, Settings**. As regras próprias ficam em **Security rules**.
 
+## 🔐 SEGURANÇA DO PAINEL — AS TRÊS FALHAS DE 04/08 FECHADAS (2026-08-10) — NO AR
+
+Ele mandou fazer o que estava nos lembretes permanentes. Migração **051** (`admin_user.sessions_from`) + `lib/adminauth.ts`.
+
+1. **Sessão tem prazo DE VERDADE (7 dias, `ADMIN_SESSION_DAYS`).** Antes o prazo existia só no `maxAge` do cookie — que é conferido pelo navegador, ou seja, do outro lado. Quem guardasse o texto assinado entrava meses depois. Agora o `iat` é conferido no servidor.
+2. **Trocar a senha derruba TODAS as sessões** (`sessions_from = NOW()`), em qualquer aparelho. Era a falha que fazia a troca de senha dele em 08/08 trancar a porta só para quem chegasse depois. ⚠️ A rota `/api/admin/password` **reemite a sessão dele logo em seguida**, senão ele se desconectaria ao trocar a própria senha e pareceria defeito.
+3. **Botão "Sair de todos os aparelhos"** em Admin › Trocar senha (moldura âmbar, separada do formulário) → `POST /api/admin/sessoes`.
+4. **`AUTH_SECRET` virou obrigatório em produção.** Antes caía calado em `"dev-secret-troque"` — chave que está **escrita no código, no GitHub**. Agora falha fechado: sem chave de ≥16 caracteres, `sign`/`verify` recusam e **ninguém entra**. Preferir painel inacessível a painel acessível por qualquer um.
+
+⚠️ **A publicação conferiu o `AUTH_SECRET` ANTES de subir** (tem 64 caracteres) e abortaria se faltasse — senão o próprio deploy trancaria o dono do lado de fora.
+
+⚠️ **`encerrarTodasAsSessoes` é UPDATE, nunca INSERT.** A primeira versão era `INSERT ... ON DUPLICATE KEY` e criaria a linha com `password_hash` VAZIO se não existisse — a partir daí `checkAdminCredentials` compararia contra o hash vazio em vez da senha do `.env`, e o dono ficaria trancado para fora sem entender por quê.
+
 ## 📹 CÂMERA AO VIVO DA PONTE DA AMIZADE NA HOME (2026-08-08) — NO AR
 
 Ideia dele. **Não é publicidade, é utilidade:** brasileiro que vai comprar no Paraguai quer ver a fila da ponte antes de sair de casa. É motivo para voltar ao site todo dia, e nenhum concorrente tem.
@@ -66,7 +79,9 @@ Ideia dele. **Não é publicidade, é utilidade:** brasileiro que vai comprar no
 - 💡 **A capa de uma transmissão ao vivo SE ATUALIZA sozinha** — medido em 08/08: mudou entre 21:04 e 21:05, ~a cada poucos minutos. Ficou sem uso no desenho atual, mas é a razão pela qual a versão 1 mostrava a ponte sem clicar; se um dia quiser esse efeito de volta, o mecanismo existe (`i.ytimg.com/vi/<id>/hqdefault.jpg`, 18 KB).
 - **Endereços aceitos** (`lib/youtube.ts`): `watch?v=`, `youtu.be/`, `/live/`, `/embed/`, `/shorts/` e canal por id `UC...`. ⚠️ **NÃO funciona `youtube.com/@canal/live`** — nesse formato o YouTube não revela o id do vídeo e só uma chave de API resolveria.
 
-⚠️ **O canal é de terceiros.** Se ele encerrar ou trocar de endereço, a caixinha mostra erro em vez da ponte. Não quebra o site. Ofereci fazer o guardião conferir uma vez por dia e desligar o banner sozinho — **ele ainda não pediu**.
+✅ **VIGIA DO CANAL — FEITO em 10/08/2026** (`talvezConferirOVideo` no guardião, às 6h). Confere o oEmbed do YouTube; se falhar **duas vezes seguidas** (para não desligar por instabilidade passageira), **desativa o banner sozinho** e registra em `watchdog_log`.
+
+⚠️ **O QUE ELE NÃO PEGA:** transmissão que simplesmente ACABOU. Para o YouTube ela vira vídeo gravado comum e o oEmbed segue devolvendo 200. Saber que não está mais ao vivo exigiria ler a página do vídeo, e o YouTube devolve `LOGIN_REQUIRED` para pedidos vindos de servidor (testado). Entreguei a metade que funciona em vez de fingir que cobre tudo.
 
 ⚠️ **`[locale]/page.tsx` tem quebra de linha do Windows (CRLF).** Meu script Python casando com `\n` falhou nele. Nesses arquivos, usar a ferramenta de edição, não busca por texto com `\n`.
 
@@ -117,7 +132,25 @@ Poucas horas depois, a conferência automática (que eu tinha acabado de constru
 
 ⚠️ **Há um erro de base de 5% mesmo nos anúncios simples** — o modelo NÃO é a única causa, e a causa restante continua desconhecida. Total: **12%**. As **527 marcações foram todas desfeitas** (um comando).
 
-### ✅ A REGRA ATUAL: DUAS FALTAS, SEPARADAS POR UM DIA (migração 050)
+### ❌ AS DUAS FALTAS **NÃO RESOLVERAM** (medido em 10/08/2026)
+A conferência da manhã seguinte: **25 conferidas, 4 acusadas — 3 erros reais** (o quarto era alarme falso do meu verificador). **12% de novo**, exatamente igual à versão anterior. 2.118 ofertas foram desfeitas.
+
+**Por que a hipótese estava errada:** eu supus que a escolha de modelo variava entre leituras, e que a loja de outro modelo reapareceria antes de ser condenada. Não varia o bastante — a loja de outro modelo some de **toda** leitura, então faltar duas vezes não prova nada.
+
+### ✅ O QUE ENFIM FUNCIONOU: VETO PELAS ETIQUETAS DA FONTE (10/08/2026, 3ª tentativa)
+A página traz etiquetas de estatística `'advertiser': 'Fulano'` que **citam vendedores que a nossa leitura não pegou**. Usadas só para **impedir** remoção, nunca como fonte de dado — assim, errar para mais aqui nunca causa remoção errada.
+
+**Testado ANTES de publicar** (a diferença de método que faltava nas duas tentativas anteriores): contra os 3 erros conhecidos, teria barrado **os três**.
+
+⚠️ **DUAS condições, e a segunda foi descoberta no teste:**
+1. Loja citada na etiqueta não sai do ar.
+2. **Se NENHUMA loja daquele anúncio aparecer na etiqueta, não marca nada.** Nas páginas de id longo vêm 17 etiquetas e **todas são MARCAS** (Adidas, Apple, Canon) — nenhum vendedor. Lista vazia de lojas não é "ninguém vende", é "não consegui ler". Sem isso o veto seria inútil justamente onde eu mais precisava.
+
+**Consequência aceita:** a marcação imediata passa a cobrir uma fatia pequena (na amostra, 1 de 12 páginas teria permissão para marcar). **A varredura por tempo de 21 dias vira o mecanismo principal.** É o certo depois de dois erros de 12%: marcar de menos mostra preço velho, marcar demais tira do ar oferta que existe.
+
+⚠️ **BUG NO MEU PRÓPRIO VERIFICADOR:** ele procurava o nome solto no HTML e acusou "Mega Eletro" por estar dentro de "Mega Eletrônicos" — 1 alarme falso em 4. Agora compara o nome inteiro entre aspas (`apareceComoVendedora`). **Verificador que grita à toa é verificador que se aprende a ignorar.**
+
+### 📌 A REGRA DAS DUAS FALTAS (migração 050) — continua ativa, como camada extra
 Primeira leitura sem a loja **só anota** `offer.ausente_desde`. Se numa leitura seguinte, ≥24 h depois, ela continuar faltando, aí sai do ar. Reapareceu, o `ON DUPLICATE KEY UPDATE` limpa a anotação e a contagem recomeça.
 
 **Por que assim e não um conserto específico do modelo:** modelo, página meio carregada, leitura truncada, lista paginada — tudo se parece com "a loja não está aqui agora" e **tudo se desfaz na leitura seguinte**. Não é preciso adivinhar a causa; e isso também cobre o erro de base de 5% que eu não sei explicar.
