@@ -994,6 +994,43 @@ function extractProductPaths(html: string): string[] {
   return [...set];
 }
 
+// ---------------------------------------------------------------------------
+// DESCOBERTA PELO MAPA DA FONTE
+// ---------------------------------------------------------------------------
+//
+// Por que existe (11/08/2026): o dono não achou o "óleo CBD Koba" no iCompras
+// e achou na fonte. Investigando, o produto está numa categoria chamada
+// "diversos" que simplesmente não estava na nossa lista de 516 — e o coletor
+// descobre produto ANDANDO PELAS CATEGORIAS. O que não está numa delas não
+// existe para ele.
+//
+// Medido antes de mexer, em 600 endereços sorteados de 3 pontos do mapa da
+// fonte: **17% do catálogo dela não estava aqui** — cerca de 45 mil produtos.
+// E a falta crescia ao longo do mapa (13, 26, 63 de 200), ou seja, estávamos
+// ficando para trás justamente no que é novo.
+//
+// Acrescentar "diversos" à mão resolveria o caso dele e deixaria a classe do
+// problema de pé: bastaria a fonte criar outra categoria amanhã. O mapa que
+// ela publica para os buscadores é a lista COMPLETA e oficial — 157 arquivos
+// de 2.000 endereços. Lendo dali, não importa em que categoria o produto está,
+// nem se está em alguma.
+//
+// ⚠ ENTRA COMO "CATEGORIA" DE PROPÓSITO. Cada arquivo do mapa vira uma linha
+// em `crawl_category` com caminho `@mapa/N`. Assim reaproveita inteira a
+// máquina que já existe — a fila, a divisão entre os 4 robôs, o registro de
+// progresso e a retomada de onde parou. Uma fila paralela seria mais uma coisa
+// para o guardião vigiar e para eu manter em pé.
+const PREFIXO_MAPA = "@mapa/";
+
+/** Os endereços de produto dentro de um arquivo do mapa (XML). */
+function extrairCaminhosDoMapa(xml: string): string[] {
+  const set = new Set<string>();
+  const re = /<loc>\s*https?:\/\/[^<\/]+(\/[a-z0-9-]+_{1,2}\d+\/)\s*<\/loc>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xml))) set.add(m[1]);
+  return [...set];
+}
+
 interface Extracted {
   name: string | null;
   image: string | null;
@@ -2420,11 +2457,29 @@ async function crawlCategory(cat: Cat): Promise<number> {
   let processed = 0;
   const seenPaths = new Set<string>();
   let paginaAnterior = new Set<string>();
+  // Um arquivo do mapa é uma lista só, sem paginação: a primeira volta lê
+  // tudo e a segunda encerra.
+  const ehMapa = cat.path.startsWith(PREFIXO_MAPA);
+
   for (let pageN = 1; !MAX_PAGES || pageN <= MAX_PAGES; pageN++) {
-    const html = await fetchText(`${BASE}/${cat.path}/?page=${pageN}`);
-    await sleep(DELAY);
-    if (!html) break;
-    const paths = extractProductPaths(html);
+    let paths: string[];
+    if (ehMapa) {
+      if (pageN > 1) break;
+      const n = cat.path.slice(PREFIXO_MAPA.length);
+      // O primeiro arquivo não leva "?p=1" — o endereço é o nome puro.
+      const xml = await fetchText(
+        `${BASE}/sitemap-produtos.xml${n === "1" ? "" : `?p=${n}`}`,
+      );
+      await sleep(DELAY);
+      if (!xml) break;
+      paths = extrairCaminhosDoMapa(xml);
+      console.log(`  mapa ${n}: ${paths.length} endereço(s)`);
+    } else {
+      const html = await fetchText(`${BASE}/${cat.path}/?page=${pageN}`);
+      await sleep(DELAY);
+      if (!html) break;
+      paths = extractProductPaths(html);
+    }
     if (!paths.length) {
       console.log(`  fim da paginação (página ${pageN}).`);
       break;

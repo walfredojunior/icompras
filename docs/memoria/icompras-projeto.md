@@ -9,7 +9,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: ce2fa394-0b2c-4043-b6bc-350c598dbbf7
-  modified: 2026-08-10T19:52:31.524Z
+  modified: 2026-08-11T10:54:57.761Z
 ---
 
 **iCompras**: comparador de preços estilo PriceRunner para o Paraguai, com painel B2B (lojas + planos mensais), API de ingestão de listas de preço, camada de IA configurável, e módulo de seed/scraper.
@@ -39,6 +39,42 @@ O que fechou o diagnóstico foi **ler o registro do nginx no servidor**: os pedi
 
 ### Painel da Cloudflare dele
 Não tem "Security Events" — só **Overview, Analytics, Web assets, Security rules, Settings**. As regras próprias ficam em **Security rules**.
+
+## 🗺️ 17% DO CATÁLOGO DA FONTE NUNCA CHEGOU AQUI — DESCOBERTA PELO MAPA (2026-08-11) — NO AR
+
+**Como apareceu:** o dono disse que não achava "óleo de cannabis CBD Koba 6000" no iCompras e achava na fonte.
+
+**Medido antes de mexer** (600 endereços sorteados de 3 pontos do mapa da fonte):
+
+| | |
+|---|---|
+| Produtos que a fonte publica | ~313.900 |
+| Produtos no iCompras | 271.000 |
+| **Faltando** | **17% — cerca de 45 mil** |
+
+⚠️ **E a falta CRESCIA ao longo do mapa** (13, 26, 63 de 200): estávamos ficando para trás justamente no que é mais novo.
+
+**A causa:** o coletor descobre produto **andando pelas 516 categorias**. Quem não está em nenhuma delas não existe para ele. A categoria **"diversos"** não estava na nossa lista e sozinha tem **384 páginas na fonte (~12 mil produtos)**.
+
+### ⚠️ UMA CORREÇÃO DELE QUE SALVOU O CONSERTO
+Eu li a trilha da página do produto, vi **"Início › Categorias › Sem categoria"** e concluí que o produto não tinha categoria nenhuma — ia consertar "produtos órfãos". **Ele foi olhar onde o produto está de fato listado e achou "diversos".** A trilha da página não bate com a categoria em que ele aparece. **Lição: a trilha do produto não é fonte confiável de categoria; o que vale é a listagem.** Sem a observação dele, eu teria consertado o problema errado.
+
+### O conserto: ler o mapa oficial da fonte
+`https://www.comprasparaguai.com.br/sitemap.xml` é um índice com **157 arquivos `sitemap-produtos.xml` de 2.000 endereços cada** (o último tem 1.904). É a lista completa que ela publica para os buscadores. Não importa em que categoria o produto está, nem se está em alguma.
+
+💡 **O mapa NÃO está declarado no robots.txt da fonte** — achei tentando `/sitemap.xml` na mão. Vale tentar sempre.
+⚠️ `sitemap-departamentos.xml` tem só **8** entradas (os departamentos-raiz) — **não serve** para enumerar as 516 categorias.
+
+**Como entrou (decisão de projeto):** cada arquivo virou uma linha em `crawl_category` com caminho **`@mapa/N`**, e `crawlCategory` desvia no começo quando vê esse prefixo — lê o XML em vez da página de categoria e segue pelo MESMO laço de produto. Reaproveita a fila, a divisão entre os 4 robôs, o progresso e a retomada. **Uma fila paralela seria mais uma coisa para o guardião vigiar.**
+
+- `extrairCaminhosDoMapa(xml)` — pega `/slug_123/` e `/slug__1234567/` dos `<loc>`.
+- O primeiro arquivo é `sitemap-produtos.xml` **sem** `?p=1`; os demais levam `?p=N`.
+- `our_category = "mapa"` não existe na nossa taxonomia de propósito: o produto tira a categoria do próprio nome (`categoryFromProductSlug`, crawl.ts:1855) e, se não der, fica NULL e o categorizador resolve depois.
+- ⚠️ **O painel agora conta 674 "categorias"** (517 + 157 do mapa) — o número virou "unidades de trabalho", não categorias de verdade.
+
+**Confirmado no ar:** robô leu `@mapa/140` e trouxe 2.000 endereços. **A primeira passagem completa leva de horas a poucos dias** — os já conhecidos são pulados rápido, os ~45 mil novos entram um a um com a pausa de sempre.
+
+🔎 **Para conferir se pegou:** os 4 óleos Koba são `cp-4707853`, `cp-4527212`, `cp-5062017`, `cp-3654681`.
 
 ## 🔐 SEGURANÇA DO PAINEL — AS TRÊS FALHAS DE 04/08 FECHADAS (2026-08-10) — NO AR
 
