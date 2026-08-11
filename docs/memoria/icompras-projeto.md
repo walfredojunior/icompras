@@ -9,7 +9,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: ce2fa394-0b2c-4043-b6bc-350c598dbbf7
-  modified: 2026-08-11T11:43:59.310Z
+  modified: 2026-08-11T12:37:19.152Z
 ---
 
 **iCompras**: comparador de preços estilo PriceRunner para o Paraguai, com painel B2B (lojas + planos mensais), API de ingestão de listas de preço, camada de IA configurável, e módulo de seed/scraper.
@@ -108,6 +108,21 @@ Fica em **Admin › Leads**, num bloco acima da lista completa. `lib/leadsQuente
 ⚠️ **Trava:** se mais de 20% das lojas aparecerem sumidas de uma vez, ou o coletor ficar >24 h sem registrar leitura, a tela **suspende as listas e explica** em vez de mandar ele ligar para trinta lojas que nunca saíram.
 
 💡 **Nada agendado, nada guardado:** tudo sai do `offer.last_seen_at`, calculado quando a tela abre. Sem tabela para encher e sem mais uma coisa para o guardião vigiar.
+
+### 🐌 A TELA FICOU 30 SEGUNDOS PENDURADA (11/08, no mesmo dia)
+Ele: *"clico em lojas leads e não acontece nada"*. **A página não estava quebrada — estava esperando.** Minhas três consultas faziam `GROUP BY` sobre as 343 mil ofertas, **10,4 s cada**.
+
+💡 **"Não acontece nada" é como um sistema LENTO se parece por fora.** Antes de procurar defeito, medir o tempo.
+
+**Conserto, em dois passos:**
+1. **Migração 052** — índice `(store_id, last_seen_at)`. O `MAX(last_seen_at)` por loja passa a sair do próprio índice. ⚠️ Criado com **`ALGORITHM=INPLACE, LOCK=NONE`**: assim a criação **falha em vez de travar** a tabela que os 4 coletores escrevem sem parar. Levou 3,2 s.
+2. **Uma varredura só** (`porLoja()`), sem `JOIN`, devolvendo 1 linha por loja. As três listas saem dela, filtradas em JS; o detalhe caro (preço, telefone, site) só é buscado para as poucas escolhidas.
+
+⚠️ **`cache()` do React em volta da varredura** — as três listas a pedem ao mesmo tempo. Sem isso eu teria trocado três consultas lentas por três rápidas, quando o certo é **uma**.
+
+**Resultado: 10,4 s × 3 → 1,3 s × 1.**
+
+💡 **A lição:** agregar 343 mil linhas para produzir 161 é desperdício por definição. **Quando o resultado é pequeno, o caminho tem de ser pequeno.**
 
 ### Dois erros que o teste no banco real pegou ANTES de publicar
 1. ⚠️ **MariaDB recusa apelido de agregação dentro de outra agregação** — `HAVING tem_hoje <= tinha*0.3` dá *"Reference 'tinha' not supported (reference to group function)"*. Tem de repetir `SUM(...) <= COUNT(*)*0.3`.

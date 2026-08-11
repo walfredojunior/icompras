@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { pool } from "./db";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -66,34 +67,86 @@ function linhaParaLead(r: any): LojaLead {
   };
 }
 
-/**
- * Lojas que pararam de anunciar por completo.
- *
- * `minDias`/`maxDias` permitem separar as CONFIRMADAS (14 dias ou mais) das
- * que estão só EM OBSERVAÇÃO (7 a 14). A separação existe porque 14 dias é um
- * prazo escolhido por segurança, e não uma verdade: uma loja parada há 12 dias
- * provavelmente saiu mesmo, mas eu não quero apresentá-la com a mesma
- * confiança — quem liga oferecendo desconto para quem não saiu passa vergonha.
- */
-export async function lojasQueSairam(minDias = DIAS_SUMIDA, maxDias = 100000): Promise<LojaLead[]> {
+// ---------------------------------------------------------------------------
+// UMA VARREDURA SÓ, E DEPOIS O DETALHE DE POUCAS
+// ---------------------------------------------------------------------------
+//
+// ⚠ A primeira versão fazia TRÊS consultas com `GROUP BY` sobre as 343 mil
+// ofertas, cada uma levando ~10 s. A tela ficava uns 30 segundos pendurada e o
+// dono relatou "clico e não acontece nada" — que é como um sistema lento se
+// parece por fora: quebrado.
+//
+// Agora é UMA varredura, sem `JOIN`, devolvendo uma linha por loja (são 161).
+// O índice `(store_id, last_seen_at)` da migração 052 tira o
+// `MAX(last_seen_at)` do próprio índice. As três listas saem desse mesmo
+// resultado, filtrado aqui. O detalhe caro — faixa de preço, telefone, site —
+// só é buscado para as poucas lojas que entraram em alguma lista.
+//
+// 💡 A lição: agregar 343 mil linhas para produzir 161 é desperdício por
+// definição. Quando o resultado é pequeno, o caminho tem de ser pequeno.
+
+interface Agregado {
+  store_id: number;
+  ofertas: number;
+  agora: number;
+  dias: number;
+}
+
+// ⚠ `cache` do React: as TRÊS listas usam esta mesma varredura, e a página
+// pede as três de uma vez. Sem isto, seriam três varreduras iguais na mesma
+// requisição — eu teria trocado três consultas lentas por três rápidas, quando
+// o certo é UMA. O `cache` guarda a promessa pela duração da requisição, então
+// as outras duas chamadas pegam o resultado pronto.
+const porLoja = cache(async function porLoja(): Promise<Agregado[]> {
   const linhas = await pool
     .query(
-      `SELECT s.slug, s.name, s.city, s.phone, s.external_url AS site,
+      `SELECT store_id,
               COUNT(*) AS ofertas,
-              DATEDIFF(NOW(), MAX(o.last_seen_at)) AS dias,
-              MIN(o.price_usd) AS menor, MAX(o.price_usd) AS maior
-         FROM offer o JOIN store s ON s.id = o.store_id
-        WHERE o.source = 'scraped'
-        GROUP BY s.id
-       HAVING COUNT(*) >= ?
-          AND DATEDIFF(NOW(), MAX(o.last_seen_at)) >= ?
-          AND DATEDIFF(NOW(), MAX(o.last_seen_at)) < ?
-        ORDER BY ofertas DESC
-        LIMIT 60`,
-      [MINIMO_PARA_CONTAR, minDias, maxDias],
+              SUM(last_seen_at > NOW() - INTERVAL 7 DAY) AS agora,
+              DATEDIFF(NOW(), MAX(last_seen_at)) AS dias
+         FROM offer
+        WHERE source = 'scraped'
+        GROUP BY store_id`,
     )
     .catch(() => []);
-  return linhas.map(linhaParaLead);
+  return linhas.map((r: any) => ({
+    store_id: Number(r.store_id),
+    ofertas: Number(r.ofertas ?? 0),
+    agora: Number(r.agora ?? 0),
+    dias: Number(r.dias ?? 0),
+  }));
+});
+
+/** Nome, cidade, contato e faixa de preço — só das lojas já escolhidas. */
+async function detalhar(ags: Agregado[]): Promise<LojaLead[]> {
+  if (!ags.length) return [];
+  const ids = ags.map((a) => a.store_id);
+  const linhas = await pool
+    .query(
+      `SELECT s.id, s.slug, s.name, s.city, s.phone, s.external_url AS site,
+              MIN(o.price_usd) AS menor, MAX(o.price_usd) AS maior
+         FROM store s LEFT JOIN offer o ON o.store_id = s.id AND o.source = 'scraped'
+        WHERE s.id IN (${ids.map(() => "?").join(",")})
+        GROUP BY s.id`,
+      ids,
+    )
+    .catch(() => []);
+  const porId = new Map<number, any>(linhas.map((r: any) => [Number(r.id), r]));
+  return ags
+    .map((a) => {
+      const r = porId.get(a.store_id);
+      return r ? linhaParaLead({ ...r, ofertas: a.ofertas, agora: a.agora, dias: a.dias }) : null;
+    })
+    .filter(Boolean) as LojaLead[];
+}
+
+/** Lojas que pararam de anunciar (o intervalo separa confirmadas de observação). */
+export async function lojasQueSairam(minDias = DIAS_SUMIDA, maxDias = 100000): Promise<LojaLead[]> {
+  const ags = (await porLoja())
+    .filter((a) => a.ofertas >= MINIMO_PARA_CONTAR && a.dias >= minDias && a.dias < maxDias)
+    .sort((x, y) => y.ofertas - x.ofertas)
+    .slice(0, 60);
+  return detalhar(ags);
 }
 
 /** As que ainda não completaram o prazo — mostradas com esse rótulo. */
@@ -110,29 +163,11 @@ export async function lojasEmObservacao(): Promise<LojaLead[]> {
  * completo pode ter fechado as portas — e aí não é cliente de ninguém.
  */
 export async function lojasQueEncolheram(): Promise<LojaLead[]> {
-  const linhas = await pool
-    .query(
-      `SELECT s.slug, s.name, s.city, s.phone, s.external_url AS site,
-              COUNT(*) AS ofertas,
-              SUM(o.last_seen_at > NOW() - INTERVAL 7 DAY) AS agora,
-              DATEDIFF(NOW(), MAX(o.last_seen_at)) AS dias,
-              MIN(o.price_usd) AS menor, MAX(o.price_usd) AS maior
-         FROM offer o JOIN store s ON s.id = o.store_id
-        WHERE o.source = 'scraped'
-        GROUP BY s.id
-       -- ⚠ Repetindo COUNT/SUM em vez de usar os apelidos: o MariaDB recusa
-       -- "Reference 'tinha' not supported (reference to group function)"
-       -- quando um apelido de agregação entra noutra expressão de agregação.
-       -- Descoberto rodando a consulta no banco de verdade ANTES de publicar.
-       HAVING COUNT(*) >= 20
-          AND SUM(o.last_seen_at > NOW() - INTERVAL 7 DAY) > 0
-          AND SUM(o.last_seen_at > NOW() - INTERVAL 7 DAY) <= COUNT(*) * ?
-        ORDER BY (COUNT(*) - SUM(o.last_seen_at > NOW() - INTERVAL 7 DAY)) DESC
-        LIMIT 60`,
-      [FRACAO_QUE_SOBROU],
-    )
-    .catch(() => []);
-  return linhas.map(linhaParaLead);
+  const ags = (await porLoja())
+    .filter((a) => a.ofertas >= 20 && a.agora > 0 && a.agora <= a.ofertas * FRACAO_QUE_SOBROU)
+    .sort((x, y) => y.ofertas - y.agora - (x.ofertas - x.agora))
+    .slice(0, 60);
+  return detalhar(ags);
 }
 
 /**
