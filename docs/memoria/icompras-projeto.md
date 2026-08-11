@@ -9,7 +9,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: ce2fa394-0b2c-4043-b6bc-350c598dbbf7
-  modified: 2026-08-11T10:54:57.761Z
+  modified: 2026-08-11T11:08:45.942Z
 ---
 
 **iCompras**: comparador de preços estilo PriceRunner para o Paraguai, com painel B2B (lojas + planos mensais), API de ingestão de listas de preço, camada de IA configurável, e módulo de seed/scraper.
@@ -39,6 +39,31 @@ O que fechou o diagnóstico foi **ler o registro do nginx no servidor**: os pedi
 
 ### Painel da Cloudflare dele
 Não tem "Security Events" — só **Overview, Analytics, Web assets, Security rules, Settings**. As regras próprias ficam em **Security rules**.
+
+## 💼 CLIENTES POTENCIAIS: LOJAS QUE SAÍRAM DO CONCORRENTE (2026-08-11) — NO AR
+
+**Ideia dele:** *"uma lista de clientes que tinha a loja no compras paraguai e daí sumiu — ou seja, ele deixou de anunciar, então eu posso oferecer o iCompras pra ele com um preço mais barato"*. O ponto forte é o **momento**: quem acabou de parar de pagar o concorrente é quem está aberto a ouvir alternativa.
+
+Fica em **Admin › Leads**, num bloco acima da lista completa. `lib/leadsQuentes.ts` + `components/LeadsQuentes.tsx`.
+
+💡 **POR QUE ESTE SINAL É CONFIÁVEL, SENDO QUE "OFERTA SUMIU" NÃO É.** Em 08-10/08 errei 12% duas vezes tentando marcar oferta sumida — a fonte lista lojas por modelo e a leitura pega um só. Aqui o sinal é a **loja inteira parar junto**, dezenas de ofertas de uma vez: **o ruído que estraga o caso individual se cancela na soma**. Vale como princípio para outros sinais.
+
+### Três listas, de propósito
+| Lista | Regra | Por quê |
+|---|---|---|
+| **Pararam de anunciar** | ≥14 dias sem oferta, mín. 5 ofertas | a lista para agir |
+| **Cortaram o catálogo** | tinha ≥20, sobrou ≤30% | 💡 **o melhor lead**: cortando gasto e ainda ATIVAS atendendo o telefone. Quem sumiu de vez pode ter fechado |
+| **Em observação** | 7 a 14 dias | 14 é prazo escolhido por SEGURANÇA, não verdade — a nossa volta às vezes passa de uma semana |
+
+⚠️ **Trava:** se mais de 20% das lojas aparecerem sumidas de uma vez, ou o coletor ficar >24 h sem registrar leitura, a tela **suspende as listas e explica** em vez de mandar ele ligar para trinta lojas que nunca saíram.
+
+💡 **Nada agendado, nada guardado:** tudo sai do `offer.last_seen_at`, calculado quando a tela abre. Sem tabela para encher e sem mais uma coisa para o guardião vigiar.
+
+### Dois erros que o teste no banco real pegou ANTES de publicar
+1. ⚠️ **MariaDB recusa apelido de agregação dentro de outra agregação** — `HAVING tem_hoje <= tinha*0.3` dá *"Reference 'tinha' not supported (reference to group function)"*. Tem de repetir `SUM(...) <= COUNT(*)*0.3`.
+2. Com 14 dias a lista saía **vazia** (as 3 lojas estavam em 10-12 dias) — foi o que me levou a criar a faixa de observação, em vez de ele abrir a tela e achar que não funcionou.
+
+**Primeiros achados reais:** Seven Store (51 ofertas), Miami Store (24), Star Midia (6) — com WhatsApp já capturado pelo coletor. De 161 lojas conhecidas; o volume cresce conforme o mapa da fonte for processado.
 
 ## 🗺️ 17% DO CATÁLOGO DA FONTE NUNCA CHEGOU AQUI — DESCOBERTA PELO MAPA (2026-08-11) — NO AR
 
