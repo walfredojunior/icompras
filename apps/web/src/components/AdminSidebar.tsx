@@ -1,6 +1,6 @@
 "use client";
 
-import { Radar, ChartLine, Gauge, CreditCard, Users, BookOpen, Images, LayoutGrid, Star, Coins, Store, KeyRound, NotebookPen, LogOut } from "lucide-react";
+import { Radar, ChartLine, Gauge, CreditCard, Users, BookOpen, Images, LayoutGrid, Star, Coins, Store, KeyRound, NotebookPen, LogOut, Sparkles } from "lucide-react";
 import { Link, usePathname, useRouter } from "@/i18n/navigation";
 
 const ITEMS = [
@@ -17,6 +17,9 @@ const ITEMS = [
   { href: "/admin/leads", label: "Lojas (leads)", Icon: Store },
   // Anotações fica junto de "Trocar senha": as duas são sobre acesso — e a
   // primeira coisa que a página de anotações pede é justamente trocar a senha.
+  // IA fica junto de Anotações e Trocar senha: as três guardam segredo (chaves,
+  // senhas) e são as telas que mais precisam do painel bem trancado.
+  { href: "/admin/ia", label: "Inteligência artificial", Icon: Sparkles },
   { href: "/admin/anotacoes", label: "Anotações", Icon: NotebookPen },
   { href: "/admin/senha", label: "Trocar senha", Icon: KeyRound },
 ];

@@ -9,7 +9,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: ce2fa394-0b2c-4043-b6bc-350c598dbbf7
-  modified: 2026-08-11T12:37:19.152Z
+  modified: 2026-08-11T14:56:21.220Z
 ---
 
 **iCompras**: comparador de preços estilo PriceRunner para o Paraguai, com painel B2B (lojas + planos mensais), API de ingestão de listas de preço, camada de IA configurável, e módulo de seed/scraper.
@@ -39,6 +39,48 @@ O que fechou o diagnóstico foi **ler o registro do nginx no servidor**: os pedi
 
 ### Painel da Cloudflare dele
 Não tem "Security Events" — só **Overview, Analytics, Web assets, Security rules, Settings**. As regras próprias ficam em **Security rules**.
+
+## 🤖 CONFIGURAÇÕES DE IA NO ADMIN (2026-08-11) — NO AR · e o MÓDULO DO CLIENTE planejado
+
+**O pedido dele:** cliente com sistema antigo manda lista sem foto. Quer um módulo onde a própria loja edite os produtos dela (foto, descrição, ficha) e vá **liberando** o que aparece no iCompras, com abas *Faltando / Prontos / Fora da lista*, foto por IA ou por busca, e descrição por DeepSeek.
+
+### As quatro decisões dele (11/08) — não reabrir
+1. Ligar a análise segura **só o que chegar novo** (o que já está publicado continua no ar).
+2. **Só o cliente libera** — um portão, não dois.
+3. **A conta da IA é dele.** Por isso o teto virou peça central, não detalhe.
+4. Começar pelas **configurações** (feito), depois o módulo.
+
+### ✅ FEITO: Admin › Inteligência artificial (migração 053)
+Três serviços, cada um com interruptor, provedor, modelo, chave, **teto** e consumo à vista: **texto** (DeepSeek), **imagem gerada** (fal.ai / OpenAI / Google), **busca de foto real** (Google CSE).
+
+💡 **Desenho copiado do KaruGO-Chef** (`C:\projetos\KaruGOChefWeb\Principal`), que já resolveu isto: `app/Services/ImagemIaService.php`, `config/ia_imagenes.php`, `app/Models/PlataformaConfig.php`. Lá é PHP/Laravel — o que veio foi o **desenho, os endereços dos provedores e a ideia do teto mensal**, não o código. É lá que o DeepSeek já era usado (não no iCompras).
+
+**Começa tudo DESLIGADO**, com tetos de 2.000 textos/mês, 200 imagens/mês, 90 buscas/dia. Nada gasta até ele ligar.
+
+⚠️ **Chaves cifradas** (`lib/segredos.ts`, AES-256-GCM). A chave de cifra sai do `AUTH_SECRET` — **trocá-lo torna as chaves ilegíveis** (basta recadastrar, mas é bom saber antes). **Não é cofre:** quem tem o servidor tem os dois. Protege contra vazamento acidental (dump, backup, consulta por engano), e isso está escrito no código para ninguém achar que é mais do que é. Testado: ida e volta OK, texto puro não aparece no valor guardado, adulteração devolve null.
+
+⚠️ **A chave nunca chega ao navegador**, nem para o admin logado — a tela mostra só os 4 últimos caracteres. Campo em branco **não apaga** (a tela não conhece o valor atual); para apagar, escreve-se `APAGAR`.
+
+**Ajuda embutida** (`AjudaIa.tsx`): passo a passo numerado por provedor — onde criar conta, em que menu clicar, em qual campo desta tela colar, e os links de saldo/chave. Motivo: ele é não-técnico e "gere uma API key" é jargão, não instrução.
+
+### ⚠️ ONDE EU DISCORDO DELE, E POR QUÊ (registrar para não ceder por esquecimento)
+Ele quis copiar do KaruGO-Chef a **geração de foto por IA**. Lá é legítimo: o assunto é **um prato**, e a foto é ilustração. Aqui o assunto é **produto industrializado específico** — um "iPhone 15 Pro Max" gerado por IA é foto falsa de produto real: engana o comprador, o prejuízo cai na loja que anunciou, e é desenho de marca protegida.
+
+**Ordem que recomendei, e que ele aceitou implicitamente ao mandar seguir minha recomendação:**
+1. **Nosso próprio catálogo** (o produto já está aqui, vendido por outra loja) — custo zero, foto real
+2. **Upload do cliente** — custo zero, foto real
+3. **Busca de imagem** — cota, foto real, exige conferência
+4. **IA** — pago, foto inventada, e marcada como *ilustração* na tela
+
+O motor de IA fica pronto de qualquer forma; a decisão de ligá-lo é dele.
+
+### 🔜 A FAZER: o módulo do cliente, em 4 etapas
+1. **Sem IA nenhuma** (~1 dia): interruptor por cliente, as 3 abas, editar/subir foto/liberar. **É a etapa que resolve o problema.**
+2. **Foto do nosso catálogo** (~meio dia, custo zero).
+3. **Descrição por DeepSeek** (~meio dia) — proibido inventar característica; a IA propõe, o cliente aprova.
+4. **Busca/IA de foto** — só depois de medir quanto sobrou sem foto na etapa 2.
+
+⚠️ **Na etapa 1, usar o `in_stock` como ÚNICO portão de visibilidade.** Há **dez lugares** que leem oferta; um interruptor novo precisaria ser lembrado nos dez, e esquecer um vaza para o site produto que o cliente não liberou.
 
 ## 🕐 FUSO HORÁRIO: O SERVIDOR É UTC, O PARAGUAI É **UTC−3** (2026-08-11) — CORRIGIDO
 
