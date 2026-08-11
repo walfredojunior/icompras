@@ -207,7 +207,16 @@ export function Horarios({ horas }: { horas: Resumo["horas"] }) {
         <p className="mt-3 text-sm text-slate-400">Ainda sem dados.</p>
       ) : (
         <>
-          <div className="mt-4 flex h-24 items-end gap-0.5">
+          {/* ⚠ `items-stretch` (e NÃO `items-end`) — a barra depende disso.
+              O defeito, achado por foto da tela em 11/08/2026: o cartão
+              aparecia com título, rótulos de hora e legenda, e o gráfico
+              VAZIO. Com `items-end`, cada coluna encolhe para a altura do
+              conteúdo; a barra dentro dela pede `height: N%`, que é
+              porcentagem de uma altura automática — e porcentagem de "auto"
+              não resolve, então a barra vira zero e some.
+              Esticando as colunas, elas ficam com os 96px do `h-24` e o
+              `justify-end` de cada uma encosta a barra embaixo. */}
+          <div className="mt-4 flex h-24 items-stretch gap-0.5">
             {porHora.map((v, h) => (
               <div key={h} className="group flex flex-1 flex-col justify-end" title={`${h}h — ${fmt(v)} visitas`}>
                 <div

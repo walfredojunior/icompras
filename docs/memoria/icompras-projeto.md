@@ -9,7 +9,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: ce2fa394-0b2c-4043-b6bc-350c598dbbf7
-  modified: 2026-08-11T11:19:34.784Z
+  modified: 2026-08-11T11:43:59.310Z
 ---
 
 **iCompras**: comparador de preços estilo PriceRunner para o Paraguai, com painel B2B (lojas + planos mensais), API de ingestão de listas de preço, camada de IA configurável, e módulo de seed/scraper.
@@ -59,6 +59,36 @@ Não tem "Security Events" — só **Overview, Analytics, Web assets, Security r
 **Onde ficou:** `PARA_HORA_LOCAL` em `lib/analytics.ts` (variável `FUSO_LOCAL_HORAS`, padrão −3), reagrupando no `getResumo`. **O dado bruto continua em UTC de propósito** — quem traduz é a apresentação, e assim o histórico já gravado aparece certo sem emenda. A tela agora diz **"Hora do Paraguai"** na legenda, senão volta a ser ambígua em seis meses.
 
 ⚠️ `analytics_daily.hour` é `TINYINT UNSIGNED`: `hour - 3` **estoura no SQL** ("BIGINT UNSIGNED value is out of range"). Em consulta manual, usar `(CAST(hour AS SIGNED) + 21) % 24`.
+
+**Confirmado por ele em 11/08:** servidor 11:31 UTC, relógio dele 8:31 → **−3 certo**.
+
+### ❌ NÃO MUDAR O RELÓGIO DO SERVIDOR — decidido em 11/08/2026
+Ele propôs acertar o fuso da máquina e converter os dados já gravados. Pus a conta na mesa e **ele preferiu deixar como está**. Os motivos, para não reabrir:
+- O **MariaDB só enxerga o fuso novo depois de reiniciar** — site e coletores fora do ar por minutos.
+- Cria **emenda de 3 horas em TODO carimbo já gravado** (338 mil ofertas, watchdog_log, analytics): "antes" e "depois" deixam de ser comparáveis, para sempre.
+- Guardar em UTC é a prática padrão justamente por isso. **Quem traduz é a tela** — e assim o histórico antigo aparece certo, sem emenda.
+
+💡 Se outra tela mostrar hora crua e confundir, **converter naquela tela**, não no servidor.
+
+## 🐛 O GRÁFICO VAZIO, E O QUE A FOTO DA TELA RESOLVEU (2026-08-11)
+
+Ele disse *"no visitas esse Horários de maior movimento não tá funcionando"*. Gastei **duas mensagens** investigando fuso e um erro de língua no registro — porque **a tela exige senha e eu não conseguia vê-la**. Pedi a foto; ela resolveu em dez segundos.
+
+**O que a foto mostrava:** o cartão com título, os rótulos de hora (0h, 6h, 12h, 18h, 23h), a legenda nova — e **o gráfico vazio no meio**. Isso descartou "sem dados" (que mostraria outra frase) e apontou direto para o desenho das barras.
+
+**A causa (`VisitCharts.tsx`, `Horarios`):** o contêiner era `flex h-24 items-end`. Com `items-end`, **cada coluna encolhe para a altura do conteúdo**; a barra dentro pede `height: N%`, que é porcentagem de uma altura automática — e porcentagem de "auto" não resolve. Toda barra virava zero. Trocado por **`items-stretch`**: as colunas ficam com os 96px e o `justify-end` de cada uma encosta a barra embaixo.
+
+💡 **A LIÇÃO DE MÉTODO, que vale para toda tela atrás de senha:** eu não tenho como ver o que ele vê, e dedução a partir de log não substitui isso. **Pedir a foto CEDO** — na primeira resposta, não na terceira. As três perguntas que eu deveria ter feito de saída: aparece "sem dados", aparece com valor errado, ou não aparece nada?
+
+## 🧨 `RangeError: Incorrect locale information provided` — A PISTA DE 04/08 ENFIM FECHADA (2026-08-11)
+
+Achado **sem procurar**, olhando o registro de erros do site por outro motivo: **387 ocorrências**. Era a pista anotada em aberto desde 04/08, quando o site ficou 1 hora fora do ar.
+
+**A causa:** a língua vem do endereço (`/pt-BR/`, `/es/`, `/en/`) e era repassada crua ao `toLocaleString(locale)`. Se a página for servida com algo que não seja uma dessas três, o formatador **estoura e mata o componente inteiro** no meio da renderização. O rastro terminava em `Number.toLocaleString` dentro de um `.map` — os blocos "Mais procurados" da home (`CategoryBlocks`).
+
+**O conserto:** `numeroLocal()` em `lib/format.ts` — língua inválida cai no padrão e, se nem isso, devolve o número cru. **Formatar número é enfeite: nunca deve derrubar tela.** Aplicado em 7 lugares: CategoryBlocks, SearchOverlay, FaixaDePreco, ScraperDashboard (3×), search e categorias.
+
+⚠️ **Não reproduzi o caminho exato** que gera a língua inválida — as páginas públicas nos 3 idiomas não disparam. O conserto é defensivo e mata a classe; a causa raiz de QUEM chama com língua ruim continua desconhecida. Se aparecer de novo no registro, é por outro caminho.
 
 ## 💼 CLIENTES POTENCIAIS: LOJAS QUE SAÍRAM DO CONCORRENTE (2026-08-11) — NO AR
 

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Search, X, Clock, CornerDownLeft, ArrowUp, ArrowDown } from "lucide-react";
 import { useRouter } from "@/i18n/navigation";
+import { numeroLocal } from "@/lib/format";
 
 interface Sugestao {
   name: string;
@@ -197,7 +198,7 @@ export function SearchOverlay({ locale }: { locale: string }) {
   }
 
   const preco = (v: number | null) =>
-    v == null ? null : `US$ ${v.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    v == null ? null : `US$ ${numeroLocal(v, locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const painel = (
     <div className="fixed inset-0 z-[60]" role="dialog" aria-modal="true" aria-label={t.abrir}>

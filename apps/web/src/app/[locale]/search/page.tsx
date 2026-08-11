@@ -13,6 +13,7 @@ import { BannerCarousel } from "@/components/BannerCarousel";
 import { SearchFilters, buildHref } from "@/components/SearchFilters";
 import { Paginacao } from "@/components/Paginacao";
 import { FiltrosMobile } from "@/components/FiltrosMobile";
+import { numeroLocal } from "@/lib/format";
 
 const ORDENACOES: SortOption[] = ["relevance", "price_asc", "price_desc", "stores"];
 
@@ -134,7 +135,7 @@ export default async function SearchPage({
       <h1 className="mt-8 text-xl font-semibold text-slate-900">
         {q ? `${t("resultsFor")} "${q}"` : t("browse")}
         <span className="ml-2 text-sm font-normal text-slate-400">
-          ({res.total.toLocaleString(locale)} {t("results")})
+          ({numeroLocal(res.total, locale)} {t("results")})
         </span>
       </h1>
 
@@ -167,7 +168,7 @@ export default async function SearchPage({
                 min: t("min"),
                 max: t("max"),
                 clear: t("clear"),
-                showResults: t("showResults", { n: res.total.toLocaleString(locale) }),
+                showResults: t("showResults", { n: numeroLocal(res.total, locale) }),
               }}
               brands={res.brands}
               params={urlParams}

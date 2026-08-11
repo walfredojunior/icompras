@@ -15,6 +15,7 @@ import { Paginacao } from "@/components/Paginacao";
 import { getActiveBanners } from "@/lib/banners";
 import { registrarVisita } from "@/lib/analytics";
 import { getRates } from "@/lib/rates";
+import { numeroLocal } from "@/lib/format";
 
 const ORDENACOES: SortOption[] = ["price_asc", "price_desc", "stores"];
 
@@ -106,7 +107,7 @@ export default async function CategoryPage({
           <h1 className="text-2xl font-bold text-slate-900">
             {info.name}{" "}
             <span className="text-sm font-normal text-slate-400">
-              ({res.total.toLocaleString(locale)})
+              ({numeroLocal(res.total, locale)})
             </span>
           </h1>
 

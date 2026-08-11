@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { PainelDosRobos, type RobosInfo } from "./PainelDosRobos";
 import { Boxes, Tag, ListChecks, Store, Phone, RefreshCw, Play, Square, ShieldCheck } from "lucide-react";
+import { numeroLocal } from "@/lib/format";
 
 interface Recent {
   name: string;
@@ -135,7 +136,7 @@ function CycleBar({ c, locale }: { c?: Cycle | null; locale: string }) {
           <span className="text-xs text-slate-400">({cor.nome})</span>
         </div>
         <span className="text-sm font-medium text-slate-700">
-          {c.percent}% · {c.done.toLocaleString(locale)} de {c.total.toLocaleString(locale)} categorias
+          {c.percent}% · {numeroLocal(c.done, locale)} de {numeroLocal(c.total, locale)} categorias
         </span>
       </div>
 
@@ -412,7 +413,17 @@ export function ScraperDashboard({ locale }: { locale: string }) {
       if (!r.ok) throw new Error();
       setS(await r.json());
       setError(false);
-      setTick(new Date().toLocaleTimeString(locale));
+      // Mesma armadilha do `toLocaleString`: língua inválida estoura e mata o
+      // painel inteiro. Relógio é enfeite — não derruba tela.
+      setTick(
+        (() => {
+          try {
+            return new Date().toLocaleTimeString(locale);
+          } catch {
+            return new Date().toLocaleTimeString("pt-BR");
+          }
+        })(),
+      );
     } catch {
       setError(true);
     }
@@ -531,7 +542,7 @@ export function ScraperDashboard({ locale }: { locale: string }) {
               <Icon className={`h-4 w-4 ${color}`} />
               {label}
             </div>
-            <div className="mt-1 text-2xl font-bold text-slate-900">{value.toLocaleString(locale)}</div>
+            <div className="mt-1 text-2xl font-bold text-slate-900">{numeroLocal(value, locale)}</div>
           </div>
         ))}
       </div>

@@ -1,6 +1,7 @@
 import { Link } from "@/i18n/navigation";
 import { blockIcon } from "@/lib/categoryIcons";
 import type { CategoryBlock } from "@/lib/blocks";
+import { numeroLocal } from "@/lib/format";
 
 // Blocos de destaque por tema na página inicial. Cada bloco reúne várias
 // categorias (ex.: "Relógios, Moda e Acessórios" = relógio + óculos + bolsa…),
@@ -15,7 +16,7 @@ export function CategoryBlocks({
   locale: string;
 }) {
   if (!blocks.length) return null;
-  const num = (n: number) => n.toLocaleString(locale);
+  const num = (n: number) => numeroLocal(n, locale);
 
   return (
     <section className="mx-auto max-w-6xl px-4 py-12">

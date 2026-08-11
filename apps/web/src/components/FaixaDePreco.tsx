@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "@/i18n/navigation";
 import { buildHref } from "@/lib/urlFiltros";
+import { numeroLocal } from "@/lib/format";
 
 // BARRA DE PREÇO COM DUAS BOLINHAS
 //
@@ -46,7 +47,7 @@ function paraPosicao(valor: number, min: number, max: number): number {
 }
 
 const dinheiro = (v: number, locale: string) =>
-  `US$ ${v.toLocaleString(locale, { maximumFractionDigits: v < 10 ? 1 : 0 })}`;
+  `US$ ${numeroLocal(v, locale, { maximumFractionDigits: v < 10 ? 1 : 0 })}`;
 
 export function FaixaDePreco({
   faixa,
