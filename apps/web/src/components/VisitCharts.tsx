@@ -223,8 +223,11 @@ export function Horarios({ horas }: { horas: Resumo["horas"] }) {
           <div className="mt-1 flex justify-between text-[10px] text-slate-400">
             <span>0h</span><span>6h</span><span>12h</span><span>18h</span><span>23h</span>
           </div>
+          {/* "hora do Paraguai" escrito na tela de propósito: o dado é gravado
+              em UTC e convertido na apresentação (ver analytics.ts). Sem dizer
+              qual fuso é, o gráfico volta a ser ambíguo daqui a seis meses. */}
           <p className="mt-2 text-xs text-slate-400">
-            Em laranja, o horário de pico — bom momento para o robô coletor pegar leve.
+            Hora do Paraguai. Em laranja, o horário de pico — bom momento para o robô coletor pegar leve.
           </p>
         </>
       )}

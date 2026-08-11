@@ -9,7 +9,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: ce2fa394-0b2c-4043-b6bc-350c598dbbf7
-  modified: 2026-08-11T11:08:45.942Z
+  modified: 2026-08-11T11:19:34.784Z
 ---
 
 **iCompras**: comparador de preços estilo PriceRunner para o Paraguai, com painel B2B (lojas + planos mensais), API de ingestão de listas de preço, camada de IA configurável, e módulo de seed/scraper.
@@ -39,6 +39,26 @@ O que fechou o diagnóstico foi **ler o registro do nginx no servidor**: os pedi
 
 ### Painel da Cloudflare dele
 Não tem "Security Events" — só **Overview, Analytics, Web assets, Security rules, Settings**. As regras próprias ficam em **Security rules**.
+
+## 🕐 FUSO HORÁRIO: O SERVIDOR É UTC, O PARAGUAI É **UTC−3** (2026-08-11) — CORRIGIDO
+
+**Guardar isto, vale para qualquer tela com hora:**
+
+| | |
+|---|---|
+| Servidor (sistema) | `Etc/UTC` |
+| Banco (`@@global.time_zone`) | `SYSTEM` → também UTC |
+| **Paraguai** | **UTC−3, fixo** |
+
+⚠️ **ELE ME CORRIGIU: eu ia usar −4.** Palavras dele: *"o Paraguai tá mesmo horário do Brasil e não vai mudar"* — o país deixou de usar horário de verão. Se eu tivesse seguido meu palpite, o gráfico continuaria errado **por uma hora** em vez de quatro, e aí ninguém perceberia nunca. **Não deduzir fuso de memória; perguntar.**
+
+**O defeito:** ele reportou *"horários de maior movimento não tá funcionando"* em Admin › Visitas. A visita é gravada com `HOUR(NOW())`, ou seja UTC, e a tela mostrava como se fosse hora local. O gráfico apontava pico "à meia-noite" (1.917 visitas às 0h). Convertido, **o pico é 18h-23h, topo às 21h** — gente pesquisando preço depois do trabalho.
+
+💡 **A LIÇÃO, que vale além deste caso: os números estavam CERTOS e o RÓTULO errado.** É o pior tipo de defeito — a tela parece funcionar, e ficou treze dias assim sem ninguém notar. E o efeito era prático, não cosmético: a legenda sugere "bom momento para o robô coletor pegar leve", então o rótulo errado faria ele poupar o site às 3 da manhã (vazio) e acelerar às 21h (pico).
+
+**Onde ficou:** `PARA_HORA_LOCAL` em `lib/analytics.ts` (variável `FUSO_LOCAL_HORAS`, padrão −3), reagrupando no `getResumo`. **O dado bruto continua em UTC de propósito** — quem traduz é a apresentação, e assim o histórico já gravado aparece certo sem emenda. A tela agora diz **"Hora do Paraguai"** na legenda, senão volta a ser ambígua em seis meses.
+
+⚠️ `analytics_daily.hour` é `TINYINT UNSIGNED`: `hour - 3` **estoura no SQL** ("BIGINT UNSIGNED value is out of range"). Em consulta manual, usar `(CAST(hour AS SIGNED) + 21) % 24`.
 
 ## 💼 CLIENTES POTENCIAIS: LOJAS QUE SAÍRAM DO CONCORRENTE (2026-08-11) — NO AR
 
