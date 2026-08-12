@@ -1,0 +1,106 @@
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { join } from "node:path";
+import { createHash } from "node:crypto";
+import sharp from "sharp";
+
+// "Melhorar a foto": recortar a sobra e deixar o fundo branco.
+//
+// Pedido dele em 11/08/2026, com a regra certa junto: **"não altera a foto do
+// produto, só melhora e deixa fundo branco"**. Isso é o oposto de gerar
+// imagem — o produto continua sendo exatamente o que foi fotografado. Muda o
+// enquadramento e o fundo, e nada mais.
+//
+// 💡 E NÃO PRECISA DE IA. O caso comum numa lista de loja é foto com margem
+// enorme, fundo cinza claro do estúdio, ou PNG com fundo transparente que fica
+// horrível sobre o cartão branco do site. Tudo isso o processador de imagem
+// resolve sozinho, de graça e em milissegundos.
+//
+// ⚠ O que isto NÃO faz: recortar produto de um fundo BAGUNÇADO (mesa, loja,
+// pessoa atrás). Para isso é preciso reconhecer o objeto, e aí sim entra a
+// PYIA. Prefiro entregar o barato que resolve a maioria e dizer com clareza
+// onde ele para.
+
+/** O quadrado final. Todas as fotos com a mesma medida deixam a grade alinhada. */
+const LADO = 1000;
+/** Respiro em volta do produto, para ele não encostar na borda. */
+const MARGEM = 40;
+
+async function carregar(foto: string): Promise<Buffer | null> {
+  try {
+    if (foto.startsWith("/")) {
+      // Foto nossa, já no disco.
+      return await readFile(join(process.cwd(), "public", foto.replace(/^\//, "")));
+    }
+    if (!/^https:\/\//i.test(foto)) return null;
+    const r = await fetch(foto, { signal: AbortSignal.timeout(30_000) });
+    if (!r.ok) return null;
+    return Buffer.from(await r.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
+export async function melhorarFoto(
+  foto: string,
+): Promise<{ ok: boolean; url?: string; erro?: string; mudou?: boolean }> {
+  const buf = await carregar(foto);
+  if (!buf) return { ok: false, erro: "não consegui abrir a foto atual" };
+
+  try {
+    const antes = await sharp(buf).metadata();
+
+    // 1) Achata sobre BRANCO. Resolve o PNG transparente, que no site aparece
+    //    com o fundo do cartão vazando por dentro do produto.
+    const achatada = await sharp(buf).flatten({ background: "#ffffff" }).png().toBuffer();
+
+    // 2) Corta a moldura de cor uniforme. É o que tira a margem enorme das
+    //    fotos de catálogo antigo. `threshold` tolerante de propósito: fundo
+    //    de estúdio quase nunca é branco puro, é 250-252.
+    let cortada: Buffer;
+    try {
+      cortada = await sharp(achatada).trim({ threshold: 12 }).toBuffer();
+    } catch {
+      // Foto de cor toda uniforme faz o corte falhar — segue sem cortar.
+      cortada = achatada;
+    }
+
+    const dep = await sharp(cortada).metadata();
+    const l = dep.width ?? 0;
+    const a = dep.height ?? 0;
+    if (!l || !a) return { ok: false, erro: "a foto ficou vazia depois do corte" };
+
+    // 3) Centraliza num quadrado branco, com respiro. `contain` mantém a
+    //    proporção — o produto NÃO é esticado nem espremido, que seria alterar
+    //    o que ele pediu para não alterar.
+    const saida = await sharp(cortada)
+      .resize({
+        width: LADO - MARGEM * 2,
+        height: LADO - MARGEM * 2,
+        fit: "contain",
+        background: "#ffffff",
+        withoutEnlargement: true,
+      })
+      .extend({
+        top: MARGEM,
+        bottom: MARGEM,
+        left: MARGEM,
+        right: MARGEM,
+        background: "#ffffff",
+      })
+      .flatten({ background: "#ffffff" })
+      .webp({ quality: 88 })
+      .toBuffer();
+
+    const nome = `${createHash("sha1").update(saida).digest("hex").slice(0, 16)}.webp`;
+    const pasta = join(process.cwd(), "public", "media", "produtos");
+    await mkdir(pasta, { recursive: true });
+    await writeFile(join(pasta, nome), saida);
+
+    // Quanto de moldura foi embora — serve para a tela dizer se valeu a pena.
+    const cortou = (antes.width ?? 0) > 0 ? 1 - (l * a) / ((antes.width ?? 1) * (antes.height ?? 1)) : 0;
+
+    return { ok: true, url: `/media/produtos/${nome}`, mudou: cortou > 0.02 };
+  } catch (e) {
+    return { ok: false, erro: (e as Error).message };
+  }
+}

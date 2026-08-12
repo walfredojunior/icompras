@@ -19,7 +19,7 @@ const ITEMS = [
   // primeira coisa que a página de anotações pede é justamente trocar a senha.
   // IA fica junto de Anotações e Trocar senha: as três guardam segredo (chaves,
   // senhas) e são as telas que mais precisam do painel bem trancado.
-  { href: "/admin/ia", label: "Inteligência artificial", Icon: Sparkles },
+  { href: "/admin/ia", label: "PYIA", Icon: Sparkles },
   { href: "/admin/anotacoes", label: "Anotações", Icon: NotebookPen },
   { href: "/admin/senha", label: "Trocar senha", Icon: KeyRound },
 ];

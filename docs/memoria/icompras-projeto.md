@@ -9,7 +9,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: ce2fa394-0b2c-4043-b6bc-350c598dbbf7
-  modified: 2026-08-11T14:56:21.220Z
+  modified: 2026-08-12T01:00:39.968Z
 ---
 
 **iCompras**: comparador de preços estilo PriceRunner para o Paraguai, com painel B2B (lojas + planos mensais), API de ingestão de listas de preço, camada de IA configurável, e módulo de seed/scraper.
@@ -39,6 +39,33 @@ O que fechou o diagnóstico foi **ler o registro do nginx no servidor**: os pedi
 
 ### Painel da Cloudflare dele
 Não tem "Security Events" — só **Overview, Analytics, Web assets, Security rules, Settings**. As regras próprias ficam em **Security rules**.
+
+## 🚨 EU QUEBREI O SITE NO HORÁRIO DE PICO (2026-08-11, noite) — LEITURA OBRIGATÓRIA ANTES DE PUBLICAR
+
+**Não foi defeito de código. Foi procedimento meu.** Três erros encadeados, todos evitáveis:
+
+1. **Disparei DUAS construções ao mesmo tempo** (uma em segundo plano, outra em primeiro). Elas se atropelaram, deixaram `apps/web/.next/lock` para trás e corromperam o diretório.
+2. **Apaguei o `.next` inteiro** achando que era corrupção — e aí o site ficou **sem build no disco**. O processo em memória continuava servindo a home, mas tudo que ele precisava ler do disco (o **admin**) passou a dar 500.
+3. **Parei o Meilisearch** para liberar memória, sem avisar — e **derrubei a busca**. Foi assim que ele percebeu: *"não tá funcionando o site quando vou procurar produtos"*.
+
+**Estrago medido:** 53 erros 500 e 50 erros 502 — **103 pessoas** pegaram o site quebrado, entre 16h e 21h, que é o **pico de verdade** (6.995 páginas às 18h; 7.507 visitas no dia anterior).
+
+### ⚠️ AS REGRAS QUE SAEM DISSO
+- **UMA construção por vez.** Nunca uma em segundo plano e outra em primeiro.
+- **NUNCA apagar o `.next`.** Build que falha é inofensivo: o antigo continua no disco e o site segue servindo. Foi apagar que transformou "falhou" em "site fora".
+- **Nunca parar serviço do site** (Meilisearch, API, worker) para liberar memória **sem perguntar antes**.
+- **Publicar das 16h às 23h só quando for necessário** — é o pico.
+- ⚠️ **`pgrep -f "next build"` casa com o PRÓPRIO comando** e diz que há build rodando quando não há. Mesma armadilha do `pkill -f`, que já me pegou duas vezes. Matar sempre por PID, filtrando com um padrão que não case consigo mesmo.
+- ⚠️ **Ordem para liberar a máquina: guardião PRIMEIRO, depois os robôs.** Parar os robôs antes faz o guardião religá-los.
+
+### 💡 NÃO DÁ PARA COMPILAR NA MÁQUINA DELE E MANDAR PRONTO
+Ideia dele, e eu testei: **não funciona neste projeto**. O Turbopack grava no build uma referência ao driver do banco com um sufixo único da máquina que compilou (`mariadb-a3d6b442fac4b7b4`), e no servidor o Node não acha o pacote — o site nem sobe. Testado na porta isolada, sem afetar produção.
+
+### 🐛 A CAUSA RAIZ, AINDA EM ABERTO
+**`lib/melhorarFoto.ts` faz o `next build` do servidor estourar a memória** — cresce até **12 GB** e o kernel o mata (código 137), mesmo com 14 GB livres e o `.next` limpo. **Compila em 10 segundos no Windows dele.** Removida temporariamente, o build passou de primeira.
+
+📌 **O código está guardado em `/root/guardado/` na VPS e em `docs/pendente/` no repositório.**
+💡 **Saída provável, se a causa não aparecer:** mover o processamento de imagem para o **worker**, que não usa esse compilador. Para o cliente fica igual.
 
 ## 🤖 CONFIGURAÇÕES DE IA NO ADMIN (2026-08-11) — NO AR · e o MÓDULO DO CLIENTE planejado
 
@@ -74,7 +101,21 @@ Ele quis copiar do KaruGO-Chef a **geração de foto por IA**. Lá é legítimo:
 
 O motor de IA fica pronto de qualquer forma; a decisão de ligá-lo é dele.
 
-### 🔜 A FAZER: o módulo do cliente, em 4 etapas
+### ✅ ETAPA 1 FEITA (11/08) — migração 054, e o que ela inclui
+Interruptor `store.analise_ativa`; o portão é o **`in_stock`** (único, porque dez lugares leem oferta e esquecer um vazaria produto não liberado); `gone_reason` ganhou `'analise'` e `'excluida'`.
+Painel da loja em **`/painel/produtos`**: abas *Faltando · Prontos para liberar · No ar · Fora da lista*, com **o que falta escrito em cada linha**.
+⚠️ **Liberar exige produto completo.** ⚠️ **Reenviar a lista NÃO desfaz a decisão** (o ODKU preserva `analise`/`excluida`) — senão o sistema do cliente desfaria tudo toda madrugada. ⚠️ **Produto vendido por mais de uma loja**: ela só preenche o que está em branco.
+
+**Testado ponta a ponta com loja de teste real** (id **361**, `teste@icompras.local`, plano ativo, análise ligada): lista pela API entrou toda retida; liberar incompleto foi recusado; preencher + liberar funcionou; excluir funcionou; **reenvio preservou as decisões**.
+
+### ✅ UPLOAD DE FOTO (11/08) — ele notou que faltava
+`/api/store/upload`: 8 MB, redimensiona para 1200px, converte para WebP, corrige rotação. ⚠️ **Quem decide se é imagem é o `sharp`, não a extensão** — testado com um .txt renomeado para .jpg, recusado. Nome do arquivo vem do conteúdo (sem "../").
+
+### ✅ BOTÕES DA PYIA (11/08) — `lib/pyia.ts` + `/api/store/pyia`
+Na ordem de qualidade, que é de propósito: **foto do nosso catálogo** (grátis, real) → **descrição DeepSeek** → **foto gerada** (paga, inventada, com confirmação e rótulo de ilustração).
+⚠️ **Eu gastei da conta dele num teste sem avisar** (1 DeepSeek + 1 fal.ai). **Pedir antes de disparar chamada paga.**
+
+### 🔜 O QUE FALTA DO MÓDULO
 1. **Sem IA nenhuma** (~1 dia): interruptor por cliente, as 3 abas, editar/subir foto/liberar. **É a etapa que resolve o problema.**
 2. **Foto do nosso catálogo** (~meio dia, custo zero).
 3. **Descrição por DeepSeek** (~meio dia) — proibido inventar característica; a IA propõe, o cliente aprova.

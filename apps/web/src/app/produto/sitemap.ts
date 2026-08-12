@@ -14,9 +14,24 @@ import { comIdiomas, PRODUTOS_POR_MAPA } from "@/lib/seo";
 // robots.txt, que é como o Google descobre todos.
 export const dynamic = "force-dynamic";
 
+// SÓ ENTRA NO MAPA QUEM TEM OFERTA NO AR.
+//
+// A página de produto passou a devolver 404 quando não há nenhuma oferta
+// visível (ver [locale]/produto/[slug]/page.tsx) — por privacidade do cliente,
+// no caso do que ele ainda não liberou, e por não valer nada, no caso dos
+// 3.028 que o coletor deixou sem oferta.
+//
+// ⚠ Sem este filtro, o mapa mandaria o Google a três mil endereços que
+// respondem 404. Mapa de site cheio de link quebrado é justamente o tipo de
+// sinal que faz o buscador rastrear menos o resto.
+const COM_OFERTA = `EXISTS (
+  SELECT 1 FROM product_variant v JOIN offer o ON o.variant_id = v.id
+   WHERE v.product_id = p.id AND o.in_stock = 1
+)`;
+
 export async function generateSitemaps() {
   try {
-    const [r]: any = await pool.query("SELECT COUNT(*) n FROM product");
+    const [r]: any = await pool.query(`SELECT COUNT(*) n FROM product p WHERE ${COM_OFERTA}`);
     const pedacos = Math.max(1, Math.ceil(Number(r.n) / PRODUTOS_POR_MAPA));
     return Array.from({ length: pedacos }, (_, id) => ({ id }));
   } catch {
@@ -32,6 +47,7 @@ export default async function sitemap({ id }: { id: Promise<string> }): Promise<
   const rows: any[] = await pool.query(
     `SELECT p.slug, p.updated_at
        FROM product p
+      WHERE ${COM_OFERTA}
       ORDER BY p.id
       LIMIT ? OFFSET ?`,
     [PRODUTOS_POR_MAPA, pedaco * PRODUTOS_POR_MAPA],

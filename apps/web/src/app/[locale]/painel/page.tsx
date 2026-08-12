@@ -5,6 +5,7 @@ import { pool } from "@/lib/db";
 import { ApiKeyManager } from "@/components/ApiKeyManager";
 import { PlanPicker } from "@/components/PlanPicker";
 import { StoreMenu } from "@/components/StoreMenu";
+import { Link } from "@/i18n/navigation";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export default async function PanelPage({ params }: { params: Promise<{ locale: string }> }) {
@@ -45,6 +46,22 @@ export default async function PanelPage({ params }: { params: Promise<{ locale: 
           <div className="text-xl font-semibold text-slate-900">{Number(offerCount[0].c)}</div>
         </div>
       </div>
+
+      {/* Caminho para a tela de produtos. Vem ANTES da chave da API de
+          propósito: a chave é coisa de quem integra uma vez e nunca mais; esta
+          é a tela do dia a dia de quem precisa completar foto e liberar. */}
+      <Link
+        href="/painel/produtos"
+        className="mt-6 flex items-center justify-between rounded-2xl border border-brand-green/40 bg-brand-green/5 p-5 transition hover:border-brand-green"
+      >
+        <span>
+          <span className="block font-semibold text-slate-900">Meus produtos</span>
+          <span className="mt-0.5 block text-sm text-slate-600">
+            Complete foto, descrição e ficha, e libere o que aparece no iCompras.
+          </span>
+        </span>
+        <span className="text-brand-green-dark">›</span>
+      </Link>
 
       <section className="mt-8">
         <h2 className="text-lg font-semibold text-slate-900">{t("apiKeyTitle")}</h2>

@@ -3,13 +3,8 @@ import { redirect } from "next/navigation";
 import { getCurrentAdmin } from "@/lib/adminauth";
 import { pool } from "@/lib/db";
 import { Link } from "@/i18n/navigation";
-import {
-  lojasQueSairam,
-  lojasQueEncolheram,
-  lojasEmObservacao,
-  leituraConfiavel,
-} from "@/lib/leadsQuentes";
-import { LeadsQuentes } from "@/components/LeadsQuentes";
+import { Suspense } from "react";
+import { LeadsQuentesBloco, EsqueletoLeads } from "@/components/LeadsQuentesBloco";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const PER_PAGE = 48;
@@ -42,27 +37,17 @@ export default async function LeadsPage({
   );
   const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
 
-  // Lojas que saíram (ou estão saindo) do concorrente. Vêm ANTES da lista
-  // completa porque são as únicas com hora marcada: o momento em que a loja
-  // parou de pagar o concorrente é o momento de oferecer.
-  const [sairam, encolheram, observacao] = await Promise.all([
-    lojasQueSairam(),
-    lojasQueEncolheram(),
-    lojasEmObservacao(),
-  ]);
-  const confianca = await leituraConfiavel(sairam.length + observacao.length);
-
   return (
     <div>
       <h1 className="text-xl font-bold text-slate-900">Lojas (leads)</h1>
 
+      {/* Lojas que saíram do concorrente. Vêm ANTES da lista completa porque
+          são as únicas com hora marcada — e ficam dentro de um Suspense para
+          NÃO segurar o resto da página, que é rápido. */}
       <div className="mt-4">
-        <LeadsQuentes
-          sairam={confianca.ok ? sairam : []}
-          encolheram={confianca.ok ? encolheram : []}
-          observacao={confianca.ok ? observacao : []}
-          aviso={confianca.motivo}
-        />
+        <Suspense fallback={<EsqueletoLeads />}>
+          <LeadsQuentesBloco />
+        </Suspense>
       </div>
       <p className="text-sm text-slate-500">
         {total} loja(s) do comprasparaguai para você convidar a se cadastrar.

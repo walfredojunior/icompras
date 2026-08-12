@@ -86,8 +86,13 @@ export async function processPriceList(
   let processed = 0;
 
   try {
-    const storeRow = await conn.query("SELECT name FROM store WHERE id = ? LIMIT 1", [storeId]);
+    const storeRow = await conn.query(
+      "SELECT name, analise_ativa FROM store WHERE id = ? LIMIT 1",
+      [storeId],
+    );
     const storeName: string = storeRow[0]?.name ?? "loja";
+    // Lida UMA vez por lote, não por item: a lista pode ter milhares de linhas.
+    const analiseAtiva = Boolean(storeRow[0]?.analise_ativa);
 
     // Câmbio para normalizar o preço em USD (base de comparação).
     const rateRows = await conn.query("SELECT currency, pyg_value FROM exchange_rate");
@@ -149,13 +154,26 @@ export async function processPriceList(
         "SELECT id, price FROM offer WHERE store_id = ? AND external_id = ? LIMIT 1",
         [storeId, externalId],
       );
+
+      // ANÁLISE DE PRODUTO (migração 054): com a análise ligada, o que CHEGA
+      // AGORA fica retido até a loja liberar.
+      //
+      // ⚠ Só vale para oferta NOVA (`!prev.length`) — decisão dele em 11/08.
+      // Aplicar às que já existem faria o catálogo publicado da loja sumir do
+      // site no instante em que ele ligasse o interruptor.
+      const reter = analiseAtiva && !prev.length;
       const oRes = await conn.query(
-        `INSERT INTO offer (variant_id, store_id, price, currency, price_usd, url, image_url, in_stock, stock, source, external_id, last_seen_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        `INSERT INTO offer (variant_id, store_id, price, currency, price_usd, url, image_url, in_stock, gone_reason, stock, source, external_id, last_seen_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
          ON DUPLICATE KEY UPDATE
            variant_id = VALUES(variant_id), price = VALUES(price), currency = VALUES(currency),
            price_usd = VALUES(price_usd),
-           url = VALUES(url), image_url = VALUES(image_url), in_stock = VALUES(in_stock),
+           url = VALUES(url), image_url = VALUES(image_url),
+           -- ⚠ Oferta EM ANALISE nao volta ao ar so porque a loja reenviou a
+           -- lista. Quem libera e a loja, na tela dela — se o preco novo
+           -- reabrisse o portao, o envio automatico do sistema dela desfaria a
+           -- decisao dela toda madrugada.
+           in_stock = IF(offer.gone_reason IN ('analise','excluida'), offer.in_stock, VALUES(in_stock)),
            stock = VALUES(stock),
            last_seen_at = NOW()`,
         [
@@ -168,7 +186,8 @@ export async function processPriceList(
           item.image_url ?? null,
           // Quem manda `stock: 0` sai do site; quem não manda o campo continua
           // no ar (loja sem controle de estoque não pode sumir por engano).
-          item.stock !== undefined ? (item.stock > 0 ? 1 : 0) : item.in_stock ? 1 : 0,
+          reter ? 0 : item.stock !== undefined ? (item.stock > 0 ? 1 : 0) : item.in_stock ? 1 : 0,
+          reter ? "analise" : null,
           item.stock ?? null,
           source,
           externalId,

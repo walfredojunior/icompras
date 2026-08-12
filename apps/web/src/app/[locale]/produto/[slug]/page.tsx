@@ -44,8 +44,19 @@ export async function generateMetadata({
   const product = await getProductDetail(slug);
   const t = await getTranslations({ locale, namespace: "seo" });
 
-  // Endereço que não existe: nada a indexar.
-  if (!product) return { title: t("searchTitle"), robots: { index: false, follow: false } };
+  // ⚠ O 404 PRECISA SER DECIDIDO AQUI, NÃO SÓ NA PÁGINA.
+  //
+  // Descoberto em 11/08/2026, testando a análise de produto: eu tinha posto a
+  // checagem só no corpo da página, e o endereço continuava respondendo **200
+  // com o nome do produto no título**.
+  //
+  // O motivo é a ordem: o `generateMetadata` roda ANTES e o Next já começa a
+  // enviar o `<head>`. Quando a página finalmente chama `notFound()`, o
+  // cabeçalho da resposta já saiu com 200 — o corpo vira "não encontrado", mas
+  // o status mente e o nome do produto já vazou no título.
+  //
+  // Decidindo aqui, o 404 sai de verdade e nada do produto é enviado.
+  if (!product || !product.ofertasNoAr) notFound();
 
   const precos = precosDe(product.stores);
   const preco = precoUsd(product.minUsd ?? (precos.length ? precos[0] : null));
@@ -83,6 +94,27 @@ export default async function ProductPage({
 
   const product = await getProductDetail(slug);
   if (!product) notFound();
+
+  // PRODUTO SEM NENHUMA OFERTA NO AR NÃO TEM PÁGINA.
+  //
+  // Descoberto testando a análise de produto em 11/08/2026: um produto que a
+  // loja ainda NÃO liberou continuava com página pública. Não mostrava preço
+  // nem loja — mas mostrava o NOME, inclusive no título. Ou seja, o catálogo
+  // do cliente vazava antes de ele decidir publicar, que é exatamente o que o
+  // módulo existe para impedir.
+  //
+  // O mesmo vale para os 3.028 produtos que o coletor criou e que ficaram sem
+  // oferta nenhuma: página sem preço e sem loja não serve para o visitante, e
+  // ainda dilui o catálogo justamente agora que o Google começou a indexar.
+  //
+  // ⚠ O mapa do site também passou a excluí-los (produto/sitemap.ts) — do
+  // contrário mandaríamos o Google a 3 mil endereços que respondem 404.
+  //
+  // ⚠ E a conta é `ofertasNoAr`, NÃO `stores.length`. A lista de lojas soma a
+  // tabela do agregador, que não filtra `in_stock` — a primeira versão disto
+  // usava `stores.length` e não escondeu nada. Ver o comentário do campo em
+  // lib/products.ts.
+  if (!product.ofertasNoAr) notFound();
 
   void registrarVisita("produto", slug);
   const rates = await getRates();

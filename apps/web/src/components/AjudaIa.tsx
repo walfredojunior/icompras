@@ -119,7 +119,7 @@ export function AjudaIa() {
     <details className="mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-5">
       <summary className="flex cursor-pointer items-center gap-2 font-semibold text-slate-800">
         <HelpCircle className="h-4 w-4 text-brand-navy" />
-        Onde conseguir cada chave (passo a passo)
+        Onde conseguir cada chave da PYIA (passo a passo)
       </summary>
 
       <p className="mt-3 text-sm text-slate-500">

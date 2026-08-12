@@ -49,6 +49,17 @@ export interface ProductDetail {
   minUsd: number | null;
   stores: ProductStore[];
   specs: Array<{ k: string; v: string }>;
+  /**
+   * Quantas ofertas estão REALMENTE no ar (`in_stock = 1`).
+   *
+   * ⚠ Isto NÃO se deduz de `stores.length`. Aquela lista soma DUAS fontes: as
+   * ofertas com preço (que filtram `in_stock`) e a tabela do agregador
+   * (`product_store`, que não filtra). Em 11/08/2026 tentei usar
+   * `stores.length` para esconder produto que a loja ainda não tinha liberado
+   * — e a página continuou de pé, porque a segunda fonte enchia a lista
+   * sozinha. Este número é a resposta direta, sem dedução.
+   */
+  ofertasNoAr: number;
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -160,6 +171,7 @@ async function buscarProductDetail(slug: string): Promise<ProductDetail | null> 
     minUsd,
     stores,
     specs,
+    ofertasNoAr: offers.length,
   };
 }
 

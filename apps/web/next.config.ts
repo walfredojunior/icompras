@@ -11,6 +11,7 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["192.168.68.109", "192.168.68.*"],
   // Driver do MariaDB deve rodar no Node, não ser empacotado.
   serverExternalPackages: ["mariadb", "sharp"],
+
   images: {
     remotePatterns: [],
   },
