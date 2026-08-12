@@ -1,6 +1,5 @@
-> ⚠️ **Cópia sem as senhas.** Histórico de trabalho do projeto, guardado aqui
-> como backup. As senhas foram trocadas por marcadores antes de subir.
-> As de verdade ficam em Admin > Anotações e no servidores.txt do dono.
+<!-- CÓPIA AUTOMÁTICA da memória do Claude. NÃO EDITAR AQUI — o original vive na máquina do dono.
+     Senhas e chaves foram REMOVIDAS desta cópia. -->
 
 ---
 name: icompras-projeto
@@ -9,12 +8,56 @@ metadata:
   node_type: memory
   type: project
   originSessionId: ce2fa394-0b2c-4043-b6bc-350c598dbbf7
-  modified: 2026-08-12T01:00:39.968Z
+  modified: 2026-08-12T12:38:03.707Z
 ---
 
 **iCompras**: comparador de preços estilo PriceRunner para o Paraguai, com painel B2B (lojas + planos mensais), API de ingestão de listas de preço, camada de IA configurável, e módulo de seed/scraper.
 
 Plano completo em `C:\projetos\icompras\docs\PLANO.md`; como rodar em `docs\COMO-RODAR.md`.
+
+## 🐌 O SITE AFOGADO POR UM "CAMINHO DE EXCEÇÃO" (2026-08-12) — RESOLVIDO · LEITURA OBRIGATÓRIA
+
+**O sintoma:** ele disse "parece que parou". A home levava de 11 a 34 segundos. Carga **20,75** num servidor de 4 núcleos, CPU **1% ociosa**, **36% esperando disco**, e o banco lendo **576 MB/s** sem parar.
+
+**A causa, em uma frase:** a página de produto mostra "produtos relacionados" por semelhança de IA. A busca é restrita à **categoria** (correção de 06/08, que está certa). Mas havia um **plano B**: se a categoria não desse 6 produtos, comparava com o **catálogo inteiro** — 19,6 segundos e ~550 MB lidos **por visita**.
+
+Em 06/08 o plano B atingia 1.218 produtos sem categoria (0,5%). Agora são **10.168 sem categoria** — oito vezes mais, pelos produtos novos que entraram sem classificação — e o Google começou a rastrear nesses mesmos dias. Dezenas de cópias da consulta de 19s ao mesmo tempo afogaram o banco.
+
+**O conserto** (`apps/web/src/lib/products.ts`, `buscarRelatedProducts`): quando a categoria não completa os 6, preenche com vizinhos da mesma categoria ou da **categoria-pai**, sem cálculo de semelhança, por índice. **Nunca varrer o catálogo inteiro numa requisição de página.**
+
+```
+carga        20,75 → 1,25        página de produto  19,6s → 0,02–0,32s
+disco     576 MB/s → 28 MB/s     home (domínio)     11,0s → 1,35s
+cpu ociosa     1%  → 69%
+```
+
+### 💡 A lição que vale além deste caso
+
+**Um caminho de exceção caro é uma bomba com relógio.** Ele é barato enquanto for exceção, e ninguém percebe quando deixa de ser. Se o caso raro custa 100× o caso normal, o que importa não é o custo — é **o que faria a raridade acabar**. Aconteceu duas vezes no mesmo dia: aqui, e no Meilisearch (ver abaixo).
+
+### ⚠️ Os erros que me custaram um dia inteiro
+
+1. **Descartei a pista certa.** No dia 11 peguei essa mesma consulta numa amostragem e falei "é da página de produto, não da home" — e fui procurar em outro lugar. Era ela. **Quando a página A está lenta, a causa pode estar inteiramente na página B**: banco afogado deixa tudo lento, inclusive o que não usa a consulta culpada.
+
+2. **Medir consulta isolada num servidor sob carga não prova nada.** Cronometrei todas as consultas da home — 44 a 284 ms, todas rápidas — e conclui "não é o banco". Era o banco, afogado por outra coisa. **O certo é olhar o que está rodando AGORA** (`information_schema.processlist`, amostrado várias vezes) em vez de rodar consultas escolhidas por mim.
+
+3. **Aumentar o limite de conexões PIOROU.** Achei que o gargalo era a fila (`connectionLimit: 5`) e subi para 25. Não tirei a fila: deixei **25 cópias** da consulta de 19s martelarem o banco em vez de 5, e a carga subiu. O 25 ficou (é adequado agora que a consulta pesada não existe), mas a lição é: **aliviar a fila sem tirar o trabalho caro multiplica o trabalho caro.**
+
+4. **Li `rows` do EXPLAIN como se fosse contagem.** O plano dizia `rows 182.577` e o catálogo tinha 279.879; conclui que ~97 mil produtos estavam sem vetor. **`rows` no EXPLAIN é ESTIMATIVA do otimizador.** Contando de verdade: 279.814 dos 279.879 **têm** vetor. Cheguei à correção certa por um caminho errado.
+
+### O índice vetorial existe e NÃO serve aqui — não repetir o teste
+
+`product_embedding` tem `VECTOR KEY` (HNSW). Ele só entra quando o vetor de comparação é **valor fixo** e a **distância bate com a do índice** (foi criado euclidiana; o código usa cosseno). Testado lado a lado em 12/08: usando o índice, 574 ms — mas devolvia lixo (distância média **0,60** contra **0,28** da força bruta). Subir `mhnsw_ef_search` até empatar a qualidade custou **5,7 a 8,8 segundos** — pior que o problema. Os vetores são normalizados (norma 1,0000), então euclidiana e cosseno dariam a mesma ordem; o problema é o grafo ter sido construído com `m=6`, pouco para 182 mil vetores de 1024 dimensões. **Conclusão: restringir candidatos por categoria bate o índice em tudo** — e ainda dá relacionado melhor (hub puxa hub, não cabo genérico).
+
+## 🔁 O MEILISEARCH REINDEXAVA O CATÁLOGO INTEIRO A CADA 25 SEGUNDOS (2026-08-12) — FREADO
+
+Achado enquanto eu caçava a lentidão acima. **Não era a causa dela**, mas era desperdício real: **38% do processador em tempo integral**, reindexando os 279.798 produtos em laço.
+
+`refreshCatalog()` chama `syncProducts()`, que reindexa **tudo**, e roda a cada unidade de trabalho concluída por cada um dos 4 robôs. Já era desperdício antes; depois que acrescentei os **157 arquivos do mapa da fonte** (11/08), eles passaram a concluir unidades muito mais vezes e o custo virou dor.
+
+**⚠ A ineficiência era ANTIGA — eu a ampliei até doer, e foi assim que ela apareceu.** Acrescentar trabalho ao coletor pode multiplicar um custo que já existia e ninguém via.
+
+**O freio:** migration **055** (`tarefa_periodica`), um relógio comum. O robô só executa se conseguir "pegar a vez" com um `UPDATE` condicional — atômico, então dos quatro exatamente um ganha. Máximo uma vez a cada 30 min. Confirmado funcionando.
 
 ## 🚨 GOOGLE: A REGRA DA CLOUDFLARE QUE BLOQUEAVA O SITE INTEIRO (2026-08-08) — RESOLVIDO
 

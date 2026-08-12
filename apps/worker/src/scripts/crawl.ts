@@ -2016,6 +2016,14 @@ async function ingestProduct(page: () => Promise<Page>, path: string, ourCategor
 //
 // Marcar de menos mostra um preço velho. Marcar demais destrói o site. Os dois
 // erros NÃO custam a mesma coisa, e o teto é o que reconhece isso.
+/**
+ * Intervalo mínimo entre duas reindexações da busca.
+ *
+ * 30 minutos: o visitante encontrar um produto novo meia hora depois é
+ * irrelevante; o site abrir em 18 segundos não é.
+ */
+const SYNC_A_CADA_MIN = Number(process.env.CRAWL_SYNC_MIN ?? 30);
+
 const TETO_BAIXA_PCT = Number(process.env.CRAWL_MAX_BAIXA_PCT ?? 5);
 /** Interruptor: `CRAWL_MARCAR_SUMIDAS=0` desliga sem publicar código. */
 const MARCAR_QUE_SUMIU = (process.env.CRAWL_MARCAR_SUMIDAS ?? "1") !== "0";
@@ -2236,6 +2244,29 @@ async function marcarQueSumiram(
 }
 
 async function refreshCatalog(): Promise<void> {
+  // ⚠ A FUNÇÃO INTEIRA É CARA — no máximo uma vez a cada meia hora.
+  //
+  // Ela faz duas coisas pesadas sobre os 280 mil produtos: procurar quem está
+  // sem embedding (varredura completa) e reindexar a busca inteira. E é
+  // chamada por CADA robô ao terminar uma unidade de trabalho — são quatro.
+  //
+  // Em 12/08/2026 isso deixou a home do site levando **18 segundos**: o
+  // Meilisearch reindexava a cada 25 segundos e a consulta dos embeddings
+  // aparecia com 9 segundos disputando o banco com o site.
+  //
+  // ⚠ Primeiro eu freei só a reindexação e NÃO resolveu — a consulta dos
+  // embeddings continuava. A lição: quando duas coisas caras estão na mesma
+  // função chamada com frequência demais, o freio vai na FUNÇÃO.
+  //
+  // O UPDATE condicional é atômico: dos quatro robôs, exatamente um ganha a
+  // vez. Os outros voltam a trabalhar sem tocar em nada disso.
+  const vez = await pool.query(
+    `UPDATE tarefa_periodica SET ultima_em = NOW()
+      WHERE nome = 'sync-busca' AND ultima_em < NOW() - INTERVAL ? MINUTE`,
+    [SYNC_A_CADA_MIN],
+  );
+  if (Number(vez?.affectedRows ?? 0) === 0) return;
+
   const prov = getEmbeddingProvider();
   const missing = await pool.query(
     "SELECT p.id, p.brand, p.canonical_name FROM product p LEFT JOIN product_embedding e ON e.product_id = p.id WHERE e.product_id IS NULL LIMIT 20000",

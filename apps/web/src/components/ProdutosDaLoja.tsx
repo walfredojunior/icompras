@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Search, Check, X, Undo2, ImageOff, Save, Upload } from "lucide-react";
 import type { ProdutoDaLoja, Aba } from "@/lib/produtosDaLoja";
+import { FotoDoProduto } from "./FotoDoProduto";
 
 // A tela da loja para revisar e liberar os próprios produtos (migração 054).
 //
@@ -223,6 +224,8 @@ function Editor({
   const [enviando, setEnviando] = useState(false);
   const [erroFoto, setErroFoto] = useState<string | null>(null);
   const [pensando, setPensando] = useState<string | null>(null);
+  // A foto que havia ANTES de a PYIA mexer — para comparar e para desfazer.
+  const [fotoAnterior, setFotoAnterior] = useState<string | null>(null);
   const [avisoPyia, setAvisoPyia] = useState<string | null>(null);
   const [erroPyia, setErroPyia] = useState<string | null>(null);
 
@@ -245,6 +248,7 @@ function Editor({
       setDescricao(j.texto);
       setAvisoPyia("Descrição escrita pela PYIA — leia e corrija antes de salvar.");
     } else if (acao === "melhorar-foto") {
+      setFotoAnterior(foto || null);
       setFoto(j.url);
       setAvisoPyia(
         j.mudou
@@ -252,6 +256,7 @@ function Editor({
           : "Fundo deixado branco. Não havia moldura para recortar — se o fundo for bagunçado, isto não resolve.",
       );
     } else {
+      setFotoAnterior(foto || null);
       setFoto(j.url);
       setAvisoPyia(
         acao === "foto-catalogo"
@@ -270,23 +275,24 @@ function Editor({
         </p>
       )}
 
-      {/* FOTO — arquivo do computador PRIMEIRO, endereço depois.
-          Ele notou que faltava o upload, e tinha razão: o cliente que este
-          módulo atende é justamente o que não tem foto em lugar nenhum da
-          internet. Ele tem o arquivo na máquina. O campo de endereço fica
-          como segunda opção, para quem já hospeda as fotos em outro lugar. */}
-      <div className="flex items-start gap-4">
-        <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white">
-          {foto ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={foto} alt="" className="h-full w-full object-contain" />
-          ) : (
-            <ImageOff className="h-6 w-6 text-slate-300" />
-          )}
-        </div>
+      {/* DUAS COLUNAS: foto à esquerda, tudo o mais à direita.
+          Quem usa é o cliente da loja, em PC ou tablet grande — definido por
+          ele em 12/08/2026. Então a tela pode usar a largura em vez de
+          empilhar tudo numa coluna estreita. Abaixo de 1024px volta a
+          empilhar, para não quebrar em tela menor. */}
+      <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
+        <div>
+          <FotoDoProduto
+            atual={foto}
+            anterior={fotoAnterior}
+            onDesfazer={() => {
+              if (fotoAnterior) setFoto(fotoAnterior);
+              setFotoAnterior(null);
+              setAvisoPyia(null);
+            }}
+          />
 
-        <div className="min-w-0 flex-1">
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:border-brand-green">
+          <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:border-brand-green">
             <Upload className="h-4 w-4" />
             {enviando ? "Enviando…" : foto ? "Trocar a foto" : "Escolher foto do computador"}
             <input
@@ -305,12 +311,13 @@ function Editor({
                 const j = await r?.json().catch(() => ({}));
                 setEnviando(false);
                 if (!r?.ok) return setErroFoto(j?.error ?? "não consegui enviar a foto");
+                setFotoAnterior(null);
                 setFoto(j.url);
               }}
             />
           </label>
           <p className="mt-1 text-[11px] text-slate-400">
-            JPG, PNG ou WebP, até 8 MB. A foto é reduzida e convertida automaticamente.
+            JPG, PNG ou WebP, até 8 MB. Clique na foto para vê-la em tamanho real.
           </p>
           {erroFoto && <p className="mt-1 text-xs text-red-600">{erroFoto}</p>}
 
@@ -318,14 +325,17 @@ function Editor({
             ou cole o endereço de uma foto que já está na internet
             <input
               value={foto}
-              onChange={(e) => setFoto(e.target.value)}
+              onChange={(e) => {
+                setFotoAnterior(null);
+                setFoto(e.target.value);
+              }}
               placeholder="https://…"
               className={`mt-1 block w-full ${campo}`}
             />
           </label>
         </div>
-      </div>
 
+        <div>
       {/* AS AJUDAS DA PYIA.
           A ordem na tela é a ordem de qualidade, e não é acidente:
             1º  a foto que JA TEMOS   — de graça, e é a foto do produto certo
@@ -424,6 +434,9 @@ function Editor({
         >
           + acrescentar linha
         </button>
+      </div>
+
+        </div>
       </div>
 
       <button

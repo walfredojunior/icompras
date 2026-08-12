@@ -1,6 +1,5 @@
-> ⚠️ **Cópia sem as senhas.** Histórico de trabalho do projeto, guardado aqui
-> como backup. As senhas foram trocadas por marcadores antes de subir.
-> As de verdade ficam em Admin > Anotações e no servidores.txt do dono.
+<!-- CÓPIA AUTOMÁTICA da memória do Claude. NÃO EDITAR AQUI — o original vive na máquina do dono.
+     Senhas e chaves foram REMOVIDAS desta cópia. -->
 
 ---
 name: preferencia-trabalho-autonomo

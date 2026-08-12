@@ -1,6 +1,5 @@
-> ⚠️ **Cópia sem as senhas.** Histórico de trabalho do projeto, guardado aqui
-> como backup. As senhas foram trocadas por marcadores antes de subir.
-> As de verdade ficam em Admin > Anotações e no servidores.txt do dono.
+<!-- CÓPIA AUTOMÁTICA da memória do Claude. NÃO EDITAR AQUI — o original vive na máquina do dono.
+     Senhas e chaves foram REMOVIDAS desta cópia. -->
 
 ---
 name: icompras-pendencias
@@ -9,7 +8,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 76bdc89b-fae2-47aa-b6c1-ce2496535a4b
-  modified: 2026-08-10T08:41:50.368Z
+  modified: 2026-08-12T12:38:20.299Z
 ---
 
 Estado em **2026-08-08**. Os detalhes de cada item estão em [[icompras-projeto]], na seção do dia em que o assunto apareceu.
@@ -56,6 +55,12 @@ Estado em **2026-08-08**. Os detalhes de cada item estão em [[icompras-projeto]
 19. 🔜 **CONFERIR A REGRA DAS "DUAS FALTAS" NOS PRIMEIROS DIAS** (a partir de 09/08/2026). A marcação de oferta sumida foi refeita em 08/08 depois de medir **12% de erro** na versão anterior — ver a seção das baixas em [[icompras-projeto]]. ~~Subir o teto de 1% para 5%~~ ✅ feito. **O que olhar agora, no cartão "Saíram do ar" do Admin › Robôs:** (a) o placar "Conferido na fonte", que o guardião preenche às 5h — se acusar erro, a regra ainda está furada; (b) "Voltaram", que tem de ficar perto de zero. ⚠️ **Restou um erro de base de 5% mesmo em anúncio de um modelo, cuja causa eu NÃO descobri** — as duas faltas devem cobri-lo, mas isso é hipótese, não medida. Só considerar o assunto fechado com alguns dias de conferência limpa.
 20. 🔜 **LIGAR A REAÇÃO AUTOMÁTICA DA CONFERÊNCIA** — hoje ela mede e mostra; não age. Combinado com ele em 08/08: primeiro observar alguns dias para saber a taxa de alarme falso, só então fazer o guardião desligar a marcação sozinho quando acusar erro. Não inverter essa ordem.
 20. **PYIA** — a ideia dele de acionar uma IA no incidente. Fica DEPOIS do guardião juntar evidências: aí a IA entra só no caso desconhecido, já com o trabalho pronto. Riscos anotados em [[icompras-projeto]] (injeção pelos dados, custo por acionamento, e o perigo de deixar a IA CONSERTAR sozinha).
+
+21. 🔴 **10.168 PRODUTOS SEM CATEGORIA** (medido em 12/08/2026; eram 1.218 em 06/08 — **oito vezes mais**). Não pesa mais no desempenho desde a correção dos relacionados, mas ainda dói: esses produtos aparecem mal no site, não entram nos filtros de categoria e ficam com sugestões fracas. Foi o crescimento silencioso deste número que afogou o servidor em 12/08 — ver [[icompras-projeto]]. **Vale classificar**, e vale mais ainda **descobrir por que os produtos novos estão entrando sem categoria** (a fonte informa? o casamento de taxonomia falha?), senão o número volta a crescer.
+
+22. 🔜 **CONFERIR SE A CARGA CONTINUA BAIXA** (a partir de 13/08/2026). Depois da correção de 12/08 a carga caiu de 20,75 para 1,25 e o disco de 576 MB/s para 28 MB/s. **O que olhar:** carga no Monitor VPS ao longo de um dia inteiro, incluindo o pico das 18h e com o Google rastreando. Se voltar a subir, o próximo suspeito **não** é o banco — é procurar de novo o que está rodando em `information_schema.processlist`, amostrado várias vezes, que foi o que enfim achou a causa.
+
+23. **`connectionLimit` do site está em 25** (era 5, subi em 12/08). Cabe no limite do MariaDB (151, com os robôs usando ~80). ⚠️ **Não subir mais sem antes conferir se existe consulta cara** — subir o limite com consulta cara viva multiplica o estrago, foi exatamente o que fiz e piorou. Ajustável por `DB_POOL` no `.env`, sem recompilar.
 
 ## ⏸️ PAUSADO POR ELE
 

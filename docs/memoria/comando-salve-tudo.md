@@ -1,6 +1,5 @@
-> ⚠️ **Cópia sem as senhas.** Histórico de trabalho do projeto, guardado aqui
-> como backup. As senhas foram trocadas por marcadores antes de subir.
-> As de verdade ficam em Admin > Anotações e no servidores.txt do dono.
+<!-- CÓPIA AUTOMÁTICA da memória do Claude. NÃO EDITAR AQUI — o original vive na máquina do dono.
+     Senhas e chaves foram REMOVIDAS desta cópia. -->
 
 ---
 name: comando-salve-tudo
@@ -9,7 +8,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 76bdc89b-fae2-47aa-b6c1-ce2496535a4b
-  modified: 2026-08-10T19:57:47.345Z
+  modified: 2026-08-12T12:39:11.588Z
 ---
 
 Combinado com ele em **07/08/2026**: **"quando eu digitar `salve tudo`, você salva a memória das coisas que fizemos e envia as atualizações pro github"**.
@@ -24,7 +23,7 @@ Combinado com ele em **07/08/2026**: **"quando eu digitar `salve tudo`, você sa
 
 | Procurar (sem diferenciar maiúscula) | Trocar por |
 |---|---|
-| `[SENHA-SSH-REMOVIDA]` | `[SENHA-SSH-REMOVIDA]` |
+| `[SENHA-SSH-REMOVIDA]` **com o ponto OPCIONAL** (`[SENHA-SSH-REMOVIDA]\.\?`) | `[SENHA-SSH-REMOVIDA]` |
 | `[SENHA-BANCO-LOCAL-REMOVIDA]` (palavra inteira) | `[SENHA-BANCO-LOCAL-REMOVIDA]` |
 | `[SENHA-ADMIN-REMOVIDA]` | `[SENHA-ADMIN-REMOVIDA]` |
 | `[SENHA-REMOVIDA]` | `[SENHA-REMOVIDA]` |
@@ -35,7 +34,9 @@ Combinado com ele em **07/08/2026**: **"quando eu digitar `salve tudo`, você sa
 
 💡 **Melhor ainda: não escrever senha na memória.** Desde 07/08/2026 elas vivem em **Admin › Anotações** (no banco) e em `servidores.txt` (fora do Git). A memória deve apontar para lá, não repetir o valor — o que não está escrito não precisa ser filtrado.
 
-⚠️ **`[SENHA-BANCO-LOCAL-REMOVIDA]` quase escapou** (07/08/2026) — é a senha do banco LOCAL do PC dele, e eu só filtrava `[SENHA-SSH-REMOVIDA]`. Chegou a subir no primeiro envio da memória e ficou no histórico do repositório.
+⚠️ **`[SENHA-BANCO-LOCAL-REMOVIDA]` quase escapou** (07/08/2026) — é a senha do banco LOCAL do PC dele, e eu só filtrava a senha SSH inteira. Chegou a subir no primeiro envio da memória e ficou no histórico do repositório.
+
+⚠️⚠️ **FILTRAR A SENHA SEM A PONTUAÇÃO TAMBÉM** (barrado em 12/08/2026). A senha SSH termina em ponto, e eu filtrava só a forma **com** o ponto. Mas o texto desta própria instrução citava a senha **sem** o ponto, ao explicar o caso do `[SENHA-BANCO-LOCAL-REMOVIDA]` — e essa forma passava pelo filtro, levando ao GitHub tudo menos o último caractere. **Isto NÃO é o alarme falso descrito abaixo**: ali o verificador casava com a palavra `guthub` do texto explicativo, que não é senha de nada; aqui o que casou **era** a senha. Regra: **filtrar o miolo da senha, com a pontuação opcional**, e ao citar uma senha em qualquer texto, citar o marcador (`[SENHA-SSH-REMOVIDA]`), nunca o valor.
 
 **Conferir ANTES de commitar** que nenhum dos VALORES da tabela sobrou na cópia.
 

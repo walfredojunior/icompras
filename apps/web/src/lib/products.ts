@@ -222,10 +222,41 @@ async function buscarProductBreadcrumb(
 // lugar de 2,0 s** — 24× mais rápido, porque são 795 candidatos e não 226 mil.
 // Faz sentido além do desempenho: produto relacionado de celular é celular.
 //
-// A rede de segurança abaixo existe para 0,54% do catálogo: 1.218 produtos sem
-// categoria e 12 em categorias com menos de 7 itens. Nesses, e só nesses, a
-// busca ampla (lenta) ainda roda — melhor uma página lenta do que uma página
-// sem sugestão nenhuma.
+// ⚠⚠ E AÍ A REDE DE SEGURANÇA VIROU O PROBLEMA (12/08/2026). ⚠⚠
+//
+// A versão anterior tinha um "plano B": se a categoria devolvesse menos de 6
+// produtos, rodava a busca ampla — a varredura dos 182 mil vetores. O cálculo
+// da época era "isso atinge 0,54% do catálogo, melhor uma página lenta do que
+// uma página sem sugestão". O cálculo estava certo **naquele dia**.
+//
+// O que mudou: os produtos **sem categoria** foram de 1.218 para **10.168** —
+// oito vezes mais — com o catálogo indo a 279.879. Sem categoria, a consulta
+// boa devolve zero, e o plano B disparava em 10 mil páginas, não em 0,54% do
+// catálogo. O Google começou a rastrear o site nesses mesmos dias, então essas
+// páginas passaram a ser visitadas de verdade.
+//
+// ⚠ AO DIAGNOSTICAR: eu li o "rows 182.577" do EXPLAIN como se fosse quantos
+// produtos têm vetor, e conclui que 97 mil estavam sem. Errado — 279.814 dos
+// 279.879 têm vetor. **`rows` no EXPLAIN é estimativa do otimizador, não
+// contagem.** Para saber quantos são, contar; a conclusão certa (o plano B
+// disparava demais) veio de um número errado e quase apontou para a causa errada.
+//
+// O estrago, medido: a consulta levava **19,6 segundos** e lia **576 MB/s** do
+// disco sem parar; carga 16,5 num servidor de 4 núcleos; CPU 1% ociosa e 36%
+// esperando disco. O site inteiro ficou lento — inclusive a home, que não usa
+// esta função. Foi o que despistou o diagnóstico por um dia: eu media as
+// consultas da home, todas rápidas, enquanto o afogamento vinha daqui.
+//
+// 💡 A LIÇÃO, e é a mesma do freio do Meilisearch: **um caminho de exceção caro
+// é uma bomba com relógio.** Ele é barato enquanto for exceção, e ninguém
+// percebe quando deixa de ser. Se o caso raro custa 100× o caso normal, o que
+// importa não é o custo — é o que faria a raridade acabar.
+//
+// A regra agora: **nunca varrer o catálogo inteiro numa requisição de página.**
+// Quando a categoria não dá 6, completa-se com vizinhos baratos (mesma
+// categoria, depois a categoria-pai) — sem similaridade, mas por índice, em
+// milissegundos. Sugestão pior num caso raro é um preço muito menor do que
+// derrubar o site para todo mundo.
 const SELECT_RELACIONADOS = `p.id, p.slug, p.canonical_name AS name, p.brand, p.primary_image_url AS image_url,
             COALESCE((SELECT MIN(o.price_usd) FROM offer o JOIN product_variant v ON v.id = o.variant_id WHERE v.product_id = p.id AND o.in_stock = 1), p.min_price_usd) AS min_price,
             GREATEST(
@@ -234,8 +265,8 @@ const SELECT_RELACIONADOS = `p.id, p.slug, p.canonical_name AS name, p.brand, p.
             ) AS store_count`;
 
 async function buscarRelatedProducts(productId: number, limit = 6): Promise<ProductHit[]> {
-  // Caminho normal: só dentro da categoria do produto.
-  let rows = await pool.query(
+  // 1) O caminho bom: semelhança de verdade, dentro da categoria.
+  const rows: any[] = await pool.query(
     `SELECT ${SELECT_RELACIONADOS}
      FROM product_embedding e1
      JOIN product p0 ON p0.id = e1.product_id
@@ -247,18 +278,27 @@ async function buscarRelatedProducts(productId: number, limit = 6): Promise<Prod
     [productId, limit],
   );
 
-  // Plano B para quem não tem categoria (ou tem categoria quase vazia).
+  // 2) Faltou? Completa com vizinhos de prateleira — mesma categoria, senão a
+  //    categoria-pai. Sem similaridade, mas tudo por índice: milissegundos.
+  //    Ordena por quantas lojas vendem (o que tem mais loja é mais conhecido).
   if (rows.length < limit) {
-    rows = await pool.query(
+    const excluir = [productId, ...rows.map((r) => Number(r.id))];
+    const vagas = excluir.map(() => "?").join(","); // lista explícita, sem depender do driver
+    const faltam = limit - rows.length;
+
+    const extras: any[] = await pool.query(
       `SELECT ${SELECT_RELACIONADOS}
-       FROM product_embedding e1
-       JOIN product_embedding e2 ON e2.product_id <> e1.product_id
-       JOIN product p ON p.id = e2.product_id
-       WHERE e1.product_id = ?
-       ORDER BY VEC_DISTANCE_COSINE(e1.embedding, e2.embedding) ASC
+       FROM product p
+       JOIN product p0 ON p0.id = ?
+       LEFT JOIN category c0 ON c0.id = p0.category_id
+       WHERE p.id NOT IN (${vagas})
+         AND p.category_id IS NOT NULL
+         AND (p.category_id = p0.category_id OR p.category_id = c0.parent_id)
+       ORDER BY p.ext_store_count DESC, p.id DESC
        LIMIT ?`,
-      [productId, limit],
+      [productId, ...excluir, faltam],
     );
+    rows.push(...extras);
   }
 
   return rows.map((r: any) => ({
