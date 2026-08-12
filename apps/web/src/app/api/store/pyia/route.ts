@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentStore } from "@/lib/storeauth";
 import { pool } from "@/lib/db";
 import { fotoDoCatalogo, gerarDescricao, gerarFoto } from "@/lib/pyia";
+import { melhorarFoto } from "@/lib/melhorarFoto";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -56,6 +57,26 @@ export async function POST(req: Request) {
     const r = await gerarDescricao(nome, ficha);
     return r.ok
       ? NextResponse.json({ ok: true, texto: r.texto })
+      : NextResponse.json({ error: r.erro }, { status: 400 });
+  }
+
+  if (b.acao === "melhorar-foto") {
+    // Não passa por `podeUsar`: isto NÃO usa IA nem gasta nada. É só o
+    // processador de imagem recortando a moldura e achatando sobre branco.
+    const [f] = await pool
+      .query(
+        `SELECT p.primary_image_url AS foto
+           FROM offer o JOIN product_variant v ON v.id = o.variant_id
+           JOIN product p ON p.id = v.product_id
+          WHERE o.id = ? AND o.store_id = ? LIMIT 1`,
+        [offerId, loja.id],
+      )
+      .catch(() => [null]);
+    const atual = (b as any).foto || f?.foto;
+    if (!atual) return NextResponse.json({ error: "este produto ainda não tem foto" }, { status: 400 });
+    const r = await melhorarFoto(String(atual));
+    return r.ok
+      ? NextResponse.json({ ok: true, url: r.url, mudou: r.mudou })
       : NextResponse.json({ error: r.erro }, { status: 400 });
   }
 

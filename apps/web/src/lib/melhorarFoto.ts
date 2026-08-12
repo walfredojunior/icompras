@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
@@ -6,33 +6,42 @@ import sharp from "sharp";
 // "Melhorar a foto": recortar a sobra e deixar o fundo branco.
 //
 // Pedido dele em 11/08/2026, com a regra certa junto: **"não altera a foto do
-// produto, só melhora e deixa fundo branco"**. Isso é o oposto de gerar
-// imagem — o produto continua sendo exatamente o que foi fotografado. Muda o
-// enquadramento e o fundo, e nada mais.
+// produto, só melhora e deixa fundo branco"**. É o oposto de gerar imagem — o
+// produto continua sendo o que foi fotografado. Muda enquadramento e fundo.
 //
-// 💡 E NÃO PRECISA DE IA. O caso comum numa lista de loja é foto com margem
-// enorme, fundo cinza claro do estúdio, ou PNG com fundo transparente que fica
-// horrível sobre o cartão branco do site. Tudo isso o processador de imagem
-// resolve sozinho, de graça e em milissegundos.
+// ⚠⚠ NÃO LER ARQUIVO DO DISCO AQUI. NUNCA. ⚠⚠
 //
-// ⚠ O que isto NÃO faz: recortar produto de um fundo BAGUNÇADO (mesa, loja,
-// pessoa atrás). Para isso é preciso reconhecer o objeto, e aí sim entra a
-// PYIA. Prefiro entregar o barato que resolve a maioria e dizer com clareza
-// onde ele para.
+// A primeira versão fazia `readFile(join(process.cwd(), "public", <variável>))`
+// e **isso derrubou o site em 11/08/2026**. O Next analisa as leituras de
+// arquivo para saber o que empacotar; com o caminho montado a partir de uma
+// variável ele não consegue resolver e assume o pior: inclui a pasta inteira.
+// A `public` deste projeto tem **14 GB e 1.417.259 arquivos** (as fotos dos
+// produtos). Medido no servidor, no mesmo dia:
+//
+//     sem a leitura de arquivo → 1,5 GB · 1m26s · build ok
+//     com a leitura de arquivo →  12  GB · 6m52s · morto pelo sistema
+//
+// ⚠ `outputFileTracingExcludes: { "*": ["./public/**/*"] }` NÃO resolve —
+// testado, continuou em 12 GB. A única saída é o código não ler do disco.
+//
+// Por isso tudo entra por HTTP, inclusive as nossas próprias fotos: o site já
+// as serve, e uma requisição local custa milissegundos. O compilador não vê
+// leitura de arquivo nenhuma, e o problema deixa de existir.
+const BASE_LOCAL = process.env.FOTO_BASE_URL ?? "http://127.0.0.1:3000";
 
-/** O quadrado final. Todas as fotos com a mesma medida deixam a grade alinhada. */
+/** O quadrado final. Todas as fotos iguais deixam a grade alinhada. */
 const LADO = 1000;
 /** Respiro em volta do produto, para ele não encostar na borda. */
 const MARGEM = 40;
 
 async function carregar(foto: string): Promise<Buffer | null> {
+  // Caminho nosso (/media/...) vira endereço local; o resto tem de ser https.
+  const url = foto.startsWith("/") ? `${BASE_LOCAL}${foto}` : foto;
+  if (!/^https?:\/\//i.test(url)) return null;
+  // Só o nosso próprio servidor pode ser chamado por http; de fora, só https.
+  if (url.startsWith("http://") && !url.startsWith(BASE_LOCAL)) return null;
   try {
-    if (foto.startsWith("/")) {
-      // Foto nossa, já no disco.
-      return await readFile(join(process.cwd(), "public", foto.replace(/^\//, "")));
-    }
-    if (!/^https:\/\//i.test(foto)) return null;
-    const r = await fetch(foto, { signal: AbortSignal.timeout(30_000) });
+    const r = await fetch(url, { signal: AbortSignal.timeout(30_000) });
     if (!r.ok) return null;
     return Buffer.from(await r.arrayBuffer());
   } catch {
@@ -53,15 +62,14 @@ export async function melhorarFoto(
     //    com o fundo do cartão vazando por dentro do produto.
     const achatada = await sharp(buf).flatten({ background: "#ffffff" }).png().toBuffer();
 
-    // 2) Corta a moldura de cor uniforme. É o que tira a margem enorme das
-    //    fotos de catálogo antigo. `threshold` tolerante de propósito: fundo
-    //    de estúdio quase nunca é branco puro, é 250-252.
+    // 2) Corta a moldura de cor uniforme — a margem enorme das fotos de
+    //    catálogo antigo. Tolerância folgada: fundo de estúdio quase nunca é
+    //    branco puro, é 250-252.
     let cortada: Buffer;
     try {
       cortada = await sharp(achatada).trim({ threshold: 12 }).toBuffer();
     } catch {
-      // Foto de cor toda uniforme faz o corte falhar — segue sem cortar.
-      cortada = achatada;
+      cortada = achatada; // foto de cor uniforme faz o corte falhar
     }
 
     const dep = await sharp(cortada).metadata();
@@ -70,8 +78,8 @@ export async function melhorarFoto(
     if (!l || !a) return { ok: false, erro: "a foto ficou vazia depois do corte" };
 
     // 3) Centraliza num quadrado branco, com respiro. `contain` mantém a
-    //    proporção — o produto NÃO é esticado nem espremido, que seria alterar
-    //    o que ele pediu para não alterar.
+    //    proporção — o produto NÃO é esticado, que seria alterar justamente o
+    //    que ele pediu para não alterar.
     const saida = await sharp(cortada)
       .resize({
         width: LADO - MARGEM * 2,
@@ -80,13 +88,7 @@ export async function melhorarFoto(
         background: "#ffffff",
         withoutEnlargement: true,
       })
-      .extend({
-        top: MARGEM,
-        bottom: MARGEM,
-        left: MARGEM,
-        right: MARGEM,
-        background: "#ffffff",
-      })
+      .extend({ top: MARGEM, bottom: MARGEM, left: MARGEM, right: MARGEM, background: "#ffffff" })
       .flatten({ background: "#ffffff" })
       .webp({ quality: 88 })
       .toBuffer();
@@ -96,9 +98,7 @@ export async function melhorarFoto(
     await mkdir(pasta, { recursive: true });
     await writeFile(join(pasta, nome), saida);
 
-    // Quanto de moldura foi embora — serve para a tela dizer se valeu a pena.
     const cortou = (antes.width ?? 0) > 0 ? 1 - (l * a) / ((antes.width ?? 1) * (antes.height ?? 1)) : 0;
-
     return { ok: true, url: `/media/produtos/${nome}`, mudou: cortou > 0.02 };
   } catch (e) {
     return { ok: false, erro: (e as Error).message };

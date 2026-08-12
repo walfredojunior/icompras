@@ -349,6 +349,19 @@ function Editor({
             {pensando === "foto-catalogo" ? "procurando…" : "Procurar a foto que já temos"}
           </button>
 
+          {/* Melhorar vem logo depois de "procurar a foto que já temos"
+              porque é o mesmo espírito: trabalha com a foto REAL. E não gasta
+              nada — não passa por serviço pago nenhum. */}
+          <button
+            type="button"
+            disabled={!!pensando || !foto}
+            onClick={() => pedirPyia("melhorar-foto")}
+            title={foto ? "recorta a sobra e deixa o fundo branco" : "envie uma foto primeiro"}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:border-brand-green disabled:opacity-50"
+          >
+            {pensando === "melhorar-foto" ? "melhorando…" : "Melhorar a foto (fundo branco)"}
+          </button>
+
           <button
             type="button"
             disabled={!!pensando}

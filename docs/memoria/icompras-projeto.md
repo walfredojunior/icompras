@@ -61,11 +61,41 @@ Não tem "Security Events" — só **Overview, Analytics, Web assets, Security r
 ### 💡 NÃO DÁ PARA COMPILAR NA MÁQUINA DELE E MANDAR PRONTO
 Ideia dele, e eu testei: **não funciona neste projeto**. O Turbopack grava no build uma referência ao driver do banco com um sufixo único da máquina que compilou (`mariadb-a3d6b442fac4b7b4`), e no servidor o Node não acha o pacote — o site nem sobe. Testado na porta isolada, sem afetar produção.
 
-### 🐛 A CAUSA RAIZ, AINDA EM ABERTO
-**`lib/melhorarFoto.ts` faz o `next build` do servidor estourar a memória** — cresce até **12 GB** e o kernel o mata (código 137), mesmo com 14 GB livres e o `.next` limpo. **Compila em 10 segundos no Windows dele.** Removida temporariamente, o build passou de primeira.
+### ✅ A CAUSA RAIZ — ACHADA E RESOLVIDA (12/08/2026)
 
-📌 **O código está guardado em `/root/guardado/` na VPS e em `docs/pendente/` no repositório.**
-💡 **Saída provável, se a causa não aparecer:** mover o processamento de imagem para o **worker**, que não usa esse compilador. Para o cliente fica igual.
+**`readFile` com caminho montado por variável dentro de `public/`.**
+
+    readFile(join(process.cwd(), "public", <variável>))   ← isto derrubou o site
+
+O Next analisa as leituras de arquivo para saber o que empacotar. Com o caminho vindo de uma variável ele **não consegue resolver e inclui a pasta inteira** no rastreamento. E a `public` deste projeto tem **14 GB e 1.417.259 arquivos** (as fotos dos produtos).
+
+**Medido no servidor, os três cenários:**
+
+| | Memória | Tempo | |
+|---|---|---|---|
+| sem a leitura de disco | 1,5 GB | 1m26s | ✅ |
+| **com a leitura de disco** | **12,0 GB** | 6m52s | morto (137) |
+| depois do conserto | 1,5 GB | 0m57s | ✅ |
+
+⚠️ **`outputFileTracingExcludes` para `./public/**/*` NÃO resolve** — testado, continuou em 12 GB. A única saída foi o código parar de ler do disco.
+
+**O conserto:** a foto entra por HTTP, inclusive a nossa (`http://127.0.0.1:3000/media/...`). O site já a serve; a requisição local custa milissegundos e o compilador não vê leitura de arquivo nenhuma.
+
+💡 **POR QUE EU FIQUEI CEGO:** compilava em 10 segundos no Windows dele porque lá a `public` está praticamente vazia — as fotos vivem no servidor. **Build que passa na máquina local não prova nada quando o problema é o volume de dados do servidor.**
+
+⚠️ **REGRA GERAL:** nada em `apps/web` deve ler arquivo de `public/` com caminho variável. Precisou do conteúdo? Busca pelo endereço.
+
+### 🛡️ O PROCEDIMENTO NOVO DE PUBLICAÇÃO (12/08/2026) — usar SEMPRE
+
+`next.config.ts` ganhou `distDir: process.env.NEXT_DIST_DIR ?? ".next"`. Agora:
+
+1. `NEXT_DIST_DIR=.next-novo npm run build -w @icompras/web` — **não toca no que está no ar**
+2. `NEXT_DIST_DIR=.next-novo PORT=3009 npm run start` — testa em porta isolada
+3. só então: `mv .next .next-anterior && mv .next-novo .next && pm2 restart icompras-web`
+
+**`.next-anterior` fica guardado — dá para voltar em cinco segundos.**
+
+💡 A prova de que resolve: na investigação de 12/08 foram **quatro construções, duas delas morrendo**, e o **site respondeu 200 o tempo todo**. Na véspera, uma só derrubou o admin por horas.
 
 ## 🤖 CONFIGURAÇÕES DE IA NO ADMIN (2026-08-11) — NO AR · e o MÓDULO DO CLIENTE planejado
 

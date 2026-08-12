@@ -12,6 +12,10 @@ node_modules/
 dist/
 build/
 .next/
+# Todos os diretorios de build, inclusive os isolados que o procedimento
+# novo usa (.next-novo, .next-anterior, .next-medida). Em 12/08/2026 um
+# deles entrou num commit com 51.192 arquivos.
+.next*/
 out/
 
 # logs
