@@ -280,6 +280,34 @@ export async function GET(req: Request) {
          FROM coletor_saida WHERE id = 1`,
     ).catch(() => [null]);
 
+    // OS BLOQUEIOS HORA A HORA (migration 057).
+    //
+    // O total acumulado acima não responde a pergunta que importa. Em
+    // 13/08/2026 ele marcava **401** e o dono perguntou se o proxy estava com
+    // problema — mas o último bloqueio tinha sido 46 horas antes, e os 401 se
+    // concentraram entre 08/08 e 11/08. Número que só sobe vira alarme
+    // permanente e para de informar.
+    //
+    // 48 horas é a janela que responde "está acontecendo AGORA?". Custa nada:
+    // a tabela só ganha linha em hora que teve bloqueio, então são no máximo
+    // 48 linhas.
+    // ⚠ AGRUPA POR HORA. A chave da tabela é (hora, modo), então uma hora que
+    // teve bloqueio saindo pelo proxy E direto rende DUAS linhas. Sem o
+    // agrupamento, a tela desenhava só uma delas e escondia metade dos
+    // bloqueios — encontrado testando com dados dos dois modos na mesma hora.
+    const bloqueiosPorHora = await pool
+      .query(
+        `SELECT DATE_FORMAT(hora, '%Y-%m-%dT%H') AS hora,
+                GROUP_CONCAT(DISTINCT modo) AS modo,
+                MAX(ip) AS ip,
+                SUM(quantos) AS quantos
+           FROM coletor_bloqueio_hora
+          WHERE hora > NOW() - INTERVAL 48 HOUR
+          GROUP BY hora
+          ORDER BY hora`,
+      )
+      .catch(() => []);
+
     // OFERTAS QUE SAÍRAM DO AR — o monitor que ele pediu em 08/08/2026.
     //
     // ⚠ Todas as contagens saem dos índices `idx_offer_baixa` e
@@ -365,6 +393,15 @@ export async function GET(req: Request) {
             trocasIp: Number(saida.trocasIp ?? 0),
             ultimaTrocaIpMin: saida.ultimaTrocaIpMin == null ? null : Number(saida.ultimaTrocaIpMin),
             ipVistoMin: saida.ipVistoMin == null ? null : Number(saida.ipVistoMin),
+            // As últimas 48 horas, para o total acumulado parar de assustar
+            // sem motivo. Só vêm as horas que tiveram bloqueio; a tela
+            // completa as vazias com zero.
+            porHora: (bloqueiosPorHora as any[]).map((b) => ({
+              hora: String(b.hora),
+              modo: String(b.modo),
+              ip: b.ip ?? null,
+              quantos: Number(b.quantos ?? 0),
+            })),
           }
         : null,
       baixas: baixas

@@ -34,6 +34,8 @@ export interface RobosInfo {
     trocasIp: number;
     ultimaTrocaIpMin: number | null;
     ipVistoMin: number | null;
+    /** Últimas 48h de bloqueios. Só as horas que tiveram algum. */
+    porHora?: Array<{ hora: string; modo: string; ip: string | null; quantos: number }>;
   } | null;
   /** Ofertas que saíram do ar. Null se o banco ainda não tem as colunas. */
   baixas?: {
@@ -95,6 +97,86 @@ function Cartao({
         {selo}
       </div>
       <div className="mt-3 space-y-1.5 text-xs text-slate-600">{children}</div>
+    </div>
+  );
+}
+
+// OS BLOQUEIOS DAS ÚLTIMAS 48 HORAS, hora a hora.
+//
+// ⚠ POR QUE ISTO EXISTE (13/08/2026). Logo acima está "Bloqueios (403): 401",
+// e foi esse número que fez o dono perguntar se o proxy estava com problema.
+// Ele estava certo em perguntar e o número estava errado em assustar: os 401
+// eram acumulados desde 08/08, e o último bloqueio tinha sido **46 horas
+// antes**. Para descobrir isso foi preciso consultar o banco na mão.
+//
+// 💡 Contador que só sobe envelhece mal. Depois de algumas semanas ele vira
+// ruído permanente — sempre grande, nunca informativo. O que responde "preciso
+// agir?" não é o total, é QUANDO aconteceu. Por isso as barras.
+//
+// A mesma informação também liga pontas: as 155 unidades do mapa que falharam
+// caladas em 11/08 rodaram entre 12h e 14h, bem dentro da janela de bloqueios.
+// Com este gráfico, isso saltaria aos olhos no mesmo dia.
+function BloqueiosPorHora({
+  horas,
+  ultimo403Min,
+}: {
+  horas?: Array<{ hora: string; modo: string; ip: string | null; quantos: number }>;
+  ultimo403Min: number | null;
+}) {
+  // Sem histórico ainda (banco sem a migração 057, ou nenhum bloqueio): não
+  // desenha nada. Barra vazia sem explicação confunde mais do que ajuda.
+  if (!horas?.length) {
+    return ultimo403Min != null && ultimo403Min > 180 ? (
+      <p className="pt-1 text-[11px] text-emerald-600">
+        ✓ nenhum bloqueio nas últimas horas — o número acima é acumulado
+      </p>
+    ) : null;
+  }
+
+  // Completa as horas sem bloqueio com zero. Sem isto, três bloqueios em três
+  // dias diferentes desenhariam três barras coladas, parecendo uma rajada.
+  const agora = new Date();
+  agora.setMinutes(0, 0, 0);
+  const porChave = new Map(horas.map((h) => [h.hora, h]));
+  const serie: Array<{ chave: string; quantos: number; hora: Date }> = [];
+  for (let i = 47; i >= 0; i--) {
+    const d = new Date(agora.getTime() - i * 3_600_000);
+    const chave = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+      d.getDate(),
+    ).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}`;
+    serie.push({ chave, quantos: porChave.get(chave)?.quantos ?? 0, hora: d });
+  }
+
+  const maior = Math.max(...serie.map((s) => s.quantos), 1);
+  const total48 = serie.reduce((n, s) => n + s.quantos, 0);
+  const ultimas6 = serie.slice(-6).reduce((n, s) => n + s.quantos, 0);
+
+  return (
+    <div className="pt-2">
+      <p className="mb-1 text-[11px] text-slate-400">
+        últimas 48 horas — {total48.toLocaleString("pt-BR")} bloqueio
+        {total48 === 1 ? "" : "s"}
+        {total48 > 0 && ultimas6 === 0 && " · nenhum nas últimas 6h"}
+      </p>
+      {/* items-end para as barras crescerem de baixo para cima. (Já troquei
+          isto por items-stretch uma vez, em outro gráfico, e as barras
+          colapsaram — aqui o certo é end mesmo, porque a altura é por barra.) */}
+      <div className="flex h-10 items-end gap-px" title="cada barra é uma hora">
+        {serie.map((s) => (
+          <div
+            key={s.chave}
+            className={`flex-1 rounded-sm ${
+              s.quantos === 0 ? "bg-slate-100" : s.quantos >= maior * 0.6 ? "bg-rose-500" : "bg-amber-400"
+            }`}
+            style={{ height: s.quantos === 0 ? "2px" : `${Math.max(12, (s.quantos / maior) * 100)}%` }}
+            title={`${s.hora.getDate()}/${s.hora.getMonth() + 1} às ${s.hora.getHours()}h — ${s.quantos} bloqueio(s)`}
+          />
+        ))}
+      </div>
+      <div className="flex justify-between pt-0.5 text-[10px] text-slate-400">
+        <span>48h atrás</span>
+        <span>agora</span>
+      </div>
     </div>
   );
 }
@@ -207,6 +289,7 @@ export function PainelDosRobos({ r }: { r: RobosInfo | null }) {
             rotulo="Último bloqueio"
             valor={r.saida.ultimo403Min == null ? "nunca" : tempo(r.saida.ultimo403Min)}
           />
+          <BloqueiosPorHora horas={r.saida.porHora} ultimo403Min={r.saida.ultimo403Min} />
           {/* Medida velha = o guardião não está conseguindo perguntar pelo
               proxy. O número acima continua na tela, e sem este aviso pareceria
               atual. Ele mede de 5 em 5 min; 20 já é atraso de verdade. */}

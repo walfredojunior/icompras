@@ -28,6 +28,44 @@ export default async function AdminVisitasPage({
   const celular = r.dispositivos.find((d) => d.device === "mobile")?.views ?? 0;
   const totalDisp = r.dispositivos.reduce((n, d) => n + d.views, 0);
 
+  // MÉDIA DIÁRIA — pedida por ele em 12/08/2026.
+  //
+  // Dois cuidados que mudam o número, e por isso não é só `total / dias`:
+  //
+  // 1) FORA O DIA DE HOJE. O dia corrente está pela metade — às 9h da manhã
+  //    ele tem ~1/3 das visitas que terá. Incluí-lo derruba a média e faz o
+  //    site parecer estar piorando toda manhã. Por isso o último dia da série
+  //    sai da conta, e o rótulo diz isso em voz alta.
+  //
+  // 2) DIVIDE PELOS DIAS QUE EXISTEM, não pelos 30 do filtro. A consulta só
+  //    devolve dias que tiveram visita; se o site tem 12 dias de histórico e o
+  //    filtro pede 90, dividir por 90 daria uma média 7× menor que a real.
+  //    Conta o intervalo do calendário (primeiro dia até ontem), assim um dia
+  //    sem visita nenhuma entra como zero em vez de sumir da conta.
+  // ⚠ Só tira o último se ele FOR hoje. Cortar às cegas (`slice(0,-1)`) dava
+  // certo de dia e errado de madrugada: antes da primeira visita do dia, o
+  // último item da série é ONTEM — um dia fechado, e o mais recente que existe.
+  // Descartá-lo jogaria fora justamente o dado mais novo.
+  //
+  // Compara em UTC porque `analytics_daily.day` é gravado com a data do
+  // servidor, que roda em UTC (o Paraguai é UTC−3 — ver a seção do fuso na
+  // memória do projeto). Comparar com a data local daria um dia de diferença
+  // durante as 3 primeiras horas da noite.
+  const hojeNoServidor = new Date().toISOString().slice(0, 10);
+  const serie =
+    r.dias.length && r.dias[r.dias.length - 1].day === hojeNoServidor ? r.dias.slice(0, -1) : r.dias;
+  const somaFechada = serie.reduce((n, d) => n + d.views, 0);
+  const diasContados = serie.length
+    ? Math.max(
+        1,
+        Math.round(
+          (Date.parse(`${serie[serie.length - 1].day}T00:00:00Z`) - Date.parse(`${serie[0].day}T00:00:00Z`)) /
+            86_400_000,
+        ) + 1,
+      )
+    : 0;
+  const mediaDiaria = diasContados ? Math.round(somaFechada / diasContados) : 0;
+
   return (
     <div
       className="space-y-6"
@@ -67,8 +105,17 @@ export default async function AdminVisitasPage({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Destaque rotulo="Visitas no período" valor={r.totalPeriodo} variacao={variacao} />
+        <Destaque
+          rotulo="Média por dia"
+          valor={mediaDiaria}
+          sufixo={
+            diasContados
+              ? `em ${diasContados} ${diasContados === 1 ? "dia" : "dias"}, sem contar hoje`
+              : "ainda sem dia fechado"
+          }
+        />
         <Destaque rotulo="Páginas de produto e categoria" valor={paginas} />
         <Destaque
           rotulo="Pelo celular"

@@ -9,6 +9,32 @@ import { registrarCliqueLoja } from "@/lib/analytics";
 // te enviou N visitantes este mês".
 //
 // Fica fora de [locale] de propósito: é um redirecionamento, não uma página.
+
+// ⛔ NENHUM CLIQUE PODE TERMINAR NA FONTE. Regra do dono, 12/08/2026:
+// **"nunca um produto deve abrir uma página do comprasparaguai"**. É de onde
+// coletamos os preços; mandar nosso visitante para lá é entregar o cliente ao
+// concorrente. Hoje nenhum link leva para lá — conferido nos 206.502 endereços
+// de saída — mas isso é o estado dos DADOS, e dado muda a cada coleta. Isto
+// aqui é a trava que não depende de os dados estarem limpos.
+//
+// ⚠ COMPARA O DOMÍNIO, NÃO O TEXTO. Existe um endereço legítimo do primeshop
+// com "comprasparaguai" escrito no meio do caminho (a loja bagunçou o slug):
+//   primeshop.com.py/shop/.../campainha-...-fjhttps-www-comprasparaguai-com-br-...
+// Uma busca por texto bloquearia esse link de loja de verdade. Quem decide é o
+// domínio, e só ele.
+function naoPodeSerAFonte(endereco: string | null): string | null {
+  if (!endereco) return null;
+  try {
+    const dominio = new URL(endereco).hostname.toLowerCase();
+    // Pega comprasparaguai.com.br, www., e qualquer subdomínio — sem pegar um
+    // domínio diferente que apenas contenha o nome (ex.: "naocomprasparaguai").
+    if (dominio === "comprasparaguai.com.br" || dominio.endsWith(".comprasparaguai.com.br")) return null;
+    if (dominio === "comprasparaguai.com" || dominio.endsWith(".comprasparaguai.com")) return null;
+    return endereco;
+  } catch {
+    return null; // endereço inválido não vira redirecionamento
+  }
+}
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const storeId = Number(id);
@@ -58,7 +84,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       : // Rede de proteção: sem o link do produto, a home da loja. O visitante
         // procura de novo — chato, mas melhor que um botão que não leva a lugar
         // nenhum. Só cai na nossa home quando a loja também não tem site.
-        doProduto || rows[0].external_url || null;
+        naoPodeSerAFonte(doProduto) || naoPodeSerAFonte(rows[0].external_url) || null;
 
   if (!destino) return casa;
 

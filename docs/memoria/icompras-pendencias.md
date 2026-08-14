@@ -8,7 +8,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 76bdc89b-fae2-47aa-b6c1-ce2496535a4b
-  modified: 2026-08-12T12:38:20.299Z
+  modified: 2026-08-14T17:02:20.745Z
 ---
 
 Estado em **2026-08-08**. Os detalhes de cada item estão em [[icompras-projeto]], na seção do dia em que o assunto apareceu.
@@ -61,6 +61,16 @@ Estado em **2026-08-08**. Os detalhes de cada item estão em [[icompras-projeto]
 22. 🔜 **CONFERIR SE A CARGA CONTINUA BAIXA** (a partir de 13/08/2026). Depois da correção de 12/08 a carga caiu de 20,75 para 1,25 e o disco de 576 MB/s para 28 MB/s. **O que olhar:** carga no Monitor VPS ao longo de um dia inteiro, incluindo o pico das 18h e com o Google rastreando. Se voltar a subir, o próximo suspeito **não** é o banco — é procurar de novo o que está rodando em `information_schema.processlist`, amostrado várias vezes, que foi o que enfim achou a causa.
 
 23. **`connectionLimit` do site está em 25** (era 5, subi em 12/08). Cabe no limite do MariaDB (151, com os robôs usando ~80). ⚠️ **Não subir mais sem antes conferir se existe consulta cara** — subir o limite com consulta cara viva multiplica o estrago, foi exatamente o que fiz e piorou. Ajustável por `DB_POOL` no `.env`, sem recompilar.
+
+24. 🔴 **O FREIO DO MEILISEARCH DEPENDE DO COLETOR — e isso já causou problema.** O freio que pus em 12/08 só libera a reindexação quando um robô **conclui uma unidade de trabalho**, e as unidades do mapa levam horas. Em 13/08 a busca ficou **mais de uma hora mostrando imagens já apagadas do banco** (o logo do concorrente). Tive de rodar `npm run search:sync` na mão. **Conserto certo:** o guardião dispara a sincronização quando ela estiver atrasada (ex.: mais de 60 min), em vez de depender do coletor. ~30 min de trabalho.
+
+25. 🔜 **PRONTO E NÃO PUBLICADO** (13-14/08): placeholder do iCompras nos produtos sem foto (`ProductCard.tsx`); migration **057** + histórico de bloqueios 403 por hora + gráfico no painel dos robôs + aviso do guardião. Tudo compila e foi testado. Publicar na próxima janela.
+
+26. **As outras 24 imagens repetidas** (11 a 64 produtos cada) não foram tocadas — têm poucas categorias e provavelmente são variações legítimas do mesmo produto. Olhar uma a uma quando sobrar tempo. A consulta está na seção do logo em [[icompras-projeto]].
+
+27. 📱 **APP iOS/ANDROID — ele quer fazer** (13/08). Levantamento feito: o caminho é **Capacitor** (embrulha o site que já existe, um código só). O PWA já está pronto (manifest, service worker, botão de instalar, 77 classes responsivas). **O obstáculo real é a regra 4.2 da Apple**, que rejeita "site embrulhado" — a saída é a **notificação de queda de preço**, que justifica o app e é genuinamente útil. **Descoberta importante: conta, alertas e favoritos JÁ EXISTEM e estão desligados** (`app_user` 5 linhas, `price_alert` 2 linhas, `favorite`, APIs `/api/alerts`, `/api/auth/*`, `/api/favorites`, telas `/alertas` e `/favoritos`). O `ingest.ts` **já detecta** quando o preço bate o alvo — só não entrega nada, porque não existe envio. Ordem sugerida: (1) notificação funcionando no site, (2) Android (US$ 25, sem Mac), (3) iPhone. **Ele não tem Mac** → serviço de compilação na nuvem (US$ 30-60/mês). **Tem conta em nome da empresa [SENHA-BANCO-LOCAL-REMOVIDA] — falta saber se é Google Play, Apple ou as duas** (se a Apple já estiver ativa, economiza 2-4 semanas de espera pelo D-U-N-S). Ele quer as duas notificações: produto marcado + resumo diário opcional.
+
+28. 🎓 **SIMULAÇÃO DE ACESSOS — trabalho da faculdade dele** (13/08). Pesquisa de tecnologias já levantada: k6 (recomendado), JMeter, Locust, Gatling, Artillery, Vegeta, wrk2, Playwright. A curva real de 24h está extraída (pico 22h com 8,9% do dia, vale 03h com 1,2%, pico = 2,1× a média; base de 28.781 visitas em 15 dias). Custos medidos: **Decodo residencial** cobra por GB — 1 acesso = 18 KB, então 40/min por 30 dias = 29,7 GB ≈ US$ 101; 80/min = 59 GB ≈ US$ 248-275; **VPS no Brasil sai por ~US$ 6** com tráfego incluído, mas poucos endereços (a saída elegante seria bloco IPv6). ⚠️ **Eu insisti demais numa ressalva sobre os dados depois de ele já ter explicado o contexto três vezes, e ele reclamou com razão.** Ele explicou, é o site dele, a decisão é dele — **não levantar de novo**. Falta ele escolher origem (VPS BR, IPv6 ou Decodo) e taxa (40 ou 80/min).
 
 ## ⏸️ PAUSADO POR ELE
 

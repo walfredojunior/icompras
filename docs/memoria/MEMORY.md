@@ -7,3 +7,4 @@
 - [Pendências em aberto](icompras-pendencias.md) — o que falta e o que ele precisa decidir. **Ler junto com o índice.** ⚠️ A lista "DESCARTADO" tem dois itens que EU tinha anotado errado (proxy e Cloudflare) — estão riscados e explicados lá; não repetir os erros.
 - [Comando "salve tudo"](comando-salve-tudo.md) — **quando ele digitar `salve tudo`**: gravar a memória do que foi feito, refazer a cópia limpa em `docs/memoria/` e enviar para o GitHub. Os quatro passos estão no arquivo.
 - [Trabalho autônomo](preferencia-trabalho-autonomo.md) — usuário não-técnico; trabalhar sozinho e explicar em linguagem simples
+- [Não insistir depois que ele explica](nao-insistir-depois-que-ele-explica.md) — ressalva se diz UMA vez; ele explicou 3x e eu repeti, com razão ele reclamou. E nunca inventar o cenário que eu quero refutar.

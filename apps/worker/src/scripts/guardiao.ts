@@ -835,6 +835,144 @@ async function talvezConferirOVideo(): Promise<void> {
   }
 }
 
+// VISITANTE QUE DESISTIU DE ESPERAR — o alarme que faltava.
+//
+// ⚠ POR QUE ISTO EXISTE (12/08/2026). O site passou a levar de 11 a 34 segundos
+// por página e **ninguém avisou**: o guardião via o site respondendo 200 e dava
+// tudo certo. Quem percebeu foi o dono, olhando. Só depois, no registro do
+// nginx, apareceu o tamanho do estrago: numa única hora, **797 desistências de
+// 70 pessoas diferentes** — cada uma abriu, esperou, fechou e tentou de novo em
+// média 11 vezes. Em hora normal o dia inteiro tem de 3 a 9.
+//
+// 💡 O CÓDIGO 499 do nginx é "o visitante fechou antes da resposta chegar". É a
+// única medida que existe do que o visitante SENTIU: não é tempo de resposta
+// médio, não é uso de processador — é gente desistindo. Um site pode responder
+// 200 em todas as páginas e estar perdendo todo mundo, que foi exatamente o
+// caso. Vigiar saúde de processo não pega isso; vigiar desistência pega.
+//
+// ⚠ EXIGE AS DUAS COISAS: muitas desistências **e** muitas pessoas distintas.
+// Uma pessoa só, com internet ruim, gera dezenas de 499 sozinha e não é
+// problema do site. O que caracteriza o incidente é ser em GENTE DIFERENTE.
+//
+// Olha a hora cheia anterior, não os últimos 60 minutos: hora pela metade tem
+// pouca amostra e dispararia alarme falso de madrugada, quando 5 desistências
+// já são "muitas" proporcionalmente.
+const DESISTENCIA_MIN = num(process.env.GUARD_ABANDON_MIN, 60);
+const DESISTENCIA_PESSOAS = num(process.env.GUARD_ABANDON_PEOPLE, 10);
+const REGISTRO_NGINX = process.env.GUARD_NGINX_LOG ?? "/var/log/nginx/access.log";
+// Quanto do fim do arquivo ler. Em hora de pico o site faz ~29 mil pedidos/h,
+// então 300 mil linhas cobrem com folga as últimas horas sem ler os 28 MB.
+const LINHAS_DO_FIM = num(process.env.GUARD_NGINX_TAIL, 300_000);
+
+async function conferirDesistencias(): Promise<{ status: string; detail: string }> {
+  if (process.platform === "win32") return { status: "ok", detail: "desistências: não medido no Windows" };
+
+  // A hora cheia que acabou de passar, no formato do nginx: 12/Aug/2026:11
+  const h = new Date(Date.now() - 60 * 60 * 1000);
+  const meses = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const alvo =
+    `${String(h.getUTCDate()).padStart(2, "0")}/${meses[h.getUTCMonth()]}/` +
+    `${h.getUTCFullYear()}:${String(h.getUTCHours()).padStart(2, "0")}`;
+
+  let desistencias = 0;
+  let pessoas = 0;
+  try {
+    // Campos do nginx: $1 = quem pediu, $4 = "[12/Aug/2026:12:42:40", $9 = código.
+    //
+    // ⚠ SEM EXPRESSÃO REGULAR AQUI, de propósito. A primeira versão comparava
+    // `$0 ~ "\\[" alvo` e **nunca disparava**: o colchete precisa de escape no
+    // regex, o escape precisa sobreviver ao TypeScript e ao shell antes de
+    // chegar ao awk, e no caminho ele virava `[` solto — "invalid regexp:
+    // Unmatched [". Testado contra a hora real do incidente, dava 0 de 0.
+    // Alarme que nunca toca é pior que alarme nenhum, porque cala. Comparar o
+    // campo direto não tem escape para errar: "12/Aug/2026:11" são 14 letras
+    // a partir da segunda posição de $4.
+    const { stdout } = await execAsync(
+      `tail -n ${LINHAS_DO_FIM} ${REGISTRO_NGINX} | awk -v a='${alvo}' 'substr($4,2,14) == a && $9 == 499 {n++; ip[$1]=1} END {print n+0, length(ip)}'`,
+      { timeout: 60_000, maxBuffer: 4 * 1024 * 1024 },
+    );
+    const [a, b] = stdout.trim().split(/\s+/).map(Number);
+    desistencias = a || 0;
+    pessoas = b || 0;
+  } catch (e) {
+    // Registro ilegível não é incidente do site — não inventar alarme.
+    return { status: "ok", detail: `desistências: não consegui ler (${(e as Error).message.slice(0, 40)})` };
+  }
+
+  const resumo = `${desistencias} desistências de ${pessoas} pessoas na hora ${alvo.slice(-2)}h UTC`;
+  if (desistencias < DESISTENCIA_MIN || pessoas < DESISTENCIA_PESSOAS) {
+    return { status: "ok", detail: `desistências: ${desistencias} (${pessoas} pessoas)` };
+  }
+
+  // Uma vez por hora, não a cada passagem do guardião (que é de 5 em 5 min).
+  const [j] = await pool.query(
+    "SELECT COUNT(*) n FROM watchdog_log WHERE target = 'desistencias' AND happened_at > NOW() - INTERVAL 55 MINUTE",
+  );
+  if (Number(j?.n ?? 0) === 0) {
+    await registrar(
+      "desistencias",
+      "visitantes-desistindo",
+      `${resumo} — o site está respondendo, mas devagar demais para as pessoas esperarem`,
+      "nenhuma-precisa-de-olho-humano",
+    );
+  }
+  return { status: "visitantes-desistindo", detail: resumo };
+}
+
+// BLOQUEIOS DA FONTE VOLTANDO A SUBIR.
+//
+// ⚠ POR QUE ISTO EXISTE (13/08/2026). A fonte bloqueou a coleta 401 vezes entre
+// 08 e 11/08 e **ninguém soube enquanto acontecia**. O painel mostrava só um
+// total acumulado, que não distingue "está acontecendo agora" de "aconteceu
+// semana passada". O dono viu o número dias depois e perguntou se havia
+// problema — a essa altura já tinha passado.
+//
+// O custo desse silêncio foi medido: as 155 unidades do mapa que falharam em
+// 11/08 (70.570 anúncios perdidos) rodaram dentro da janela de bloqueio. Um
+// aviso na hora teria ligado as duas coisas no mesmo dia.
+//
+// 💡 O padrão que se repete neste projeto: **o dado existia e ninguém foi
+// avisado.** Foi assim com a lentidão (o site respondia 200 e o guardião dava
+// tudo certo), com as unidades que falhavam caladas, e agora com os bloqueios.
+// Medir não basta; alguém precisa ser chamado quando o número vira problema.
+const BLOQUEIO_POR_HORA = num(process.env.GUARD_BLOCK_PER_HOUR, 20);
+
+async function conferirBloqueios(): Promise<{ status: string; detail: string }> {
+  const [r] = await pool.query(
+    `SELECT COALESCE(SUM(quantos), 0) AS n, MAX(modo) AS modo, MAX(ip) AS ip
+       FROM coletor_bloqueio_hora WHERE hora > NOW() - INTERVAL 2 HOUR`,
+  ).catch(() => [null]);
+
+  const n = Number(r?.n ?? 0);
+  if (n < BLOQUEIO_POR_HORA) return { status: "ok", detail: `bloqueios: ${n} nas últimas 2h` };
+
+  // Uma vez por hora, não a cada passagem (que é de 5 em 5 min).
+  const [j] = await pool.query(
+    "SELECT COUNT(*) n FROM watchdog_log WHERE target = 'bloqueios' AND happened_at > NOW() - INTERVAL 55 MINUTE",
+  );
+  if (Number(j?.n ?? 0) === 0) {
+    // ⚠ A distinção que muda o que fazer: se o IP mudou e o bloqueio continua,
+    // trocar de novo não adianta — é bloqueio por comportamento, não por
+    // endereço. Sem isso alguém passa dias trocando IP atrás do problema errado.
+    const [trocou] = await pool.query(
+      `SELECT COUNT(DISTINCT ip) AS ips FROM coletor_bloqueio_hora
+        WHERE hora > NOW() - INTERVAL 6 HOUR AND ip IS NOT NULL`,
+    ).catch(() => [null]);
+    const ips = Number(trocou?.ips ?? 1);
+    const leitura =
+      ips > 1
+        ? `já foram ${ips} endereços diferentes e continua — provavelmente NÃO é bloqueio por IP`
+        : "mesmo endereço o tempo todo — trocar de IP deve resolver";
+    await registrar(
+      "bloqueios",
+      "fonte-bloqueando",
+      `${n} bloqueios (403) nas últimas 2h saindo por ${r?.modo ?? "?"} — ${leitura}`,
+      "nenhuma-precisa-de-olho-humano",
+    );
+  }
+  return { status: "fonte-bloqueando", detail: `bloqueios: ${n} nas últimas 2h` };
+}
+
 async function talvezAuditar(): Promise<void> {
   const agora = new Date();
   if (agora.getDay() !== AUDIT_DIA || agora.getHours() !== AUDIT_HORA) return;
@@ -881,6 +1019,10 @@ async function verificar(): Promise<void> {
       ? { status: "ok", detail: "parado pelo painel" }
       : await conferirRobos();
   const site = await conferirSite();
+  // ⚠ `site` só diz que o site RESPONDE. Isto diz se as pessoas estão
+  // conseguindo esperar pela resposta — foi o que faltou em 12/08/2026.
+  const desistencias = await conferirDesistencias();
+  const bloqueios = await conferirBloqueios();
   const vps = await conferirLimites();
   // Fora da lista de problemas de propósito: só ANOTA por qual IP a coleta
   // está saindo. Ver o comentário da função.
@@ -890,13 +1032,14 @@ async function verificar(): Promise<void> {
   await talvezConferirOVideo();
   await talvezAuditar();
 
-  const problemas = [banco, laco, coletor, robos, site, vps, atrasados].filter(
+  const problemas = [banco, laco, coletor, robos, site, vps, atrasados, desistencias, bloqueios].filter(
     (v) => v.status !== "ok" && v.status !== "parado-pelo-usuario",
   );
   const status = problemas.length ? problemas[0].status : coletor.status === "ok" ? "ok" : coletor.status;
   const detalhe =
     `coletor: ${coletor.detail} · robôs: ${robos.detail} · site: ${site.detail}` +
     ` · servidor: ${vps.detail} · banco: ${banco.detail} · ${atrasados.detail}` +
+    ` · ${desistencias.detail} · ${bloqueios.detail}` +
     ` · saída: ${saida.detail}` +
     (laco.status === "ok" ? "" : ` · ⚠ ${laco.detail}`);
   if (vps.status !== "ok") await registrar("servidor", vps.status, vps.detail, "nenhuma");

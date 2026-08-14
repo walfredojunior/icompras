@@ -23,8 +23,24 @@ const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36";
 
 const DELAY = Number(process.env.AUDIT_DELAY_MS ?? 900);
-// Abaixo disto o mapa está quebrado (em 01/08/2026 tinha 21.696 produtos).
-const MINIMO_ESPERADO = 15000;
+// Abaixo disto o mapa está quebrado.
+//
+// ⚠ ERA 15.000, de quando a auditoria só enxergava os modelos (21.696 em
+// 01/08/2026). Depois de passar a ler também os anúncios, o mapa devolve
+// ~336 mil páginas — e um piso de 15 mil deixaria de proteger: os 314 mil
+// anúncios poderiam sumir inteiros que a trava continuaria satisfeita com os
+// 22 mil modelos restantes. Piso desatualizado não avisa, só tranquiliza.
+const MINIMO_ESPERADO = num(process.env.AUDIT_MIN_PAGINAS, 200_000);
+// Quantos dos que faltam abrir de verdade para ver se têm loja vendendo. Cada
+// um custa ~1s (DELAY), então sem teto uma auditoria com 40 mil faltantes
+// rodaria por 11 horas. O que passar do teto é CONTADO e dito em voz alta —
+// truncar calado faria a auditoria parecer completa quando não é.
+const TETO_CONFERENCIA = num(process.env.AUDIT_MAX_CONFERIR, 300);
+
+function num(valor: string | undefined, padrao: number): number {
+  const n = Number(valor);
+  return Number.isFinite(n) && n > 0 ? n : padrao;
+}
 const RAPIDA = process.argv.includes("--rapida");
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -174,15 +190,39 @@ async function main(): Promise<void> {
   const mapas = [...indice.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
   console.log(`  ${mapas.length} sub-mapas`);
 
+  // ⚠⚠ `_+`, COM O MAIS. NÃO TROCAR POR `_`. ⚠⚠
+  //
+  // A versão anterior exigia UM underline (`[a-z0-9-]+_\d+`) e por isso via
+  // só metade da fonte. Ela tem DOIS níveis de endereço:
+  //
+  //   /roteador-tp-link-tl-wr741nd_565/        1 underline  → MODELO (agregado)
+  //   /apple-iphone-17-pro-max-a3257__5015387/ 2 underlines → ANÚNCIO de 1 loja
+  //
+  // Medido em 12/08/2026: 22.252 modelos e 263.883 anúncios do nosso lado.
+  // A auditoria enxergava os 22 mil e era CEGA para os 264 mil — e escrevia
+  // "21.700 produtos na fonte" com toda a confiança.
+  //
+  // 💡 O detalhe que dói: **o formato com `__` já tinha escondido catálogo
+  // antes** — está escrito no comentário do "contador cego" logo acima, como
+  // uma das três vezes em que o dono achou o que a conferência não achou.
+  // Consertaram o coletor e esqueceram a auditoria. O contador cego usa `_+`;
+  // esta linha usava `_`. **Quando um formato novo aparecer, procurar TODOS os
+  // lugares que casam endereço, não só o que estourou.**
   const caminhos = new Set<string>();
   for (const m of mapas) {
     const xml = await baixar(m);
     if (xml) {
-      for (const mm of xml.matchAll(/<loc>https?:\/\/[^/]+(\/[a-z0-9-]+_\d+\/)<\/loc>/gi)) caminhos.add(mm[1]);
+      for (const mm of xml.matchAll(/<loc>https?:\/\/[^/]+(\/[a-z0-9-]+_+\d+\/)<\/loc>/gi)) caminhos.add(mm[1]);
     }
     await sleep(200);
   }
-  console.log(`  ${caminhos.size} produtos no mapa da fonte`);
+  // Separado porque são coisas diferentes: modelo é a ficha do produto, anúncio
+  // é a oferta de uma loja. Cobertura de 90% em modelos e 60% em anúncios é um
+  // problema bem diferente do inverso, e a soma esconderia os dois.
+  let modelos = 0;
+  let anuncios = 0;
+  for (const c of caminhos) (/__\d+\/$/.test(c) ? anuncios++ : modelos++);
+  console.log(`  ${caminhos.size} páginas no mapa da fonte (${modelos} modelos + ${anuncios} anúncios)`);
 
   if (caminhos.size < MINIMO_ESPERADO) {
     await pool.query("UPDATE catalog_coverage SET checked_at = NOW(), status = 'mapa-suspeito', detail = ? WHERE id = 1", [
@@ -197,18 +237,51 @@ async function main(): Promise<void> {
   }
 
   // Quais o coletor nunca visitou.
+  //
+  // ⚠ EM LOTES, e isto deixou de ser detalhe. A versão anterior fazia UMA
+  // consulta por produto: com 21 mil modelos já era lento, e depois de enxergar
+  // os anúncios seriam **314 mil consultas** numa auditoria só — de madrugada,
+  // no mesmo banco que atende o site. Em lotes de 500 são ~630 consultas.
+  //
+  // 💡 Regra: ao ampliar o que um laço percorre, conferir o que ele faz POR
+  // volta. Multiplicar o alcance por 15 multiplica o custo por 15, e foi assim
+  // que o Meilisearch e os relacionados viraram incidente esta semana.
   const naoVistos: string[] = [];
+  const porId = new Map<string, string>();
   for (const caminho of caminhos) {
     const id = caminho.match(/_(\d+)\/$/)?.[1];
-    if (!id) continue;
-    const [r] = await pool.query("SELECT COUNT(*) n FROM scrape_log WHERE external_id = ?", [`cp-${id}`]);
-    if (Number(r.n) === 0) naoVistos.push(caminho);
+    if (id) porId.set(`cp-${id}`, caminho);
   }
-  console.log(`  ${naoVistos.length} nunca visitados`);
+  const ids = [...porId.keys()];
+  for (let i = 0; i < ids.length; i += 500) {
+    const lote = ids.slice(i, i + 500);
+    const linhas = await pool.query(
+      `SELECT external_id FROM scrape_log WHERE external_id IN (${lote.map(() => "?").join(",")})`,
+      lote,
+    );
+    const vistos = new Set(linhas.map((r: { external_id: string }) => r.external_id));
+    for (const id of lote) if (!vistos.has(id)) naoVistos.push(porId.get(id)!);
+  }
+  const faltamModelos = naoVistos.filter((c) => !/__\d+\/$/.test(c)).length;
+  console.log(
+    `  ${naoVistos.length} nunca visitados` +
+      ` (${faltamModelos} modelos de ${modelos}, ${naoVistos.length - faltamModelos} anúncios de ${anuncios})`,
+  );
+  if (caminhos.size > 0) {
+    const pct = Math.round((100 * (caminhos.size - naoVistos.length)) / caminhos.size);
+    console.log(`  COBERTURA: ${pct}%`);
+  }
 
   // Dos que faltam, quantos têm loja vendendo? É o número que importa: página
   // sem loja nenhuma é histórico que a fonte mantém no ar, não é catálogo.
-  const conferir = RAPIDA ? naoVistos.slice(0, 30) : naoVistos;
+  const teto = RAPIDA ? 30 : TETO_CONFERENCIA;
+  const conferir = naoVistos.slice(0, teto);
+  if (naoVistos.length > conferir.length) {
+    console.log(
+      `  ⚠ conferindo ${conferir.length} dos ${naoVistos.length} que faltam` +
+        ` — os outros ${naoVistos.length - conferir.length} NÃO foram abertos nesta rodada`,
+    );
+  }
   const comLoja: string[] = [];
   let semResposta = 0;
   for (let i = 0; i < conferir.length; i++) {

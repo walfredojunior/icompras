@@ -39,8 +39,22 @@ export function ProductCard({
           // eslint-disable-next-line @next/next/no-img-element
           <img src={hit.image_url} alt={hit.name} className="max-h-40 object-contain" />
         ) : (
-          <span className="text-3xl font-bold text-slate-300">
-            {(hit.brand || hit.name).slice(0, 1).toUpperCase()}
+          // SEM FOTO: a marca do iCompras, nunca a de outro site.
+          //
+          // Pedido dele em 13/08/2026 — *"se for pra colocar imagem coloca do
+          // icompras se não tiver fotos"* — depois de ver o logotipo do
+          // Compras Paraguai como foto de 1.636 produtos aqui.
+          //
+          // Esmaecida de propósito (opacity-40): são ~40 mil produtos sem foto,
+          // e a logo em cor cheia nessa quantidade competiria com os produtos
+          // que TÊM foto de verdade. A letra da marca continua embaixo, que era
+          // o comportamento anterior e ajuda a distinguir um card do outro.
+          <span className="flex flex-col items-center gap-1.5 opacity-40">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo-icon.png" alt="iCompras" className="h-14 w-auto object-contain" />
+            <span className="text-lg font-bold text-slate-400">
+              {(hit.brand || hit.name).slice(0, 1).toUpperCase()}
+            </span>
           </span>
         )}
       </div>

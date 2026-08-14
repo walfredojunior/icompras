@@ -8,12 +8,88 @@ metadata:
   node_type: memory
   type: project
   originSessionId: ce2fa394-0b2c-4043-b6bc-350c598dbbf7
-  modified: 2026-08-12T12:38:03.707Z
+  modified: 2026-08-14T17:01:51.266Z
 ---
 
 **iCompras**: comparador de preços estilo PriceRunner para o Paraguai, com painel B2B (lojas + planos mensais), API de ingestão de listas de preço, camada de IA configurável, e módulo de seed/scraper.
 
 Plano completo em `C:\projetos\icompras\docs\PLANO.md`; como rodar em `docs\COMO-RODAR.md`.
+
+## 🖼️ O LOGO DO CONCORRENTE COMO FOTO DE 1.646 PRODUTOS (2026-08-13) — RESOLVIDO
+
+**Ele viu e avisou:** *"tem produtos aparecendo imagem do compras paraguai no mais procurados"*. Estava certo — era o **logotipo do Compras Paraguai inteiro**, servido do nosso próprio servidor, como foto de produto.
+
+**A causa:** quando a página da fonte não tem foto do produto, o que está na marcação é o logo do site dela. O coletor pegava aquilo como se fosse a foto. Como o nome da pasta em `/media/` é o **hash da URL** (não do conteúdo), todos caíram no mesmo arquivo — uma TV FTX e um secador Dyson dividindo a mesma "foto".
+
+```
+1.646 produtos  →  logo do Compras Paraguai   (em 104 categorias diferentes)
+  174 produtos  →  quadrado cinza "sem imagem"
+  155 produtos  →  ícone de câmera riscada
+2.076 ofertas   →  apontando para o logo da fonte
+```
+
+Estava no ar **desde 02/08 — 11 dias**. E ainda entrava: só em 13/08 foram 458 novos, porque os 70 mil produtos liberados de madrugada traziam o logo junto.
+
+**Quanto custou em audiência:** 21 visualizações em 8 páginas de produto (medido em `analytics_page`). Nos blocos da home e na busca não dá para contar — a medição é por página, não por foto exibida.
+
+### 💡 O sinal que denuncia sem precisar olhar a imagem
+
+**A mesma foto repetida em produtos que não têm nada a ver entre si.** Foto de produto é única; a que aparece em 1.646 produtos e 104 categorias é enfeite de página. A consulta que acha isso:
+
+```sql
+SELECT primary_image_url, COUNT(*) produtos, COUNT(DISTINCT category_id) categorias
+  FROM product WHERE primary_image_url LIKE '/media/%'
+ GROUP BY primary_image_url HAVING produtos > 10 ORDER BY produtos DESC;
+```
+
+⚠ **Repetição sozinha NÃO basta.** Das 27 imagens repetidas, só 3 eram lixo. As outras têm 1 a 4 categorias e são variações legítimas do mesmo produto (cor, tamanho). O que separa é **espalhamento por categorias**, e mesmo assim confirmei as três **olhando as imagens** antes de apagar.
+
+### O conserto
+
+**No coletor** (`imagemGenerica()` em crawl.ts, publicado 13/08): recusa URLs com `/static/images/logo`, `sem-imagem`, `no-image`, `placeholder`, `loading-images` — para foto de produto E de oferta. Medido depois de publicar: 8 minutos, 49 produtos novos, **zero logos**.
+
+**No banco:** 2.124 produtos e 2.272 ofertas zerados, com backup em `backup_imagem_generica_13082026`.
+
+**No site** (pronto, ainda não publicado): sem foto, aparece a logo do iCompras esmaecida. Regra dele: *"se for pra colocar imagem coloca do icompras se não tiver fotos"*.
+
+### ⚠ A busca guardava cópia das imagens
+
+Depois de limpar o banco, a busca **continuou mostrando o logo por mais de uma hora**. O Meilisearch guarda a `image_url` no índice; enquanto não reindexa, mostra o valor velho.
+
+E não reindexou sozinho: **o freio que pus em 12/08 só libera quando um coletor conclui uma unidade de trabalho, e as unidades do mapa levam horas.** Tive de rodar `npm run search:sync` na mão (24s, 298.678 produtos, sem afetar o site). **Isto é defeito do meu freio e continua em aberto** — o certo é o guardião disparar a sincronização quando ela estiver atrasada, em vez de depender do coletor.
+
+### ⚠⚠ ERRO MEU: "testar se o arquivo carrega" EXECUTOU O COLETOR
+
+Antes de reiniciar os robôs, quis conferir se o `crawl.ts` novo era válido e rodei `npx tsx --eval "import('./apps/worker/src/scripts/crawl.ts')"`. **O módulo começa a coletar ao ser carregado** — ele largou uma coleta paralela em `@mapa/4`. O tempo-limite matou em segundos e não houve estrago (carga voltou a 0,69), mas foi sorte.
+
+💡 **Importar um script executável é executá-lo.** Para conferir sintaxe, usar o compilador (`tsc --noEmit`), nunca `import`.
+
+## 🔁 O PROXY DE DALLAS SEMPRE FUNCIONOU — EU ERREI DUAS VEZES (2026-08-13)
+
+Afirmei duas vezes que a estrutura de proxy estava fora de operação. **Estava errado nas duas, e o painel dele estava certo o tempo todo.**
+
+**Erro 1:** procurei o valor da variável com `grep -oE "^(CRAWL_PROXY|...)[A-Z_]*="` — o padrão termina em `=`, então o `-o` imprimia só o nome e cortava o valor. Vi `CRAWL_PROXY=` e conclui "vazio". **Comando que não pode mostrar o valor não prova que o valor não existe.**
+
+**Erro 2:** no servidor de Dallas rodei `curl api.ipify.org` e vi o IP da própria máquina; conclui que a VPN estava desligada. Mas o túnel roteia **apenas o tráfego do proxy** — desenho correto, senão a sessão SSH cairia junto. Meu teste passou por fora do túnel.
+
+**O teste que prova de verdade** (feito depois):
+```
+sem proxy:   179.198.101.162   (a VPS)
+pelo proxy:  23.234.106.203    (bate com o painel)
+```
+
+### Os 401 bloqueios (403) — o que eram
+
+`coletor_saida` mostrava 401 bloqueios acumulados e ele perguntou se havia problema. O número assusta e **não diz quando aconteceu**:
+
+```
+último 403:  11/08 às 17:19  →  46h antes, nenhum desde então
+concentrados entre 08/08 e 11/08 (~4,6/hora)
+```
+
+**E isso fechou o diagnóstico das 155 unidades do mapa**: elas rodaram em 11/08 entre 12h03 e 14h10, dentro da janela de bloqueio. Não foi "falha passageira" como supus — era a fonte respondendo 403.
+
+**Feito (pronto, não publicado):** migration 057 com histórico por hora, gráfico de 48 barras no painel dos robôs, e aviso do guardião acima de 20 bloqueios em 2h — dizendo se já trocou de IP (bloqueio por comportamento) ou não (por endereço).
 
 ## 🐌 O SITE AFOGADO POR UM "CAMINHO DE EXCEÇÃO" (2026-08-12) — RESOLVIDO · LEITURA OBRIGATÓRIA
 
@@ -58,6 +134,41 @@ Achado enquanto eu caçava a lentidão acima. **Não era a causa dela**, mas era
 **⚠ A ineficiência era ANTIGA — eu a ampliei até doer, e foi assim que ela apareceu.** Acrescentar trabalho ao coletor pode multiplicar um custo que já existia e ninguém via.
 
 **O freio:** migration **055** (`tarefa_periodica`), um relógio comum. O robô só executa se conseguir "pegar a vez" com um `UPDATE` condicional — atômico, então dos quatro exatamente um ganha. Máximo uma vez a cada 30 min. Confirmado funcionando.
+
+## ✅ PUBLICAÇÃO AGENDADA DAS 3h (2026-08-14) — DEU CERTO
+
+Ele pediu para agendar e eu marquei para **03:07** (fora do minuto redondo, de propósito). A máquina dele fica ligada direto, o que era a condição para o agendamento funcionar — ele vive só na sessão aberta.
+
+**Publicado sem um minuto fora do ar:** migration 056, a correção dos relacionados, a média diária em Visitas, a trava dos links de saída, o coletor que não marca falha como concluída, a auditoria enxergando os dois níveis da fonte, e o alarme de visitante desistindo.
+
+```
+home 1,32s · quedas 0,38s · busca 0,39s · produto 0,40s
+carga 0,84 · 8 apps online · nenhuma desistência
+```
+
+O alarme novo entrou funcionando: registrou `desistências: 2 (1 pessoas)` e ficou quieto, como deve.
+
+### ⚠ Dois sustos que eram erro de teste, não do sistema
+
+**"o link ainda leva à fonte"** — meu teste procurava o texto `comprasparaguai` no destino, que é exatamente o erro que a trava foi feita para evitar. O endereço legítimo do primeshop tem esse texto no meio do caminho. Testei a função isolada nos 7 casos: todos corretos.
+
+**"o domínio devolveu 000"** — era o servidor não conseguindo acessar o próprio endereço pela Cloudflare. De fora sempre esteve no ar.
+
+💡 **Antes de reverter por causa de um alarme, conferir se o alarme está certo.** Nos dois casos o erro era do teste.
+
+### 🔍 A cobertura real da fonte: 77%
+
+Baixei os 157 arquivos do mapa e comparei um a um com `scrape_log`:
+
+```
+313.967 anúncios no mapa da fonte
+243.397 já visitados
+ 70.570 NUNCA visitados   →  cobertura 77%
+```
+
+**O `external_id` que já guardamos É o id da fonte** — não precisou coluna nova. A fonte tem dois níveis: modelo (`_565`, ~22 mil, casam com nossos external_id de 3-5 dígitos) e anúncio (`__5015387`, ~314 mil, os de 7 dígitos).
+
+Liberadas as 155 unidades (limpando `last_finished_at`), elas voltaram à frente da fila sozinhas. Ritmo medido: **2.170 anúncios/hora → ~32 horas** para os 70 mil. ⚠ Eu tinha estimado 16h; a medição real deu o dobro.
 
 ## 🚨 GOOGLE: A REGRA DA CLOUDFLARE QUE BLOQUEAVA O SITE INTEIRO (2026-08-08) — RESOLVIDO
 

@@ -293,11 +293,43 @@ async function catTouch(cat: Cat): Promise<void> {
   );
 }
 
-async function catDone(cat: Cat, products: number): Promise<void> {
+// ⚠⚠ "TERMINOU" TEM DE SIGNIFICAR "LEU A LISTA", NÃO "DESISTIU". ⚠⚠
+//
+// Isto custou 70.570 produtos (medido em 12/08/2026). Em 11/08 rodei os 157
+// arquivos do mapa da fonte e reportei ao dono "157 de 157 unidades
+// concluídas". Era mentira, e o banco mostrava:
+//
+//     155 unidades → 0 produtos, em 2 segundos cada
+//       2 unidades → 1.432 e 359 produtos, em 4.890s e 1.130s
+//
+// Dois segundos é o tempo de pedir o arquivo e o pedido falhar. O laço fazia
+// `if (!xml) break;` — saía calado, e `catDone` gravava `last_finished_at`
+// exatamente como numa unidade que trabalhou. **Sucesso e fracasso ficavam
+// idênticos no registro.** Só apareceu porque o dono procurou um produto que
+// tinha comprado na loja e não achou no site.
+//
+// 💡 A lição: `break` num caminho de erro produz o mesmo estado que o caminho
+// feliz. Quando "não consegui ler" e "li e estava vazio" gravam a mesma coisa,
+// a conferência fica cega — e ela vai dizer "100%" com toda a confiança.
+// **Todo ponto de desistência precisa registrar QUE desistiu.**
+//
+// `ok = false` deixa a unidade elegível para a próxima volta em vez de
+// carimbá-la como feita, e guarda o motivo para aparecer no painel.
+async function catDone(cat: Cat, products: number, ok = true, motivo = ""): Promise<void> {
+  if (ok) {
+    await pool.query(
+      "UPDATE crawl_category SET last_finished_at = NOW(), last_products = ?, last_erro = NULL WHERE path = ?",
+      [products, cat.path],
+    );
+    return;
+  }
+  // Não grava last_finished_at: a unidade continua "não terminada" e volta a
+  // ser sorteada. Solta a reserva para outro robô poder pegar já.
   await pool.query(
-    "UPDATE crawl_category SET last_finished_at = NOW(), last_products = ? WHERE path = ?",
-    [products, cat.path],
+    "UPDATE crawl_category SET last_products = ?, last_erro = ?, claimed_by = NULL, claimed_at = NULL WHERE path = ?",
+    [products, motivo.slice(0, 180), cat.path],
   );
+  console.log(`  ⚠ "${cat.path}" NÃO concluída: ${motivo} — vai ser tentada de novo`);
 }
 
 // ---------------------------------------------------------------------------
@@ -858,6 +890,49 @@ async function talvezVoltarAoProxy(): Promise<void> {
  * rodízio, e na hora se ele mesmo detectar bloqueio. Daqui não é preciso mandar
  * nada — foi de propósito, para não existir nenhuma porta que execute comando.
  */
+// ⛔ IMAGEM QUE NÃO É DO PRODUTO — nunca gravar.
+//
+// ⚠ POR QUE ISTO EXISTE (13/08/2026). O dono viu **o logotipo do Compras
+// Paraguai** aparecendo como foto de produto na home dele. Não era marca
+// d'água: era o logo inteiro, servido do nosso próprio servidor.
+//
+// Como aconteceu: quando a página da fonte não tem foto do produto, o que
+// está na marcação é o logo do site dela. O coletor pegava aquilo como se
+// fosse a foto e mandava guardar. Como o nome da pasta é o hash da URL, todos
+// caíram no mesmo arquivo — e **1.636 produtos ficaram com o logo do
+// concorrente**, uma TV e um secador Dyson dividindo a mesma "foto".
+//
+// Medido no banco em 13/08/2026:
+//
+//     1.636 produtos → logo do Compras Paraguai
+//       174 produtos → quadrado cinza "sem imagem"
+//       155 produtos → ícone de câmera riscada
+//     2.076 ofertas  → apontando para o logo da fonte
+//
+// 💡 O sinal que denuncia sem precisar olhar a imagem: **a mesma foto repetida
+// em produtos que não têm nada a ver entre si**. Foto de produto é única; a que
+// se repete às centenas é enfeite de página, não produto. Isso vale como
+// verificação geral — está no guardião agora.
+//
+// Regra do dono, no mesmo dia: *"se for pra colocar imagem coloca do icompras
+// se não tiver fotos"*. Então aqui recusamos, e o site mostra a marca dele.
+const IMAGEM_NAO_E_PRODUTO = [
+  "/static/images/logo",   // o logo da fonte — o caso dos 1.636
+  "sem-imagem",
+  "sem_imagem",
+  "no-image",
+  "noimage",
+  "no-photo",
+  "placeholder",
+  "default-product",
+  "loading-images",        // já era filtrado solto em dois lugares; agora é aqui
+];
+
+function imagemGenerica(url: string): boolean {
+  const u = url.toLowerCase();
+  return IMAGEM_NAO_E_PRODUTO.some((p) => u.includes(p));
+}
+
 const BLOQUEIOS_PARA_TROCAR = Number(process.env.CRAWL_403_PARA_TROCAR) || 3;
 let bloqueios403 = 0;
 
@@ -866,6 +941,25 @@ async function anotarBloqueio(url: string): Promise<void> {
   await pool
     .query(
       "UPDATE coletor_saida SET bloqueios = bloqueios + 1, ultimo_403_em = NOW() WHERE id = 1",
+    )
+    .catch(() => {});
+
+  // E no histórico por hora — ver migration 057.
+  //
+  // O contador acima só sobe e nunca desce: em 13/08/2026 ele marcava 401 e
+  // parecia problema em curso, quando o último bloqueio tinha sido 46 horas
+  // antes. Guardar por hora é o que separa "rajada que já passou" de "está
+  // acontecendo agora", e é isso que decide se alguém precisa agir.
+  //
+  // Guarda o modo e o IP do momento: bloqueio que troca junto com o endereço é
+  // bloqueio por IP; bloqueio que continua depois da troca é por comportamento,
+  // e aí trocar de novo não adianta.
+  await pool
+    .query(
+      `INSERT INTO coletor_bloqueio_hora (hora, modo, ip, quantos)
+       SELECT DATE_FORMAT(NOW(), '%Y-%m-%d %H:00:00'), modo, ip_atual, 1
+         FROM coletor_saida WHERE id = 1
+       ON DUPLICATE KEY UPDATE quantos = quantos + 1, ip = VALUES(ip)`,
     )
     .catch(() => {});
 
@@ -1779,7 +1873,9 @@ async function ingestProduct(page: () => Promise<Page>, path: string, ourCategor
         phone: o.phone,
         title: o.title,
         code: o.code,
-        image: o.image,
+        // Mesmo filtro do produto: o logo da fonte também entrava aqui, e eram
+        // 2.076 ofertas apontando para ele em 13/08/2026.
+        image: o.image && !imagemGenerica(o.image) ? o.image : null,
         url: o.url,
         // ⚠ ESQUECER UM CAMPO AQUI NÃO DÁ ERRO — dá silêncio.
         //
@@ -1908,7 +2004,7 @@ async function ingestProduct(page: () => Promise<Page>, path: string, ourCategor
     await pool.query("UPDATE product SET specs = ? WHERE id = ?", [JSON.stringify(data.specs), productId]);
   }
 
-  if (data.image) {
+  if (data.image && !imagemGenerica(data.image)) {
     const cur = await pool.query("SELECT primary_image_url FROM product WHERE id = ?", [productId]);
     if (!cur[0]?.primary_image_url) {
       const stored = await ingestImageFromUrl(data.image);
@@ -2482,7 +2578,13 @@ async function varrerMarcas(): Promise<number> {
   return colhidos;
 }
 
+// Por que a última unidade parou, quando não foi por ter acabado o serviço.
+// Lida por quem chama `crawlCategory` para decidir se marca como concluída.
+// Ver o comentário grande em `catDone` — é o defeito que custou 70 mil produtos.
+let falhaDaUnidade: string | null = null;
+
 async function crawlCategory(cat: Cat): Promise<number> {
+  falhaDaUnidade = null;
   origemAtual = "categoria";
   console.log(`\n=== Categoria: ${cat.path} -> ${cat.our} ===`);
   let processed = 0;
@@ -2498,17 +2600,33 @@ async function crawlCategory(cat: Cat): Promise<number> {
       if (pageN > 1) break;
       const n = cat.path.slice(PREFIXO_MAPA.length);
       // O primeiro arquivo não leva "?p=1" — o endereço é o nome puro.
-      const xml = await fetchText(
-        `${BASE}/sitemap-produtos.xml${n === "1" ? "" : `?p=${n}`}`,
-      );
+      const enderecoDoMapa = `${BASE}/sitemap-produtos.xml${n === "1" ? "" : `?p=${n}`}`;
+      // Três tentativas com espera crescente. Em 11/08/2026, 155 dos 157
+      // arquivos falharam na primeira e única tentativa — provavelmente rajada
+      // demais contra a fonte. Baixados um a um no dia seguinte, todos os 157
+      // responderam 200 com ~370 KB. Ou seja: era falha passageira, e uma
+      // segunda tentativa teria evitado o buraco inteiro.
+      let xml: string | null = null;
+      for (let tentativa = 1; tentativa <= 3 && !xml; tentativa++) {
+        xml = await fetchText(enderecoDoMapa);
+        if (!xml && tentativa < 3) await sleep(DELAY * tentativa * 4);
+      }
       await sleep(DELAY);
-      if (!xml) break;
+      if (!xml) {
+        falhaDaUnidade = `não consegui baixar ${enderecoDoMapa} (3 tentativas)`;
+        break;
+      }
       paths = extrairCaminhosDoMapa(xml);
       console.log(`  mapa ${n}: ${paths.length} endereço(s)`);
     } else {
       const html = await fetchText(`${BASE}/${cat.path}/?page=${pageN}`);
       await sleep(DELAY);
-      if (!html) break;
+      if (!html) {
+        // Só é falha se nem a PRIMEIRA página abriu. Cair na página 7 é o fim
+        // normal da categoria; cair na página 1 é a fonte não ter respondido.
+        if (pageN === 1) falhaDaUnidade = `não consegui abrir a primeira página de "${cat.path}"`;
+        break;
+      }
       paths = extractProductPaths(html);
     }
     if (!paths.length) {
@@ -2907,7 +3025,7 @@ async function main(): Promise<void> {
         feitosNaVolta += n;
         if (stopRequested) break;
         if (!DRY) {
-          await catDone(cat, n);
+          await catDone(cat, n, !falhaDaUnidade, falhaDaUnidade ?? "");
           // As varreduras de fim de volta são do CHEFE.
           //
           // Rodar em quatro seria quatro vezes o mesmo trabalho — e quatro
