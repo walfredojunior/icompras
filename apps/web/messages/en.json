@@ -270,5 +270,12 @@
     "naoConfere": "The two passwords don't match.",
     "linkInvalido": "This link is no longer valid. It expires in 1 hour and can only be used once.",
     "pedirOutro": "Request another link"
+  },
+  "datas": {
+    "blackFriday": "Black Friday deals…",
+    "natal": "Christmas gifts…",
+    "diaDasMaes": "A gift for mom…",
+    "diaDosNamorados": "A gift for your love…",
+    "diaDasCriancas": "A gift for kids…"
   }
 }

@@ -8,12 +8,44 @@ metadata:
   node_type: memory
   type: project
   originSessionId: ce2fa394-0b2c-4043-b6bc-350c598dbbf7
-  modified: 2026-08-15T20:58:39.976Z
+  modified: 2026-08-15T21:34:07.204Z
 ---
 
 **iCompras**: comparador de preços estilo PriceRunner para o Paraguai, com painel B2B (lojas + planos mensais), API de ingestão de listas de preço, camada de IA configurável, e módulo de seed/scraper.
 
 Plano completo em `C:\projetos\icompras\docs\PLANO.md`; como rodar em `docs\COMO-RODAR.md`.
+
+## 🎈 DATAS COMEMORATIVAS NO CAMPO DE BUSCA (2026-08-15) — PRONTO, publicação agendada
+
+Ideia dele: *"colocar algum detalhe no campo busca para datas comemorativas... minimalista e divertido"*. `lib/datasComemorativas.ts`.
+
+**Cinco datas, só do Brasil** — decisão dele: *"o público é mais brasileiro porque o mercado é pra vender pra eles"*. Eu tinha proposto mudar conforme o país do visitante (Dia das Crianças é 16/ago no Paraguai, 12/out no Brasil), e ele cortou com razão: **66,9% das visitas são do Brasil** contra 20,3% do Paraguai — complicaria o código para agradar um quinto do público.
+
+```
+Black Friday       última sexta de novembro   liga 5 dias antes
+Natal              25/12                      liga 12 dias antes
+Dia das Mães       2º domingo de maio         liga 5 dias antes
+Dia dos Namorados  12/06                      liga 4 dias antes
+Dia das Crianças   12/10                      liga 4 dias antes
+```
+
+Mães e Black Friday são **calculadas**, não escritas à mão — senão daqui a um ano alguém precisa lembrar de corrigir, e ninguém lembra. Desligam sozinhas no dia seguinte: tema esquecido no ar ("Feliz Natal" em fevereiro) é pior que tema nenhum.
+
+💡 **As duas menos óbvias vieram dos dados dele:** a busca nº 1 do site é **"perfumes"** (82× em 7 dias, à frente de "iphone"), e perfume é o presente clássico de Mães e Namorados.
+
+⚠ **FUSO:** calculado em UTC−3, não no fuso do servidor. A VPS roda em UTC, então das 21h às 23h59 de Brasília lá já é o dia seguinte — sem a correção o tema ligaria e desligaria 3h fora de hora, bem no **pico do site (20h-23h)**.
+
+### ⚠ ONDE FICA, e por que — foi ELE que corrigiu
+
+Minha proposta era o campo de busca do cabeçalho. Ele lembrou: *"a maioria dos usuários usa celular"*. Fui verificar: **no celular o cabeçalho mostra só a LUPA** — o campo do topo só aparece depois de tocar nela. O tema ficaria invisível para 95% do público.
+
+Agora: **texto temático no campo da HOME** (`SearchBox`, o único visível sem tocar em nada) e **um ponto verde no canto da lupa** nas demais páginas.
+
+### ⚠ O TEXTO CORTAVA — e eu já tinha alertado sobre isso
+
+"🎈 Buscar presente de criança…" **cortava no celular**. Fui MEDIR em vez de estimar: o campo tem **219px úteis** e o texto ocupava **235px** (o emoji vale por ~2 caracteres). Tirei o "Buscar", que era redundante — o botão verde ao lado já diz isso. Ficou em 180px.
+
+💡 É o **mesmo erro** do "Câ D.." nos favoritos, no mesmo dia. **Texto em campo de celular precisa ser MEDIDO no navegador**, não estimado por contagem de caracteres.
 
 ## ❤️ FAVORITOS SEM CADASTRO + RECUPERAÇÃO DE SENHA (2026-08-15) — PRONTO, publicação agendada
 

@@ -59,7 +59,7 @@ const TEXTOS: Record<string, Record<string, string>> = {
   },
 };
 
-export function SearchOverlay({ locale }: { locale: string }) {
+export function SearchOverlay({ locale, temaDoDia }: { locale: string; temaDoDia?: string | null }) {
   const t = TEXTOS[locale] ?? TEXTOS["pt-BR"];
   const router = useRouter();
 
@@ -389,9 +389,22 @@ export function SearchOverlay({ locale }: { locale: string }) {
       <button
         onClick={abrir}
         aria-label={t.abrir}
-        className="group flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-slate-500 transition hover:border-brand-green hover:text-brand-green-dark sm:pr-2"
+        className="group relative flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-slate-500 transition hover:border-brand-green hover:text-brand-green-dark sm:pr-2"
       >
         <Search className="h-4 w-4" />
+        {/* PONTO DA DATA COMEMORATIVA.
+            Nas páginas que não são a home, o celular mostra só esta lupa — o
+            campo com o texto temático não aparece. Um ponto no canto avisa que
+            tem algo ali, sem ocupar largura nenhuma: no cabeçalho do telefone
+            cada pixel disputa espaço com a logo e o contador de favoritos.
+            Um "pulsar" lento, e só se a pessoa não pediu menos animação. */}
+        {temaDoDia && (
+          <span
+            aria-hidden="true"
+            className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-brand-green motion-safe:animate-pulse sm:right-auto sm:left-5 sm:top-1.5"
+            title={temaDoDia}
+          />
+        )}
         <span className="hidden text-sm sm:inline">{t.abrir}</span>
         <span className="hidden rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[10px] text-slate-400 sm:inline">
           /

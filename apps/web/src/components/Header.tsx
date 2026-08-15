@@ -5,6 +5,7 @@ import { UserMenu } from "./UserMenu";
 import { ContadorDaLista } from "./BotaoDaLista";
 import { MobileMenu } from "./MobileMenu";
 import { SearchOverlay } from "./SearchOverlay";
+import { dataComemorativaDeHoje } from "@/lib/datasComemorativas";
 import { getCurrentUser } from "@/lib/auth";
 
 export async function Header() {
@@ -17,6 +18,12 @@ export async function Header() {
   // não alcança `getTranslations`, que só existe no servidor.
   const tl = await getTranslations("listas");
   const listaLabel = tl("minhasListas");
+
+  // O tema do dia é calculado NO SERVIDOR e passado pronto: assim o ponto já
+  // vem no HTML, sem piscar depois que a página carrega.
+  const dataHoje = dataComemorativaDeHoje();
+  const tdatas = await getTranslations("datas");
+  const temaDoDia = dataHoje ? `${dataHoje.emoji} ${tdatas(dataHoje.chave)}` : null;
 
   const mobileLabels = {
     home: locale === "es" ? "Inicio" : locale === "en" ? "Home" : "Início",
@@ -45,7 +52,7 @@ export async function Header() {
             resultados, então de dentro de um produto não havia como procurar
             outra coisa. */}
         <div className="ml-auto mr-3 lg:mr-4">
-          <SearchOverlay locale={locale} />
+          <SearchOverlay locale={locale} temaDoDia={temaDoDia} />
         </div>
 
         {/* A LISTA no cabeçalho — decisão dele em 15/08/2026. Fica visível em

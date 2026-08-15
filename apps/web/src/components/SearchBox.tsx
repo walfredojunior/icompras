@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/navigation";
 import { Search } from "lucide-react";
+import { dataComemorativaDeHoje } from "@/lib/datasComemorativas";
 
 interface Sugestao {
   name: string;
@@ -12,6 +13,19 @@ interface Sugestao {
 
 export function SearchBox({ initial = "" }: { initial?: string }) {
   const t = useTranslations("home");
+  const td = useTranslations("datas");
+
+  // DATA COMEMORATIVA no texto de exemplo do campo.
+  //
+  // ⚠ AQUI E NÃO NO CABEÇALHO, por causa do celular. No telefone o cabeçalho
+  // mostra só a LUPA — o texto de exemplo do campo de cima só apareceria depois
+  // de a pessoa tocar nela, ou seja, quase ninguém veria. Este campo, o da home,
+  // é o único visível sem nenhum toque. E 95% das visitas são de celular.
+  //
+  // Some ao primeiro toque, como qualquer texto de exemplo: o campo é
+  // ferramenta de busca, o tema é só enfeite da borda.
+  const data = dataComemorativaDeHoje();
+  const exemplo = data ? `${data.emoji} ${td(data.chave)}` : t("searchPlaceholder");
   const router = useRouter();
   const [q, setQ] = useState(initial);
   const [itens, setItens] = useState<Sugestao[]>([]);
@@ -96,7 +110,7 @@ export function SearchBox({ initial = "" }: { initial?: string }) {
           }}
           onFocus={() => setAberto(true)}
           onKeyDown={teclas}
-          placeholder={t("searchPlaceholder")}
+          placeholder={exemplo}
           autoComplete="off"
           aria-autocomplete="list"
           aria-expanded={mostrar}

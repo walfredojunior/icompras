@@ -270,5 +270,12 @@
     "naoConfere": "As duas senhas não são iguais.",
     "linkInvalido": "Este link não vale mais. Ele expira em 1 hora e só pode ser usado uma vez.",
     "pedirOutro": "Pedir outro link"
+  },
+  "datas": {
+    "blackFriday": "Ofertas Black Friday…",
+    "natal": "Presente de Natal…",
+    "diaDasMaes": "Presente para mãe…",
+    "diaDosNamorados": "Presente de namorados…",
+    "diaDasCriancas": "Presente de criança…"
   }
 }
