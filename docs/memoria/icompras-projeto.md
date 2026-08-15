@@ -8,12 +8,60 @@ metadata:
   node_type: memory
   type: project
   originSessionId: ce2fa394-0b2c-4043-b6bc-350c598dbbf7
-  modified: 2026-08-14T17:01:51.266Z
+  modified: 2026-08-15T00:03:14.323Z
 ---
 
 **iCompras**: comparador de preços estilo PriceRunner para o Paraguai, com painel B2B (lojas + planos mensais), API de ingestão de listas de preço, camada de IA configurável, e módulo de seed/scraper.
 
 Plano completo em `C:\projetos\icompras\docs\PLANO.md`; como rodar em `docs\COMO-RODAR.md`.
+
+## 📷 INSTAGRAM @icompras.py NO SITE (2026-08-14) — PRONTO, publicação agendada
+
+Ele criou o perfil e pediu "um lugar bem legal". Fica em **dois lugares**: um convite no fim da home e o `@icompras.py` discreto no rodapé (que aparece em todas as páginas). Mais o `sameAs` no JSON-LD, que liga o site ao perfil aos olhos do Google.
+
+**Texto, escolhido por ele:** `Siga-nos no Instagram` / `Síguenos en Instagram` / `Follow us on Instagram`. O **@ é o mesmo nos três idiomas** — só a frase é traduzida, e o perfil não vira chave de tradução (senão alguém traduz o nome e o link quebra).
+
+A primeira versão dizia *"As melhores promoções a gente posta no Instagram"* — 47 caracteres, quebrava em duas linhas no celular (95% do público). Ele preferiu a curta, 21 caracteres, uma linha. 💡 A frase com promessa converte melhor, **mas promete**: se o perfil ficar semanas sem postar, quem seguiu por causa dela some. A neutra é honesta enquanto não há ritmo de publicação.
+
+### ⚠⚠ A FOTO DA TELA PEGOU UM ERRO QUE NENHUM TESTE PEGOU
+
+Eu tinha posto o convite logo depois do bloco "baixaram de preço", pelo argumento de aproveitar o contexto. Compilava, o texto aparecia, os três idiomas certos — tudo "passava". A captura mostrou o real:
+
+```
+  65px  Hero
+ 884px  ← o convite caía AQUI, antes de qualquer produto
+1006px  Destaques
+```
+
+**Quando não há queda de preço no dia, aquele bloco não é renderizado** e o convite subia para logo abaixo do banner — pedindo para seguir antes de a pessoa ver um produto. Movido para o fim da home, depois dos destaques.
+
+💡 **Verificar que "o texto está na página" não é verificar que ele está no LUGAR certo.** Layout condicional só se revela vendo a tela. Vale para tudo que depende de `{algo.length > 0 && ...}`.
+
+### ⚠ O lucide-react não tem mais ícones de marca
+
+`import { Instagram } from "lucide-react"` **quebra o build** na versão 1.27: *"Export Instagram doesn't exist in target module"*. As marcas foram removidas do pacote. O ícone agora é desenhado em SVG dentro do componente — 3 formas, sem dependência.
+
+## 🖥️ COMO FAZER DEMONSTRAÇÃO LOCAL PARA ELE (2026-08-14) — receita testada
+
+Ele pediu para ver antes de publicar: *"consegue gerar uma imagem pra eu ver como vai ficar"* e depois *"quero ver uma demo local"*. Funciona muito bem e vale repetir.
+
+**Como:** subir `NEXT_DIST_DIR=.next PORT=30XX npm run start -w @icompras/web`, passar o endereço `http://localhost:30XX`, e tirar fotos com Playwright (já instalado) — `fullPage: true` para a página inteira, `elemento.screenshot()` para um bloco.
+
+⚠️ **Fotografar o ELEMENTO, não recortar a viewport** — o cabeçalho é fixo e cobre o bloco quando a página rola. `clip` pegava o convite escondido atrás do header.
+
+⚠️ **`SendUserFile` recusa arquivo grande** — a foto da home no celular (5.317px de altura, 1,8 MB) voltou com erro 400. A do computador (738 KB) passou. Para telas altas, mandar recortes ou reduzir.
+
+⚠️ **Rodar o script de dentro do projeto.** Do scratchpad o Node não acha o `playwright` (resolve módulo pelo caminho do arquivo). Criar `.foto-*.mjs` na raiz e **apagar depois**.
+
+### O banco local estava 25 migrações atrás — CORRIGIDO
+
+A demo quebrava na página de produto com `Unknown column 'o.store_url'`. Não era o código: **produção respondia 200 em 0,38s**. O banco local estava parado, faltando da 047 à 057. `npm run db:migrate` resolveu.
+
+Faltavam também os DADOS das seções da home. Para a demo ficar igual à real, trouxe de produção (só leitura lá) `category`, `category_translation`, `category_block` e `category_block_item`; gerei 8 quedas de preço locais; e apontei os blocos para as categorias que têm produto neste banco.
+
+⚠️ **`mysqldump` quebra um INSERT em VÁRIAS linhas.** Filtrar por `linha.startsWith("INSERT INTO")` pega só o começo e o SQL chega incompleto (erro 1064). Acumular linhas até o `;` final.
+
+⚠️ Por causa desse encaixe forçado, **os títulos dos blocos não batem com o conteúdo na demo** ("Perfumes e Beleza" mostrando notebooks). Em produção está certo. Avisar ele sempre que mostrar.
 
 ## 🖼️ O LOGO DO CONCORRENTE COMO FOTO DE 1.646 PRODUTOS (2026-08-13) — RESOLVIDO
 

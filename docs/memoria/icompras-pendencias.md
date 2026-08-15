@@ -8,7 +8,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 76bdc89b-fae2-47aa-b6c1-ce2496535a4b
-  modified: 2026-08-14T17:02:20.745Z
+  modified: 2026-08-15T00:03:27.236Z
 ---
 
 Estado em **2026-08-08**. Os detalhes de cada item estão em [[icompras-projeto]], na seção do dia em que o assunto apareceu.
@@ -71,6 +71,10 @@ Estado em **2026-08-08**. Os detalhes de cada item estão em [[icompras-projeto]
 27. 📱 **APP iOS/ANDROID — ele quer fazer** (13/08). Levantamento feito: o caminho é **Capacitor** (embrulha o site que já existe, um código só). O PWA já está pronto (manifest, service worker, botão de instalar, 77 classes responsivas). **O obstáculo real é a regra 4.2 da Apple**, que rejeita "site embrulhado" — a saída é a **notificação de queda de preço**, que justifica o app e é genuinamente útil. **Descoberta importante: conta, alertas e favoritos JÁ EXISTEM e estão desligados** (`app_user` 5 linhas, `price_alert` 2 linhas, `favorite`, APIs `/api/alerts`, `/api/auth/*`, `/api/favorites`, telas `/alertas` e `/favoritos`). O `ingest.ts` **já detecta** quando o preço bate o alvo — só não entrega nada, porque não existe envio. Ordem sugerida: (1) notificação funcionando no site, (2) Android (US$ 25, sem Mac), (3) iPhone. **Ele não tem Mac** → serviço de compilação na nuvem (US$ 30-60/mês). **Tem conta em nome da empresa [SENHA-BANCO-LOCAL-REMOVIDA] — falta saber se é Google Play, Apple ou as duas** (se a Apple já estiver ativa, economiza 2-4 semanas de espera pelo D-U-N-S). Ele quer as duas notificações: produto marcado + resumo diário opcional.
 
 28. 🎓 **SIMULAÇÃO DE ACESSOS — trabalho da faculdade dele** (13/08). Pesquisa de tecnologias já levantada: k6 (recomendado), JMeter, Locust, Gatling, Artillery, Vegeta, wrk2, Playwright. A curva real de 24h está extraída (pico 22h com 8,9% do dia, vale 03h com 1,2%, pico = 2,1× a média; base de 28.781 visitas em 15 dias). Custos medidos: **Decodo residencial** cobra por GB — 1 acesso = 18 KB, então 40/min por 30 dias = 29,7 GB ≈ US$ 101; 80/min = 59 GB ≈ US$ 248-275; **VPS no Brasil sai por ~US$ 6** com tráfego incluído, mas poucos endereços (a saída elegante seria bloco IPv6). ⚠️ **Eu insisti demais numa ressalva sobre os dados depois de ele já ter explicado o contexto três vezes, e ele reclamou com razão.** Ele explicou, é o site dele, a decisão é dele — **não levantar de novo**. Falta ele escolher origem (VPS BR, IPv6 ou Decodo) e taxa (40 ou 80/min).
+
+29. 🔜 **PUBLICAÇÃO AGENDADA PARA 15/08 às 03:07** (aprovada por ele em 14/08, depois de ver a demo local). Vai: Instagram (home + rodapé + `sameAs` + traduções), placeholder do iCompras nos produtos sem foto, gráfico de bloqueios 403 por hora + aviso do guardião, e a migration **057**. O `crawl.ts` com o filtro de imagem **já foi publicado em 13/08**.
+
+30. ✅ **O BANCO LOCAL FOI ATUALIZADO em 14/08** — estava 25 migrações atrás (047 a 057) e a página de produto nem abria na demo. Também recebeu as categorias, traduções e blocos de produção. ⚠️ Os **blocos locais apontam para categorias remapeadas** (para a demo ter conteúdo), então título e conteúdo não batem aqui — em produção está certo. Se um dia precisar do local fiel, refazer a importação de `category_block_item`.
 
 ## ⏸️ PAUSADO POR ELE
 

@@ -208,5 +208,9 @@
     "categoriesDesc": "Browse by category and compare prices across stores in Paraguay: phones, computers, perfumes, appliances and more.",
     "searchTitle": "Search",
     "searchDesc": "Search for a product and compare its price across stores in Paraguay."
+  },
+  "social": {
+    "homeTitle": "Follow us on Instagram",
+    "follow": "Follow"
   }
 }

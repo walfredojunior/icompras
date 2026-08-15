@@ -11,6 +11,7 @@ import { registrarVisita } from "@/lib/analytics";
 import { getRates } from "@/lib/rates";
 import { MoneyStack } from "@/components/MoneyStack";
 import { getQuedas } from "@/lib/quedas";
+import { SigaNoInstagramHome, PERFIL } from "@/components/SigaNoInstagram";
 import type { Metadata } from "next";
 import { paginaMeta, enderecoDe, jsonLd, SITE_URL } from "@/lib/seo";
 import { lerYoutube } from "@/lib/youtube";
@@ -69,6 +70,10 @@ export default async function HomePage({
       name: "iCompras",
       url: SITE_URL,
       logo: `${SITE_URL}/logo-full.png`,
+      // Liga o site ao perfil aos olhos do Google: com isto, quem pesquisar
+      // "iCompras Paraguai" pode ver o Instagram no painel lateral. Ganha
+      // importancia agora que o site comecou a ser indexado (08/08/2026).
+      sameAs: [`https://instagram.com/${PERFIL}`],
     },
     {
       "@context": "https://schema.org",
@@ -220,6 +225,16 @@ export default async function HomePage({
           </div>
         </section>
       )}
+
+      {/* CONVITE DO INSTAGRAM — no FIM da home, de proposito.
+          ⚠ Estava logo apos o bloco de quedas de preco, pela ideia de aproveitar
+          o contexto ("acabou de ver promocoes"). A FOTO DA TELA mostrou o
+          problema: quando nao ha quedas no dia, o bloco delas nao aparece e o
+          convite subia para 884px — antes dos produtos, logo abaixo do banner.
+          Ficava pedindo para seguir antes de a pessoa ver qualquer produto.
+          No fim, aparece sempre no mesmo lugar e nao depende do dia ter tido
+          queda de preco. */}
+      <SigaNoInstagramHome />
 
       {/* Diferenciais */}
       <section className="mx-auto max-w-6xl px-4 pb-20 pt-6">

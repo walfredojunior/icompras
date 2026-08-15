@@ -2,6 +2,7 @@ import { getTranslations } from "next-intl/server";
 import { ShieldAlert } from "lucide-react";
 import { Link } from "@/i18n/navigation";
 import { LocaleSwitcher } from "./LocaleSwitcher";
+import { SigaNoInstagramRodape } from "./SigaNoInstagram";
 
 export async function Footer() {
   // const t = await getTranslations("nav");  // volta junto com os links de conta abaixo
@@ -15,6 +16,11 @@ export async function Footer() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo-full.png" alt="iCompras" className="h-20 w-auto" />
             <p className="mt-3 text-sm text-slate-500">{f("tagline")}</p>
+            {/* Rede social junto da logo, e não na coluna de links: aqui é o
+                bloco de identidade do site (marca + o que ele é), e o perfil
+                pertence a essa ideia. Na coluna ao lado ficaria parecendo mais
+                um item de navegação. */}
+            <SigaNoInstagramRodape />
           </div>
           <nav className="grid grid-cols-2 gap-x-10 gap-y-2 text-sm">
             <Link href="/" className="text-slate-600 hover:text-brand-navy">{f("home")}</Link>

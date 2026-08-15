@@ -208,5 +208,9 @@
     "categoriesDesc": "Navegue por categoria e compare preços das lojas do Paraguai: celulares, informática, perfumes, eletrodomésticos e mais.",
     "searchTitle": "Busca",
     "searchDesc": "Busque um produto e compare o preço nas lojas do Paraguai."
+  },
+  "social": {
+    "homeTitle": "Siga-nos no Instagram",
+    "follow": "Seguir"
   }
 }
