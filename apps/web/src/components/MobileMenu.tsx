@@ -89,10 +89,7 @@ export function MobileMenu({ user, labels }: { user: string | null; labels: Labe
           </Link>
           {user ? (
             <>
-              <Link href="/favoritos" onClick={close} className={linkCls}>
-                <Heart className={iconCls} />
-                {labels.favorites}
-              </Link>
+              {/* ver o comentário no Header: o contador do topo já leva aos favoritos */}
               <Link href="/alertas" onClick={close} className={linkCls}>
                 <Bell className={iconCls} />
                 {labels.alerts}

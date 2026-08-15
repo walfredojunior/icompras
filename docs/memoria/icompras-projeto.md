@@ -8,12 +8,48 @@ metadata:
   node_type: memory
   type: project
   originSessionId: ce2fa394-0b2c-4043-b6bc-350c598dbbf7
-  modified: 2026-08-15T00:03:14.323Z
+  modified: 2026-08-15T20:58:39.976Z
 ---
 
 **iCompras**: comparador de preços estilo PriceRunner para o Paraguai, com painel B2B (lojas + planos mensais), API de ingestão de listas de preço, camada de IA configurável, e módulo de seed/scraper.
 
 Plano completo em `C:\projetos\icompras\docs\PLANO.md`; como rodar em `docs\COMO-RODAR.md`.
+
+## ❤️ FAVORITOS SEM CADASTRO + RECUPERAÇÃO DE SENHA (2026-08-15) — PRONTO, publicação agendada
+
+Pedido dele: *"criar uma ou várias listas de desejo... cada lista soma no final como se fosse uma lista de compra e eu poder compartilhar"*. Decisões dele na análise: **sem cadastro, guardado no navegador**, compartilhar **só por WhatsApp**, ícone de **coração**, nome **"Favoritos"**, e **uma lista "Minha lista" já criada** de início.
+
+**O que existe:** `lib/listaLocal.ts` (armazenamento local), `BotaoDaLista.tsx` (contador no cabeçalho + botão), `MinhasListas.tsx`, `/favoritos`, `/lista/[token]`, APIs `/api/listas/precos` e `/compartilhar`, migration **058**.
+
+💡 **A ordem invertida é o ponto todo.** A conta foi desligada em 31/07 porque o alerta de preço — a única razão de se cadastrar — nunca funcionou. Exigir cadastro para montar lista repetiria o erro: pedir compromisso antes de entregar valor. Aqui a lista funciona no primeiro clique e o cadastro vira conveniência.
+
+**A cota de US$ 500** aparece junto com a soma (verde → âmbar → vermelho). É o número que quem atravessa a ponte tem na cabeça, e nenhum comparador genérico mostra.
+
+### ⚠⚠ ERROS MEUS QUE ELE PEGOU — todos visuais, todos achados OLHANDO
+
+**1. Dois botões de favorito na mesma página.** Acrescentei o novo e esqueci de remover o antigo (de julho), que fazia `router.push("/entrar")`. Ele clicou no de baixo: *"quando eu vou dar favorito sou obrigado a me cadastrar, a ideia era diferente"*. **E os dois estavam na foto que eu mesmo mandei — eu olhei e não vi.** Acrescentar componente novo exige procurar o que ele substitui.
+
+**2. Preço de produto que saiu de venda.** A consulta fazia `COALESCE(preço_ativo, p.min_price_usd)`. Sem oferta no ar, caía no ÚLTIMO preço conhecido e **somava no total**. Medido: **5.168 produtos sem oferta, 5.068 com preço antigo guardado**. A pessoa montaria a lista, veria o total, viajaria, e descobriria na loja que o produto não existe. 💡 **É o pior erro de um comparador: não é tela feia, é promessa falsa que só aparece quando já é tarde.** Descoberto por uma pergunta dele: *"o que acontece com a lista de favorito se ele saiu da lista?"*
+
+**3. Nome do produto ilegível no celular.** Foto + nome + quantidade + preço + lixeira numa linha só virava "Câ D..". Compilava e "funcionava". Só apareceu na FOTO.
+
+**4. Corações verde-oliva.** O efeito usava emoji ❤️ com `hue-rotate(75deg)`; o resultado era amarelado e sujo. Trocado por SVG com `#2fa043` — cor exata e igual em todo aparelho.
+
+### O efeito de corações (pedido dele, "tipo no tiktok")
+
+`lib/coracoesVoando.ts`. Feito **direto no DOM**, não em estado do React — animar 14 elementos a 60 quadros com `useState` redesenharia a árvore a cada quadro. Só `transform` e `opacity` (a placa de vídeo faz sozinha). `pointer-events: none`, trava contra acumular, **só ao acrescentar** (não ao reclicar), e respeita `prefers-reduced-motion` — testado nos dois casos.
+
+## 📧 E-MAIL PRÓPRIO PELO RESEND (2026-08-15) — FUNCIONANDO
+
+Remetente **nao-responda@icompras.com.py**, domínio verificado. Ele criou a conta e cadastrou o domínio; DKIM e SPF ele colou, e **eu criei o DMARC pela API da Cloudflare** com um token que ele gerou (`Edit zone DNS`, só a zona dele). Confirmado por consulta pública de DNS.
+
+⚠ **A chave do Resend é restrita a SÓ ENVIAR** — não lista domínios nem cria nada. Se vazar, o estrago é mínimo. Está no `.env`, em Admin › Anotações, e o padrão `re_...` foi somado ao filtro do [[comando-salve-tudo]]. O token da Cloudflare (`cfut_...`) também.
+
+⚠ **A logo do e-mail fica em `/media/marca/`, NÃO na raiz de `public/`.** Descoberto tropeçando: arquivo novo na raiz de `public/` dá 404 até o próximo build, porque o Next monta a lista no build. `/media/` é servido pelo **nginx** direto do disco (`location /media/`), então aparece na hora.
+
+### ⚠ ALARME FALSO MEU: "3.054 produtos sem foto"
+
+Ao investigar o 404 da logo, testei fotos de produto em `http://127.0.0.1:3000` e vi 404 em massa. Anunciei que milhares de produtos estavam sem foto. **Estava errado: testei a porta 3000, que fala direto com o Next — um caminho que nenhum visitante usa.** Pelo nginx (o caminho real) todas respondem 200. 💡 **Testar pelo caminho errado é pior que não testar, porque produz um número que parece medição.**
 
 ## 📷 INSTAGRAM @icompras.py NO SITE (2026-08-14) — PRONTO, publicação agendada
 
@@ -1879,13 +1915,13 @@ Meilisearch/Redis/MariaDB/admin internos, `169.254.169.254` (credenciais da nuve
 
 Complemento da portaria de imagens. Aceitar o produto sem foto é bom para o lojista, mas cria um silêncio: ele manda o catálogo, recebe `207 sucesso` e as fotos somem sem explicação.
 
-**Tabela `store_image_reject`** (migration 042) com `UNIQUE(store_id, external_id)`: guarda a ÚLTIMA recusa de cada produto, não uma linha por tentativa — uma loja que reenvia de hora em hora geraria 24 linhas por produto por dia. **A linha some sozinha quando a loja corrige** (a ingestão apaga no primeiro envio em que a foto entra).
+**Tabela `sto[CHAVE-RESEND-REMOVIDA]`** (migration 042) com `UNIQUE(store_id, external_id)`: guarda a ÚLTIMA recusa de cada produto, não uma linha por tentativa — uma loja que reenvia de hora em hora geraria 24 linhas por produto por dia. **A linha some sozinha quando a loja corrige** (a ingestão apaga no primeiro envio em que a foto entra).
 
 **A tela** (`FotosRecusadas.tsx`) agrupa **por motivo**, não em lista corrida: cem produtos com o mesmo problema são um recado só. Cada motivo vem com a frase que o dono repetiria ao telefone, não o código interno. O mais útil: *"o endereço devolve uma página, não uma imagem — costuma ser o link da PÁGINA do produto no lugar do link da FOTO"*, que é o erro mais comum de quem integra.
 
 Fica ANTES do formulário de perfil: é o que pede ação.
 
-⚠️ **Não existe NENHUM cliente com plano ainda** (`subscription` vazia), e `/admin/clientes/[id]` dá 404 sem assinatura. Para conferir a tela criei uma assinatura de teste na Nissei + 6 recusas, tirei a foto e **apaguei tudo** — confirmado depois: `store_image_reject` 0 linhas, `subscription` 0 linhas, loja intacta. Se precisar testar tela de cliente de novo, é esse o caminho.
+⚠️ **Não existe NENHUM cliente com plano ainda** (`subscription` vazia), e `/admin/clientes/[id]` dá 404 sem assinatura. Para conferir a tela criei uma assinatura de teste na Nissei + 6 recusas, tirei a foto e **apaguei tudo** — confirmado depois: `sto[CHAVE-RESEND-REMOVIDA]` 0 linhas, `subscription` 0 linhas, loja intacta. Se precisar testar tela de cliente de novo, é esse o caminho.
 
 **Testado de verdade:** a portaria em si foi testada atacando a produção (ver a seção da portaria). O registro do motivo é `INSERT ... ON DUPLICATE KEY` no mesmo ponto onde `ingerirImagem` já devolve a recusa; a TELA foi verificada com dados semeados. O caminho completo API→worker→tela só será exercido quando existir um cliente de verdade com chave.
 

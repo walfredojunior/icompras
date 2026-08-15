@@ -2,6 +2,7 @@ import { getTranslations, getLocale } from "next-intl/server";
 import { TrendingDown } from "lucide-react";
 import { Link } from "@/i18n/navigation";
 import { UserMenu } from "./UserMenu";
+import { ContadorDaLista } from "./BotaoDaLista";
 import { MobileMenu } from "./MobileMenu";
 import { SearchOverlay } from "./SearchOverlay";
 import { getCurrentUser } from "@/lib/auth";
@@ -11,6 +12,11 @@ export async function Header() {
   const td = await getTranslations("drops");
   const locale = await getLocale();
   const user = await getCurrentUser();
+
+  // O rótulo da lista vem daqui e não do componente: ele roda no navegador e
+  // não alcança `getTranslations`, que só existe no servidor.
+  const tl = await getTranslations("listas");
+  const listaLabel = tl("minhasListas");
 
   const mobileLabels = {
     home: locale === "es" ? "Inicio" : locale === "en" ? "Home" : "Início",
@@ -42,6 +48,14 @@ export async function Header() {
           <SearchOverlay locale={locale} />
         </div>
 
+        {/* A LISTA no cabeçalho — decisão dele em 15/08/2026. Fica visível em
+            TODOS os tamanhos de tela (fora do `lg:flex` abaixo) porque 95% das
+            visitas são de celular: escondido no menu de três riscos, ninguém
+            lembra que tem lista em andamento. */}
+        <div className="mr-2 flex items-center lg:mr-0">
+          <ContadorDaLista rotulo={listaLabel} />
+        </div>
+
         <nav className="hidden items-center gap-4 text-sm lg:flex">
           {/* Único item fixo do menu: é a página que muda todo dia e o motivo
               para a pessoa voltar. A setinha para baixo diz "preço caindo"
@@ -55,9 +69,10 @@ export async function Header() {
           </Link>
           {user ? (
             <>
-              <Link href="/favoritos" className="text-slate-600 hover:text-brand-navy">
-                {mobileLabels.favorites}
-              </Link>
+              {/* O link de favoritos saiu daqui em 15/08/2026: o contador com o
+                  coração (à esquerda) leva ao mesmo lugar e aparece para TODO
+                  visitante, não só para quem tem conta. Dois "Favoritos" no
+                  mesmo cabeçalho confundiriam. */}
               <Link href="/alertas" className="text-slate-600 hover:text-brand-navy">
                 {t("alerts")}
               </Link>

@@ -10,6 +10,7 @@ import { registrarVisita } from "@/lib/analytics";
 import { getRates } from "@/lib/rates";
 import { MoneyStack } from "@/components/MoneyStack";
 import { ProductOffers } from "@/components/ProductOffers";
+import { BotaoAdicionar } from "@/components/BotaoDaLista";
 import { ProductTabs } from "@/components/ProductTabs";
 import { RelatedProducts } from "@/components/RelatedProducts";
 import { Suspense } from "react";
@@ -89,6 +90,7 @@ export default async function ProductPage({
   const { locale, slug } = await params;
   setRequestLocale(locale);
   const t = await getTranslations("product");
+  const tl = await getTranslations("listas");
   // const ta = await getTranslations("alerts");  // volta com o alerta
   const th = await getTranslations("home");
 
@@ -228,18 +230,33 @@ export default async function ProductPage({
             {product.stores.length} {t("storesCount").toLowerCase()}
           </p>
 
+          {/* ADICIONAR À LISTA — sem cadastro, guarda no próprio navegador.
+              Fica ANTES do botão de favorito de propósito: favoritar exige
+              conta (e a conta está desligada da vitrine), enquanto a lista
+              funciona no primeiro clique de qualquer visitante. */}
           <div className="mt-4">
-            <FavoriteButton
-              productId={product.id}
-              inicial={favorito}
-              logado={isLoggedIn}
-              labels={{
-                favorite: t("favorite"),
-                favorited: t("favorited"),
-                loginToFavorite: t("loginToFavorite"),
+            <BotaoAdicionar
+              produto={{
+                id: product.id,
+                slug: product.slug,
+                nome: product.name,
+                imagem: product.image_url ?? null,
               }}
+              rotuloAdd={tl("adicionar")}
+              rotuloNaLista={tl("naLista")}
             />
           </div>
+
+          {/* ⚠ O BOTÃO ANTIGO DE FAVORITO SAIU DAQUI (15/08/2026).
+              Ele exigia cadastro: quem clicava sem conta era mandado para
+              /entrar. Com o botão novo logo acima, a página ficou com DOIS
+              corações — um que funciona no primeiro clique e outro que pede
+              cadastro. O dono percebeu na demonstração: "quando eu vou dar
+              favorito sou obrigado a me cadastrar, a ideia era diferente".
+              Ele estava certo, e o erro foi meu: acrescentei o novo sem tirar
+              o velho. O componente continua existindo para /favoritos-conta.
+          <FavoriteButton productId={product.id} inicial={favorito} logado={isLoggedIn} ... />
+          */}
 
           {/* ALERTA DE PREÇO DESLIGADO (2026-07-31) — mesma razão do login.
               O aviso de queda de preço nunca funcionou: quem dispara alerta

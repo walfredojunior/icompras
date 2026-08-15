@@ -8,7 +8,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 76bdc89b-fae2-47aa-b6c1-ce2496535a4b
-  modified: 2026-08-12T12:39:11.588Z
+  modified: 2026-08-15T15:33:28.356Z
 ---
 
 Combinado com ele em **07/08/2026**: **"quando eu digitar `salve tudo`, você salva a memória das coisas que fizemos e envia as atualizações pro github"**.
@@ -31,6 +31,8 @@ Combinado com ele em **07/08/2026**: **"quando eu digitar `salve tudo`, você sa
 | `[CONTA-MULLVAD-REMOVIDA]` | `[CONTA-MULLVAD-REMOVIDA]` |
 | `[SENHA-BANCO-REMOVIDA]` | `[SENHA-BANCO-REMOVIDA]` |
 | `[CHAVE-BUSCA-REMOVIDA]` | `[CHAVE-BUSCA-REMOVIDA]` |
+| `re_` seguido do resto da chave do Resend (`re_[A-Za-z0-9_]+`) | `[CHAVE-RESEND-REMOVIDA]` |
+| `cfut_` seguido do resto do token da Cloudflare (`cfut_[A-Za-z0-9]+`) | `[TOKEN-CLOUDFLARE-REMOVIDO]` |
 
 💡 **Melhor ainda: não escrever senha na memória.** Desde 07/08/2026 elas vivem em **Admin › Anotações** (no banco) e em `servidores.txt` (fora do Git). A memória deve apontar para lá, não repetir o valor — o que não está escrito não precisa ser filtrado.
 

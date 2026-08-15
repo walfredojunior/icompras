@@ -8,7 +8,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 76bdc89b-fae2-47aa-b6c1-ce2496535a4b
-  modified: 2026-08-15T00:03:27.236Z
+  modified: 2026-08-15T20:58:57.731Z
 ---
 
 Estado em **2026-08-08**. Os detalhes de cada item estão em [[icompras-projeto]], na seção do dia em que o assunto apareceu.
@@ -75,6 +75,16 @@ Estado em **2026-08-08**. Os detalhes de cada item estão em [[icompras-projeto]
 29. 🔜 **PUBLICAÇÃO AGENDADA PARA 15/08 às 03:07** (aprovada por ele em 14/08, depois de ver a demo local). Vai: Instagram (home + rodapé + `sameAs` + traduções), placeholder do iCompras nos produtos sem foto, gráfico de bloqueios 403 por hora + aviso do guardião, e a migration **057**. O `crawl.ts` com o filtro de imagem **já foi publicado em 13/08**.
 
 30. ✅ **O BANCO LOCAL FOI ATUALIZADO em 14/08** — estava 25 migrações atrás (047 a 057) e a página de produto nem abria na demo. Também recebeu as categorias, traduções e blocos de produção. ⚠️ Os **blocos locais apontam para categorias remapeadas** (para a demo ter conteúdo), então título e conteúdo não batem aqui — em produção está certo. Se um dia precisar do local fiel, refazer a importação de `category_block_item`.
+
+31. 🔴 **115.299 PRODUTOS SEM CATEGORIA — 35,8% do catálogo** (medido 15/08/2026; eram 10.168 em 12/08). **A causa fui eu:** a recuperação pelo mapa gravou `source_category = "mapa"` — o nome da UNIDADE DE TRABALHO, não uma categoria. Unidade de mapa mistura todos os assuntos, então não há o que herdar, e 80% do que entrou nos últimos dias ficou sem classificação. Quebra os filtros por categoria, os blocos "Mais procurados" e piora os produtos relacionados. **Solução preparada:** `categorize.ts` foi reescrito para pegar só `category_id IS NULL`, em lotes com respiro (antes lia os 321 mil de uma vez e fazia um UPDATE por produto). ⚠️ **RODAR EM DUAS ETAPAS:** 500 primeiro, CONFERIR 20 à mão, e só então soltar o resto — no teste local ele chamou um "Fone Teste" de "smartphones", e **categoria errada engana mais que categoria nenhuma**.
+
+32. 🔜 **PUBLICAÇÃO AGENDADA 16/08 às 03:07** — anotações completas do admin, favoritos + recuperação de senha (migration 058), e a categorização em duas etapas.
+
+33. **Decidido em 15/08:** a página antiga `/favoritos` (exigia conta) virou `/favoritos-conta`, aposentada mas não apagada; os 19 registros da tabela `favorite` continuam lá. A nova assumiu `/favoritos`. O `FavoriteButton` antigo saiu da página de produto — se um dia religar a conta, decidir se ele volta ou se a lista local passa a sincronizar.
+
+34. **Falta acrescentar ao `.env` do SERVIDOR** (só o local tem): `RESEND_API_KEY`, `SITE_URL`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID`. Está no roteiro da publicação de 16/08.
+
+35. **Usuário de teste no banco LOCAL** com o e-mail dele (`walfredojunior@gmail.com`, id 3) — criado para testar a recuperação de senha. Apagar quando não precisar mais. **Não existe em produção.**
 
 ## ⏸️ PAUSADO POR ELE
 
