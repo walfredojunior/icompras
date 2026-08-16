@@ -252,7 +252,10 @@
     "foraDoAr": "No longer for sale",
     "eraPor": "was",
     "foraDoArUm": "product is no longer sold and was not counted",
-    "foraDoArVarios": "products are no longer sold and were not counted"
+    "foraDoArVarios": "products are no longer sold and were not counted",
+    "emQualLista": "Which list?",
+    "novaLista": "New list",
+    "fechar": "Close"
   },
   "recuperar": {
     "titulo": "Reset password",

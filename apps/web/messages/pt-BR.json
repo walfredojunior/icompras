@@ -252,7 +252,10 @@
     "foraDoAr": "Não está mais à venda",
     "eraPor": "era por",
     "foraDoArUm": "produto saiu de venda e não entrou na soma",
-    "foraDoArVarios": "produtos saíram de venda e não entraram na soma"
+    "foraDoArVarios": "produtos saíram de venda e não entraram na soma",
+    "emQualLista": "Em qual lista?",
+    "novaLista": "Nova lista",
+    "fechar": "Fechar"
   },
   "recuperar": {
     "titulo": "Recuperar senha",

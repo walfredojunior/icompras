@@ -244,6 +244,13 @@ export default async function ProductPage({
               }}
               rotuloAdd={tl("adicionar")}
               rotuloNaLista={tl("naLista")}
+              textosMenu={{
+                emQualLista: tl("emQualLista"),
+                novaLista: tl("novaLista"),
+                novaPadrao: tl("novaPadrao"),
+                criar: tl("criar"),
+                fechar: tl("fechar"),
+              }}
             />
           </div>
 

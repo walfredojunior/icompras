@@ -86,6 +86,10 @@ Estado em **2026-08-08**. Os detalhes de cada item estão em [[icompras-projeto]
 
 35. **Usuário de teste no banco LOCAL** com o e-mail dele (`walfredojunior@gmail.com`, id 3) — criado para testar a recuperação de senha. Apagar quando não precisar mais. **Não existe em produção.**
 
+36. 🔴 **A CATEGORIZAÇÃO AUTOMÁTICA NÃO SERVE — decisão pendente dele.** Testada em 16/08 com 500 produtos: **8 secadores de cabelo classificados como "informatica"**, taxa de ~10 acertos em 20 (o critério era 8 em 10). Parada. Restam ~140 mil produtos sem categoria. **Alternativas:** (a) IA de verdade — DeepSeek já configurado em Admin › IA, com custo por produto; (b) ler a categoria que a FONTE mostra na página de cada produto, em vez de adivinhar pelo nome — provavelmente o melhor caminho, porque a informação existe e é confiável. ⚠️ Uns 300 produtos ficaram com categoria possivelmente errada: não deu para isolá-los (ver a lição no [[icompras-projeto]]).
+
+37. ⚠️ **O CATEGORIZADOR PRECISA MARCAR O QUE CLASSIFICOU.** Hoje não marca, e por isso não deu para desfazer os 500 do teste — só os 192 que vinham do mapa. Antes de rodar qualquer coisa em massa de novo, acrescentar um campo (ou uma tabela de registro) dizendo o que o robô tocou e quando.
+
 ## ⏸️ PAUSADO POR ELE
 
 - **"Onde comer no Paraguai"** — faixa de banners de restaurante na home. Ele mandou fazer, apresentei o plano completo, e aí pausou ("por enquanto vou deixar pausado"). O plano está pronto em [[icompras-projeto]], é só executar (~2h). Ficou sem resposta: 2 ou 3 colunas.

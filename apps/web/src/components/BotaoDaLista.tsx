@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Heart, Check, Plus } from "lucide-react";
-import { adicionar, estaEmAlguma, totalDeItens, EVENTO } from "@/lib/listaLocal";
+import { adicionar, estaEmAlguma, totalDeItens, lerListas, EVENTO } from "@/lib/listaLocal";
+import { EscolherLista } from "./EscolherLista";
 import { soltarCoracoes } from "@/lib/coracoesVoando";
 
 /**
@@ -68,14 +69,18 @@ export function BotaoAdicionar({
   rotuloAdd,
   rotuloNaLista,
   compacto = false,
+  textosMenu,
 }: {
   produto: { id: number; slug: string; nome: string; imagem: string | null };
   rotuloAdd: string;
   rotuloNaLista: string;
   compacto?: boolean;
+  /** Textos do menu de escolha. Sem eles o menu não abre (fica o jeito antigo). */
+  textosMenu?: Record<string, string>;
 }) {
   const [montado, setMontado] = useState(false);
   const [dentro, setDentro] = useState(false);
+  const [menuAberto, setMenuAberto] = useState(false);
   const botaoRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -93,6 +98,15 @@ export function BotaoAdicionar({
     // "adicionar" navegaria para a página do produto no mesmo gesto.
     e.preventDefault();
     e.stopPropagation();
+    // ⚠ COM MAIS DE UMA LISTA, PERGUNTA. Antes o produto ia sempre para a
+    // primeira criada, sem escolha e sem aviso — o dono percebeu e estava
+    // certo. Com UMA lista só, continua indo direto: perguntar "em qual?"
+    // quando só existe uma é atrito à toa.
+    if (textosMenu && lerListas().length > 1) {
+      setMenuAberto(true);
+      return;
+    }
+
     const jaEstava = dentro;
     adicionar(produto);
     // Corações SÓ ao acrescentar, nunca ao clicar de novo num que já está.
@@ -104,8 +118,19 @@ export function BotaoAdicionar({
     if (!jaEstava) soltarCoracoes(botaoRef.current, !compacto);
   };
 
+  const menu = textosMenu ? (
+    <EscolherLista
+      produto={produto}
+      aberto={menuAberto}
+      onFechar={() => setMenuAberto(false)}
+      ancora={botaoRef.current}
+      textos={textosMenu}
+    />
+  ) : null;
+
   if (compacto) {
     return (
+      <>
       <button
         ref={botaoRef}
         type="button"
@@ -120,10 +145,13 @@ export function BotaoAdicionar({
       >
         {dentro ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
       </button>
+      {menu}
+      </>
     );
   }
 
   return (
+    <>
     <button
       ref={botaoRef}
       type="button"
@@ -137,5 +165,7 @@ export function BotaoAdicionar({
       {dentro ? <Check className="h-4 w-4" /> : <Heart className="h-4 w-4" />}
       {dentro ? rotuloNaLista : rotuloAdd}
     </button>
+    {menu}
+    </>
   );
 }

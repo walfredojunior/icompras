@@ -8,12 +8,40 @@ metadata:
   node_type: memory
   type: project
   originSessionId: ce2fa394-0b2c-4043-b6bc-350c598dbbf7
-  modified: 2026-08-15T21:34:07.204Z
+  modified: 2026-08-16T07:18:36.584Z
 ---
 
 **iCompras**: comparador de preços estilo PriceRunner para o Paraguai, com painel B2B (lojas + planos mensais), API de ingestão de listas de preço, camada de IA configurável, e módulo de seed/scraper.
 
 Plano completo em `C:\projetos\icompras\docs\PLANO.md`; como rodar em `docs\COMO-RODAR.md`.
+
+## ✅ PUBLICAÇÃO DE 16/08/2026 — favoritos, e-mail, datas e anotações NO AR
+
+Publicado às 3h e complementado às 4h15 (movimento de 4 pessoas em 10 min — 1,1% do dia). Sem um minuto fora do ar.
+
+**No ar:** favoritos sem cadastro (soma, cota de US$ 500, WhatsApp, corações), recuperação de senha por e-mail do domínio próprio, datas comemorativas, Instagram, e as anotações completas do admin.
+
+### ⚠ A CATEGORIZAÇÃO FOI PARADA — e foi a decisão certa
+
+Rodei os 500 de teste e fui conferir 20 à mão, como combinado. **Oito secadores de cabelo classificados como "informatica"** (o algoritmo vê "HP11", "KS-4200" e pensa em computador). Taxa de acerto ~10 em 20; o critério era 8 em 10. **Parei e não soltei os 115 mil.**
+
+💡 **Categoria errada engana MAIS que categoria nenhuma** — alguém filtra "informática" e encontra secador.
+
+⚠⚠ **E não consegui desfazer tudo.** O robô classifica por ordem de id, misturando origens, e **não deixa marca do que classificou**. Revertí só os 192 identificáveis (`source_category='mapa'`); uns 300 ficaram. Reverter por horário seria pior — apagaria o trabalho do coletor, que rodava junto. **Todo processo que altera dados em massa precisa marcar o que tocou, senão não há como desfazer.**
+
+**Em aberto:** usar IA de verdade (DeepSeek já configurado, custo por produto) ou pegar a categoria que a fonte mostra na página. Decisão dele.
+
+## 🗂️ EM QUAL LISTA O PRODUTO ENTRA (2026-08-16) — NO AR
+
+Pergunta dele: *"se tem mais de uma lista de favoritos, ele sempre vai pra primeira lista?"*. **Ia.** O botão chamava `adicionar(produto)` sem dizer a lista, e a função caía em `listas[0]` — sem escolha e sem aviso. Com uma lista ninguém nota; com duas, fica errado e invisível.
+
+**Agora:** uma lista → adiciona direto (sem atrito). Duas ou mais → sobe uma folha de baixo no celular (menu ancorado no computador) com cada lista, quantos itens tem, marcar/desmarcar, e "+ Nova lista". O mesmo produto pode ficar em várias.
+
+### ⚠ DOIS DEFEITOS QUE SÓ O TESTE COM NAVEGADOR PEGOU
+
+**1. Todas as listas se chamavam "Minha lista".** O botão de criar usava sempre o nome padrão, e o menu ficava com quatro opções idênticas — inútil. Agora `criarLista` numera: "Minha lista 2", "Minha lista 3".
+
+**2. O menu fechava no primeiro clique.** O mesmo bloco é desenhado DUAS vezes (celular e computador) e o React entrega o `ref` só à última — clicar na outra cópia contava como "clique fora". Dava para marcar uma lista e nunca uma segunda. 💡 **Quando o mesmo JSX é usado em dois lugares, `ref` não serve para detectar "está dentro?" — usar um atributo no HTML (`[data-menu-lista]` + `closest`), que vale para todas as cópias.**
 
 ## 🎈 DATAS COMEMORATIVAS NO CAMPO DE BUSCA (2026-08-15) — PRONTO, publicação agendada
 

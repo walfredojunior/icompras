@@ -71,11 +71,23 @@ function gravar(listas: Lista[]) {
 
 export function criarLista(nome: string): Lista {
   const listas = lerListas();
+  let limpo = nome.trim().slice(0, 60) || "Minha lista";
+
+  // ⚠ NUMERA SE O NOME JÁ EXISTE. Sem isto, o botão "criar nova lista" gerava
+  // sempre "Minha lista", e o menu de escolha ficava com quatro opções de nome
+  // idêntico — inútil, porque a pessoa não tem como saber qual é qual.
+  // Apareceu no primeiro teste do menu, em 16/08/2026.
+  if (listas.some((l) => l.nome === limpo)) {
+    let n = 2;
+    while (listas.some((l) => l.nome === `${limpo} ${n}`)) n++;
+    limpo = `${limpo} ${n}`;
+  }
+
   const nova: Lista = {
     // Sem Math.random no id para não colidir em cliques rápidos: o tempo em
     // base 36 mais um contador do tamanho atual já basta e é legível.
     id: `${Date.now().toString(36)}${listas.length}`,
-    nome: nome.trim().slice(0, 60) || "Minha lista",
+    nome: limpo,
     itens: [],
     criadaEm: Date.now(),
   };
@@ -142,4 +154,38 @@ export function totalDeItens(): number {
 /** Se este produto já está em alguma lista (para o botão mudar de estado). */
 export function estaEmAlguma(produtoId: number): boolean {
   return lerListas().some((l) => l.itens.some((i) => i.id === produtoId));
+}
+
+/** Os ids das listas que contêm este produto — o menu marca essas. */
+export function listasComOProduto(produtoId: number): string[] {
+  return lerListas().filter((l) => l.itens.some((i) => i.id === produtoId)).map((l) => l.id);
+}
+
+/**
+ * Põe ou tira o produto de uma lista específica.
+ *
+ * ⚠ POR QUE ISTO EXISTE (16/08/2026). O botão chamava `adicionar(produto)` sem
+ * dizer a lista, e a função caía em `listas[0]` — **o produto ia sempre para a
+ * primeira lista criada**, sem a pessoa escolher nem ficar sabendo. Com uma
+ * lista só ninguém nota; com duas, o comportamento fica errado e invisível.
+ * O dono perguntou e estava certo.
+ */
+export function alternarNaLista(
+  listaId: string,
+  produto: Omit<ItemDaLista, "quantidade" | "addEm">,
+): { dentro: boolean } {
+  const listas = lerListas();
+  const alvo = listas.find((l) => l.id === listaId);
+  if (!alvo) return { dentro: false };
+
+  const i = alvo.itens.findIndex((x) => x.id === produto.id);
+  if (i >= 0) {
+    alvo.itens.splice(i, 1);
+    gravar(listas);
+    return { dentro: false };
+  }
+  if (alvo.itens.length >= MAX_ITENS) return { dentro: false };
+  alvo.itens.push({ ...produto, quantidade: 1, addEm: Date.now() });
+  gravar(listas);
+  return { dentro: true };
 }
