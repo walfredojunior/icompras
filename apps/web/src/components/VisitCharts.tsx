@@ -32,11 +32,14 @@ export function Destaque({
   valor,
   variacao,
   sufixo,
+  rodape,
 }: {
   rotulo: string;
   valor: number;
   variacao?: number | null;
   sufixo?: string;
+  /** Linha extra embaixo do número. Hoje só o "● 7 pessoas agora". */
+  rodape?: React.ReactNode;
 }) {
   const sobe = variacao != null && variacao > 0;
   const desce = variacao != null && variacao < 0;
@@ -52,6 +55,7 @@ export function Destaque({
           </span>
         )}
       </div>
+      {rodape}
     </div>
   );
 }

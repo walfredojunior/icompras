@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentAdmin } from "@/lib/adminauth";
 import { getResumo } from "@/lib/analytics";
 import { Destaque, LinhaVisitas, Barras, Paises, Horarios } from "@/components/VisitCharts";
+import AgoraNoSite from "@/components/AgoraNoSite";
 import { Link } from "@/i18n/navigation";
 
 const PERIODOS = [7, 30, 90];
@@ -106,7 +107,15 @@ export default async function AdminVisitasPage({
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <Destaque rotulo="Visitas no período" valor={r.totalPeriodo} variacao={variacao} />
+        <Destaque
+          rotulo="Visitas no período"
+          valor={r.totalPeriodo}
+          variacao={variacao}
+          // O único número desta tela que fala do PRESENTE. Fica de rodapé do
+          // total do período de propósito: é o mesmo assunto (audiência), e
+          // ele pediu discreto.
+          rodape={<AgoraNoSite />}
+        />
         <Destaque
           rotulo="Média por dia"
           valor={mediaDiaria}

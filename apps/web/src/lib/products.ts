@@ -264,19 +264,68 @@ const SELECT_RELACIONADOS = `p.id, p.slug, p.canonical_name AS name, p.brand, p.
               p.ext_store_count
             ) AS store_count`;
 
+// ⚠⚠⚠ E AÍ FOI A VEZ DO CAMINHO BOM VIRAR O PROBLEMA (17/08/2026). ⚠⚠⚠
+//
+// O conserto de 12/08 (acima) restringiu a semelhança à CATEGORIA, e estava
+// certo. O que ninguém previu é que a categoria ia inchar: em 16/08 a leitura
+// da categoria declarada pela fonte recuperou **117.628 produtos**, e
+// `cosmetico` passou de quase nada para **21.240 produtos**, `perfume` para
+// **26.309**.
+//
+// A consulta então passou a ler 21 mil vetores POR VISITA, e levava **até 11
+// segundos**. Com o `innodb_buffer_pool_size` em 128 MB (o padrão de fábrica) e
+// a tabela de vetores com 1,7 GB, isso virava 113 MB/s de leitura de disco: o
+// site inteiro foi para 4-6 segundos por página e a carga para 7.
+//
+// 💡 **A LIÇÃO NOVA, e vale mais que o conserto: consertar um DADO pode acordar
+// uma consulta que nunca escalou.** O código era o mesmo de ontem; o que mudou
+// foi o dado ficar certo. Depois de qualquer correção em massa, a pergunta é:
+// *"o que ficava barato só porque este dado estava errado?"*
+//
+// A regra de 12/08 continua valendo e ganha uma segunda metade:
+//   • nunca varrer o catálogo inteiro numa requisição de página; e
+//   • **nunca deixar o custo de uma página crescer junto com uma categoria.**
+//     O trabalho por visita tem de ter TETO, e o teto é este `TETO_CANDIDATOS`.
+//
+// Como funciona agora: primeiro escolhe até 300 candidatos por índice e por
+// critério barato (mesma marca primeiro, depois os mais vendidos), e SÓ ENTÃO
+// calcula a semelhança entre esses 300. São 300 vetores lidos em vez de 21 mil,
+// e a conta não muda mais quando a categoria cresce.
+//
+// ⚠ Isto é uma APROXIMAÇÃO: o mais parecido de verdade pode estar fora dos 300.
+// Na prática quase nunca está, porque a marca entra na frente — para "Perfume
+// Hugo Boss In Motion", os outros Hugo Boss são candidatos antes de qualquer
+// outro. E sugestão levemente pior é um preço muito menor do que a página do
+// produto levar 11 segundos.
+const TETO_CANDIDATOS = 300;
+
 async function buscarRelatedProducts(productId: number, limit = 6): Promise<ProductHit[]> {
-  // 1) O caminho bom: semelhança de verdade, dentro da categoria.
-  const rows: any[] = await pool.query(
-    `SELECT ${SELECT_RELACIONADOS}
-     FROM product_embedding e1
-     JOIN product p0 ON p0.id = e1.product_id
-     JOIN product p ON p.category_id = p0.category_id AND p.id <> p0.id
+  // 0) Quem é este produto. Consulta por chave primária, custo desprezível, e
+  //    é o que permite escolher os candidatos sem ler vetor nenhum.
+  const [eu]: any[] = await pool.query("SELECT category_id, brand FROM product WHERE id = ?", [productId]);
+
+  // 1) O caminho bom: semelhança de verdade, entre candidatos com TETO.
+  const rows: any[] = eu?.category_id
+    ? await pool.query(
+        `SELECT ${SELECT_RELACIONADOS}
+     FROM (
+       -- Peneira barata: só id, por índice de categoria, sem tocar em vetor.
+       -- O operador <=> é igualdade que aceita NULO: devolve 1 para a mesma
+       -- marca e 0 para as outras, então os da mesma marca vêm primeiro.
+       SELECT c.id
+         FROM product c
+        WHERE c.category_id = ? AND c.id <> ?
+        ORDER BY (c.brand <=> ?) DESC, c.ext_store_count DESC
+        LIMIT ${TETO_CANDIDATOS}
+     ) cand
+     JOIN product p ON p.id = cand.id
      JOIN product_embedding e2 ON e2.product_id = p.id
-     WHERE e1.product_id = ?
+     JOIN product_embedding e1 ON e1.product_id = ?
      ORDER BY VEC_DISTANCE_COSINE(e1.embedding, e2.embedding) ASC
      LIMIT ?`,
-    [productId, limit],
-  );
+        [eu.category_id, productId, eu.brand, productId, limit],
+      )
+    : [];
 
   // 2) Faltou? Completa com vizinhos de prateleira — mesma categoria, senão a
   //    categoria-pai. Sem similaridade, mas tudo por índice: milissegundos.

@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { pool } from "./db";
+import { chaveDePresenca, marcarPresenca } from "./online";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -18,13 +19,25 @@ interface Visitante {
   country: string;
   device: "mobile" | "desktop" | "other";
   robo: boolean;
+  /**
+   * Resumo embaralhado e irreversível de quem está pedindo a página, usado SÓ
+   * para contar quantas pessoas estão no site agora. Não vai ao banco nem ao
+   * disco, e some em 5 minutos — ver `online.ts`, que explica por quê.
+   */
+  presenca: string;
 }
 
 async function visitante(): Promise<Visitante> {
   const h = await headers();
   const ua = h.get("user-agent") ?? "";
   const pais = (h.get("cf-ipcountry") ?? "XX").toUpperCase().slice(0, 2);
+  // A Cloudflare põe o IP verdadeiro em `cf-connecting-ip`; sem ela, o nginx
+  // manda o `x-forwarded-for`. Se não vier nenhum, todo mundo vira a mesma
+  // chave e o contador mostra 1 — erra para MENOS, que é o lado certo de errar
+  // num número de audiência.
+  const ip = h.get("cf-connecting-ip") ?? (h.get("x-forwarded-for") ?? "").split(",")[0].trim() ?? "";
   return {
+    presenca: chaveDePresenca(ip, ua),
     country: /^[A-Z]{2}$/.test(pais) ? pais : "XX",
     device: /iphone|android|ipad|mobile|ipod/i.test(ua)
       ? "mobile"
@@ -41,6 +54,9 @@ export async function registrarVisita(kind: PageKind, slug: string): Promise<voi
   try {
     const v = await visitante();
     if (v.robo) return; // robô de busca não é visita
+    // Antes das gravações: marcar presença é uma escrita num Map, não pode
+    // ficar refém de o banco estar lento.
+    marcarPresenca(v.presenca);
     await pool.query(
       `INSERT INTO analytics_daily (day, hour, country, device, views)
        VALUES (CURDATE(), HOUR(NOW()), ?, ?, 1)

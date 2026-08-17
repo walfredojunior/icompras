@@ -12,6 +12,27 @@ import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:
 // banco, uma cópia de backup, uma consulta feita por engano numa tela, o valor
 // aparecendo num registro. Proteção contra vazamento acidental, não contra
 // invasor com o servidor na mão. Chamar de cofre seria mentira.
+//
+// ====================================================================
+// ⚠⚠ EXISTE UMA SEGUNDA CÓPIA DISTO: `packages/core/src/segredos/index.ts`
+// ====================================================================
+// O robô passou a precisar decifrar a chave do DeepSeek (17/08/2026) para
+// classificar produtos em massa, e robô não importa de dentro do site.
+//
+// **Duas cópias é decisão consciente, não descuido.** Unificar exigiria fazer
+// o site depender de um pacote interno — e o site é propositalmente
+// independente: hoje ele não importa NENHUM `@icompras/*`. Criar essa
+// dependência mexeria na montagem do site inteiro, o que é muito risco por 40
+// linhas de cifra que não mudam nunca.
+//
+// **O QUE MANTÉM ISTO SEGURO:** se um lado mudar (algoritmo, sal, formato), o
+// outro simplesmente **para de decifrar e avisa** — `decifrar` devolve null e
+// vira "sem chave do DeepSeek" no relatório. Falha barulhenta e inofensiva,
+// nunca dado gravado errado em silêncio.
+//
+// ⚠ Ao mexer aqui, mexer LÁ no mesmo dia. As duas precisam continuar iguais:
+// mesmo algoritmo (aes-256-gcm), mesmo sal ("icompras:segredos:v1"), mesmo
+// formato (iv.marca.dado em base64).
 
 const ALGORITMO = "aes-256-gcm";
 

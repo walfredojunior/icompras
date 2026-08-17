@@ -8,12 +8,76 @@ metadata:
   node_type: memory
   type: project
   originSessionId: ce2fa394-0b2c-4043-b6bc-350c598dbbf7
-  modified: 2026-08-17T15:22:29.340Z
+  modified: 2026-08-17T21:10:01.593Z
 ---
 
 **iCompras**: comparador de preços estilo PriceRunner para o Paraguai, com painel B2B (lojas + planos mensais), API de ingestão de listas de preço, camada de IA configurável, e módulo de seed/scraper.
 
 Plano completo em `C:\projetos\icompras\docs\PLANO.md`; como rodar em `docs\COMO-RODAR.md`.
+
+## 📅 AGENDADO PARA A MADRUGADA DE 18/08/2026 — duas tarefas, uma hora entre elas
+
+O servidor roda em **UTC** e o Paraguai é **UTC−3** — conferido no dia, e é onde já se errou antes.
+
+```
+06:00 UTC = 03:00 no Paraguai   /opt/icompras/publicar-site.sh
+07:00 UTC = 04:00 no Paraguai   /opt/icompras/rodar-categorizacao-ia.sh
+```
+
+**As duas se removem do cron ao terminar.** Uma hora de intervalo de propósito: montar o site é
+trabalho de processador, e não deve coincidir com a classificação.
+
+### O roteiro de publicação (`infra/publicar-site.sh`) — o que ele cumpre
+
+Vale ler o arquivo: cada passo existe por causa de um tombo já anotado nesta memória.
+
+1. **Monta em `.next-novo`** (`NEXT_DIST_DIR`), não no `.next` que está servindo — a lição de
+   11/08. 💡 **Eu ia montar direto no `.next` e só descobri o `distDir` configurável lendo o
+   `next.config.ts`.** O projeto já tinha resolvido o problema que eu estava prestes a recriar:
+   **antes de escrever roteiro de publicação, ler a configuração do site.**
+2. **Sobe cópia de teste na porta 3001 e só então troca** — a lição de 04/08.
+3. **Confere pela TELA SERVIDA** — a lição de 06/08. A prova é a rota nova `/api/admin/online`:
+   antes devolvia **404** (não existia), agora tem de devolver **401** (existe, exige senha).
+   Conferência que não depende de estar logado.
+4. **Volta sozinho** se a conferência reprovar depois da troca: devolve o `.next-anterior`,
+   reinicia e guarda a montagem ruim em `.next-quebrado`. Ninguém estará olhando às 3h.
+5. Registra tudo em `/var/log/publicar-site.log`.
+
+### O que essa publicação leva
+
+**(a) O conserto dos "produtos relacionados"** — teto de 300 candidatos, ver a seção do banco
+logo abaixo. **(b) O contador de pessoas online** em Admin › Visitas.
+
+## 👥 "● 7 PESSOAS AGORA" EM Admin › Visitas (2026-08-17) — pronto, publica às 3h
+
+Ideia dele: *"queria que mostrasse quantos usuários online... de forma discreta"*.
+
+⚠ **Não dava para tirar do que existia:** toda a medição é agregada por DIA — não existe "visita
+às 15h47". Foi decisão deliberada (`analytics.ts`: *"nada de IP nem de identificador pessoal"*).
+
+**Como respeita aquela decisão:** guarda um resumo embaralhado de IP+navegador que **nunca vai ao
+banco nem ao disco**, some em 5 minutos, e **não pode ser revertido** — o tempero é sorteado
+quando o site sobe e não é guardado. Dá para contar quantos são; não dá para saber quem são.
+
+💡 **É um `Map` na memória do processo, sem banco e sem Redis.** No mesmo dia em que o site
+afogou por leitura de disco, e em que ele pediu DUAS VEZES cuidado com o servidor, um contador de
+audiência não podia virar mais uma escrita no banco a cada página aberta.
+
+⚠ **Só funciona porque o site roda num processo só** (`pm2`, modo `fork`, uma instância —
+conferido). Com várias cópias, cada uma contaria a sua parte e o número sairia menor; nesse dia a
+conta muda para o Redis, que já está no ar. Está escrito dentro de `lib/online.ts`.
+⚠ O número **zera a cada publicação** (a memória do processo se perde). Enche em segundos.
+
+A tela pergunta a cada 30s **só com a aba à vista** — painel esquecido aberto não fica batendo no
+servidor, mesma disciplina que se cobra dos robôs.
+
+### ❌ O terceiro item foi ABANDONADO, e foi a decisão certa
+
+Eu ia unificar `apps/web/src/lib/segredos.ts` com a cópia do `packages/core`. **Descobri que o
+site não importa NENHUM `@icompras/*`** — é propositalmente independente. Unificar exigiria criar
+essa dependência e mexer na montagem inteira, por 40 linhas de cifra que não mudam nunca.
+**Deixei a duplicação explícita**, com aviso nos dois arquivos: se um lado mudar, o outro para de
+decifrar e **avisa** (vira "sem chave do DeepSeek"), em vez de gravar errado em silêncio.
 
 ## 🐌🔥 O BANCO RODAVA COM 128 MB — E O SITE FICOU 20× MAIS RÁPIDO (2026-08-17) · LEITURA OBRIGATÓRIA
 

@@ -8,7 +8,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 76bdc89b-fae2-47aa-b6c1-ce2496535a4b
-  modified: 2026-08-17T15:23:07.616Z
+  modified: 2026-08-17T21:10:15.687Z
 ---
 
 Estado em **2026-08-08**. Os detalhes de cada item estão em [[icompras-projeto]], na seção do dia em que o assunto apareceu.
@@ -34,15 +34,23 @@ Combinado que isso é o ÚLTIMO passo, depois da IA — jogar tudo lá antes apa
 que a IA usa, e a informação custou 16 mil visitas à fonte. Sobra estimada depois da IA:
 **algo entre 6 e 9 mil produtos**. A categoria "Diversos" ainda NÃO existe no nosso banco.
 
-## 🔜 DUAS COISAS PENDURADAS QUE PRECISAM DE PUBLICAÇÃO DO SITE
+## ⏰ AGENDADO TAMBÉM — publicação do site, 18/08/2026 às 3h do Paraguai (06:00 UTC)
 
-1. **Limitar os "produtos relacionados".** A consulta olha TODOS os irmãos de categoria
-   (`cosmetico` tem 21.240) para escolher 6. Foi o que afogou o site em 17/08 — resolvido por
-   ora com a memória do banco, mas o conserto de fundo é limitar o conjunto. Exige recompilar
-   o site: janela de madrugada, com teste em porta isolada antes.
-2. **`apps/web/src/lib/segredos.ts` deve virar repasse de `@icompras/core`.** Hoje há duas
-   cópias da mesma cifra, de propósito (mudar a do site obrigaria a recompilar). Se a cifra
-   mudar num lado, o outro para de decifrar e **avisa** — falha barulhenta, não silenciosa.
+`/opt/icompras/publicar-site.sh`, log em `/var/log/publicar-site.log`. **Sai do cron sozinho.**
+Leva o **teto de 300 candidatos nos "produtos relacionados"** (a consulta que afogou o site em
+17/08) e o **contador de pessoas online** em Admin › Visitas.
+
+- **Conferir de manhã:** `tail -40 /var/log/publicar-site.log`. Deve terminar em
+  "✅ publicado e conferido pela tela servida".
+- Se tiver voltado sozinho, a montagem ruim fica em `apps/web/.next-quebrado` para examinar.
+- **Conferência independente**, sem precisar entrar no admin: `/api/admin/online` tem de
+  devolver **401**. Se devolver 404, o código novo NÃO está no ar.
+- ⚠ O contador de online **zera a cada publicação** — é esperado, enche em segundos.
+
+~~2. `apps/web/src/lib/segredos.ts` deve virar repasse de `@icompras/core`.~~ ❌ **ABANDONADO em
+17/08, e foi certo:** o site não importa nenhum `@icompras/*`, é propositalmente independente.
+Unificar exigiria mexer na montagem inteira por 40 linhas de cifra. A duplicação ficou
+**explícita e avisada nos dois arquivos** — se divergir, o robô para de decifrar e reclama.
 
 ## ⏳ ESPERANDO CAIR SOZINHO — conserto do Meilisearch
 
