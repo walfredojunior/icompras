@@ -255,7 +255,11 @@
     "foraDoArVarios": "productos salieron de venta y no entraron en la suma",
     "emQualLista": "¿En cuál lista?",
     "novaLista": "Nueva lista",
-    "fechar": "Cerrar"
+    "fechar": "Cerrar",
+    "removerDosFavoritos": "Quitar de favoritos",
+    "imposto": "Impuesto estimado (50% sobre el excedente)",
+    "totalComImposto": "Total con impuesto",
+    "impostoNota": "Estimación. En la frontera terrestre, lo que supera el cupo paga 50% de impuesto de importación. El cupo es por persona."
   },
   "recuperar": {
     "titulo": "Recuperar contraseña",

@@ -19,6 +19,17 @@ import { syncProducts } from "@icompras/search";
 import { fetch as buscarNaWeb, ProxyAgent } from "undici";
 import { getEmbeddingProvider, ingestImageFromUrl } from "@icompras/core";
 import { categoryFromProductSlug, fetchSourceTree } from "../taxonomy.js";
+// ⚠ A leitura da categoria declarada pela fonte vive num arquivo SÓ, junto com
+// a regra de correspondência, e é compartilhada com `scripts/recuperar-categoria.ts`.
+// Estava copiada nos dois com um aviso de "se mudar aqui, mudar lá" — e duas
+// leituras diferentes do mesmo campo fariam o produto trocar de categoria
+// conforme quem passasse por ele por último.
+import {
+  lerCategoriaDaFonte,
+  indexarCategorias,
+  casarCategoria,
+  type IndiceCategorias,
+} from "../categoriaDaFonte.js";
 import { buildBrandIndex, brandFromName, type BrandIndex } from "../brands.js";
 import { atualizarQuedas } from "../quedas.js";
 import { classificarProdutos } from "../prioridade.js";
@@ -190,10 +201,12 @@ async function recycleIfNeeded(): Promise<void> {
 // Categorias conhecidas (espelho da árvore da fonte, ver taxonomy.ts).
 let categorySlugs = new Set<string>();
 let categoryIdBySlug = new Map<string, number>();
+let indiceCategorias: IndiceCategorias = indexarCategorias(new Map());
 async function loadCategories(): Promise<void> {
   const rows = await pool.query("SELECT id, slug FROM category");
   categorySlugs = new Set(rows.map((r: { slug: string }) => r.slug));
   categoryIdBySlug = new Map(rows.map((r: { id: number; slug: string }) => [r.slug, Number(r.id)]));
+  indiceCategorias = indexarCategorias(categoryIdBySlug);
 }
 async function ensureCategory(productId: number, catSlug: string): Promise<void> {
   const id = categoryIdBySlug.get(catSlug);
@@ -1144,6 +1157,17 @@ interface Extracted {
   logos: Record<string, string>;
   specs: Array<{ k: string; v: string }>;
   /**
+   * A categoria que a FONTE declara, tirada do JSON-LD da página.
+   *
+   * 💡 É a diferença entre LER e ADIVINHAR. Até 16/08/2026 a categoria saía do
+   * nome do produto, e o resultado se via: "Secador Dyson Airwrap" virava
+   * *informatica*, porque o nome parece coisa de computador. A fonte publica a
+   * categoria certa nos dados estruturados do cabeçalho — `"category": "Cosmético"` —
+   * e 507 das 509 categorias dela têm o MESMO nome das nossas, porque a nossa
+   * taxonomia veio dela. É ligar direto, sem tabela de correspondência.
+   */
+  categoriaDaFonte: string | null;
+  /**
    * Nomes que a fonte declara nas etiquetas de estatística da própria página
    * (`'advertiser': 'Fulano'`). Usado SÓ como lista de veto ao tirar oferta do
    * ar — nunca como fonte de dado. Ver `lerAnunciantes`.
@@ -1330,7 +1354,7 @@ async function extractProductFast(url: string): Promise<Extracted | null> {
   // O anúncio de loja única já é lido por completo aqui (nome, preço, loja,
   // logo) — não cai mais para o navegador. Antes eu devolvia null nesse caso
   // porque não tinha achado o preço no HTML cru.
-  return { name, image, offers, logos, specs, anunciantes: lerAnunciantes(html) };
+  return { name, image, offers, logos, specs, anunciantes: lerAnunciantes(html), categoriaDaFonte: lerCategoriaDaFonte(html) };
 }
 
 async function extractProduct(page: Page, url: string): Promise<Extracted> {
@@ -1457,7 +1481,7 @@ async function extractProduct(page: Page, url: string): Promise<Extracted> {
         if (k && v) specs.push({ k, v });
       }
     });
-    return { name, image, offers, logos, specs, anunciantes: [] as string[] };
+    return { name, image, offers, logos, specs, anunciantes: [] as string[], categoriaDaFonte: null };
   });
 
   // As etiquetas 'advertiser' saem do HTML JÁ RENDERIZADO, aqui fora.
@@ -1466,7 +1490,7 @@ async function extractProduct(page: Page, url: string): Promise<Extracted> {
   // DENTRO do navegador, onde as funções deste arquivo não existem. Pedir o
   // conteúdo depois custa uma chamada e mantém a leitura num lugar só.
   const html = await page.content();
-  return { ...dados, anunciantes: lerAnunciantes(html) };
+  return { ...dados, anunciantes: lerAnunciantes(html), categoriaDaFonte: lerCategoriaDaFonte(html) };
 }
 
 const catCache = new Map<string, number | null>();
@@ -1982,10 +2006,32 @@ async function ingestProduct(page: () => Promise<Page>, path: string, ourCategor
   await saiuDaEspera(path);
   const minPrice = Math.min(...[...byStore.values()].map((v) => v.price));
 
-  // (`slug` já foi calculado acima, para consultar o preço conhecido.)
-  // A categoria sai do nome do produto ("Robô de Limpeza Xiaomi…" → robo-de-limpeza);
-  // se o nome não revelar, fica a categoria da página em que ele foi encontrado.
-  const catSlug = categoryFromProductSlug(slug, categorySlugs) ?? ourCategory;
+  // A CATEGORIA, EM ORDEM DE CONFIANÇA:
+  //
+  //   1. o que a FONTE DECLARA no JSON-LD da página  ← acrescentado em 16/08/2026
+  //   2. o que o nome do produto sugere
+  //   3. a categoria da página em que ele foi encontrado
+  //
+  // 💡 POR QUE A ORDEM MUDOU. Antes começava pelo nome, e o resultado se via:
+  // "Secador Dyson Airwrap" virava *informatica* porque o nome parece coisa de
+  // computador. Pior: os produtos que entram pelo MAPA não têm categoria de
+  // página (a unidade é "@mapa/N", que mistura tudo), então sobrava só o palpite
+  // pelo nome — e **140 mil produtos ficaram sem categoria nenhuma** ou com
+  // categoria errada.
+  //
+  // A fonte declara `"category": "Cosmético"` nos dados estruturados, e **507
+  // das 509 categorias dela têm o mesmo nome das nossas** (a nossa taxonomia
+  // veio dela). Ler o que está escrito bate qualquer adivinhação.
+  //
+  // ⚠ Só aceita se a categoria EXISTIR aqui. Se a fonte mandar uma que não
+  // temos, cai para o caminho antigo em vez de gravar categoria inválida.
+  //
+  // `casarCategoria` também resolve o caso em que só a pontuação difere — a
+  // fonte declara "Bolsa para Câmera/Filmadora" no texto e publica
+  // `/bolsa-para-camerafilmadora/` no endereço, de onde a nossa árvore foi
+  // copiada. Eram 70 produtos perdidos por uma barra (medido em 17/08/2026).
+  const casouFonte = casarCategoria(data.categoriaDaFonte, indiceCategorias);
+  const catSlug = casouFonte?.slug ?? categoryFromProductSlug(slug, categorySlugs) ?? ourCategory;
   const catId = categoryIdBySlug.get(catSlug) ?? (await getCategoryId(ourCategory));
   // A marca também sai do nome ("Celular Xiaomi Redmi…" → Xiaomi).
   const marca = brandFromName(name, catSlug, brandIndex);
@@ -1999,6 +2045,18 @@ async function ingestProduct(page: () => Promise<Page>, path: string, ourCategor
     [slug, name, catId, catSlug, marca, minPrice, byStore.size],
   );
   const productId = Number(pres.insertId);
+
+  // O QUE A FONTE DECLAROU — gravado SEMPRE, inclusive quando não deu para
+  // usar ("diversos", a gaveta de bagunça dela) e quando ela não declara nada
+  // (fica NULL, com a data). Sem isto, saber quantos produtos estão em cada
+  // situação custa uma nova visita a dezenas de milhares de páginas — foi o
+  // que aconteceu depois da rodada de 16/08. Ver migração 060.
+  await pool.query(
+    `INSERT INTO produto_categoria_fonte (product_id, declarada, conferida_em)
+     VALUES (?, ?, NOW())
+     ON DUPLICATE KEY UPDATE declarada = VALUES(declarada), conferida_em = VALUES(conferida_em)`,
+    [productId, data.categoriaDaFonte],
+  );
 
   if (data.specs.length) {
     await pool.query("UPDATE product SET specs = ? WHERE id = ?", [JSON.stringify(data.specs), productId]);

@@ -8,10 +8,48 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 76bdc89b-fae2-47aa-b6c1-ce2496535a4b
-  modified: 2026-08-15T20:58:57.731Z
+  modified: 2026-08-17T15:23:07.616Z
 ---
 
 Estado em **2026-08-08**. Os detalhes de cada item estão em [[icompras-projeto]], na seção do dia em que o assunto apareceu.
+
+## ⏰ AGENDADO — classificação por IA, 18/08/2026 às 4h do Paraguai (07:00 UTC)
+
+Cron chamando `/opt/icompras/rodar-categorizacao-ia.sh`; log em `/var/log/categorizar-ia.log`.
+**A tarefa se remove do cron sozinha ao terminar.** Vai classificar por DeepSeek os ~15.890
+produtos à venda que a fonte não classifica. Custo estimado **~US$ 1,25**, ~400 chamadas
+(teto do mês: 2.000). Aprovado por ele depois de ver 20 conferidos à mão (18 certos).
+
+- **Conferir de manhã:** `tail -30 /var/log/categorizar-ia.log`, e depois sortear 20 do lote
+  para conferir à mão de novo — a amostra de 200 não garante os 15.890.
+- **Desfazer:** `npm run categorizar-ia -w @icompras/worker -- --desfazer=<lote>` (o lote sai no
+  fim do log). Já foi usado de verdade em 17/08, funciona.
+- Só aceita o que a IA declara saber com certeza; o resto fica sem categoria de propósito.
+- **DEPOIS disso é a vez do "Diversos"** — ver o item logo abaixo.
+
+## 🔜 O "DIVERSOS" — decisão dele, e a ordem importa
+
+Ele decidiu em 17/08: **produto que está à venda e continua sem categoria vai para "Diversos"**.
+Combinado que isso é o ÚLTIMO passo, depois da IA — jogar tudo lá antes apagaria a informação
+que a IA usa, e a informação custou 16 mil visitas à fonte. Sobra estimada depois da IA:
+**algo entre 6 e 9 mil produtos**. A categoria "Diversos" ainda NÃO existe no nosso banco.
+
+## 🔜 DUAS COISAS PENDURADAS QUE PRECISAM DE PUBLICAÇÃO DO SITE
+
+1. **Limitar os "produtos relacionados".** A consulta olha TODOS os irmãos de categoria
+   (`cosmetico` tem 21.240) para escolher 6. Foi o que afogou o site em 17/08 — resolvido por
+   ora com a memória do banco, mas o conserto de fundo é limitar o conjunto. Exige recompilar
+   o site: janela de madrugada, com teste em porta isolada antes.
+2. **`apps/web/src/lib/segredos.ts` deve virar repasse de `@icompras/core`.** Hoje há duas
+   cópias da mesma cifra, de propósito (mudar a do site obrigaria a recompilar). Se a cifra
+   mudar num lado, o outro para de decifrar e **avisa** — falha barulhenta, não silenciosa.
+
+## ⏳ ESPERANDO CAIR SOZINHO — conserto do Meilisearch
+
+`packages/search/src/index.ts` foi copiado para a VPS em 17/08 e **nada foi reiniciado de
+propósito**: cada coletor pega o código novo na próxima queda, que o próprio defeito provoca.
+**Conferir se parou:** `grep -c payload_too_large /root/.pm2/logs/icompras-crawler-*-error.log`
+não deve mais crescer, e o número de reinícios (`pm2 list`, coluna ↺) deve estabilizar.
 
 ## 🔴 DEPENDE DELE — cobrar
 
@@ -82,11 +120,13 @@ Estado em **2026-08-08**. Os detalhes de cada item estão em [[icompras-projeto]
 
 33. **Decidido em 15/08:** a página antiga `/favoritos` (exigia conta) virou `/favoritos-conta`, aposentada mas não apagada; os 19 registros da tabela `favorite` continuam lá. A nova assumiu `/favoritos`. O `FavoriteButton` antigo saiu da página de produto — se um dia religar a conta, decidir se ele volta ou se a lista local passa a sincronizar.
 
-34. **Falta acrescentar ao `.env` do SERVIDOR** (só o local tem): `RESEND_API_KEY`, `SITE_URL`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID`. Está no roteiro da publicação de 16/08.
+34. **Falta acrescentar ao `.env` do SERVIDOR** (só o local tem): `RESEND_API_KEY`, `SITE_URL`, `CLOUDFLA[CHAVE-RESEND-REMOVIDA]`, `CLOUDFLARE_ZONE_ID`. Está no roteiro da publicação de 16/08.
 
 35. **Usuário de teste no banco LOCAL** com o e-mail dele (`walfredojunior@gmail.com`, id 3) — criado para testar a recuperação de senha. Apagar quando não precisar mais. **Não existe em produção.**
 
-36. 🔴 **A CATEGORIZAÇÃO AUTOMÁTICA NÃO SERVE — decisão pendente dele.** Testada em 16/08 com 500 produtos: **8 secadores de cabelo classificados como "informatica"**, taxa de ~10 acertos em 20 (o critério era 8 em 10). Parada. Restam ~140 mil produtos sem categoria. **Alternativas:** (a) IA de verdade — DeepSeek já configurado em Admin › IA, com custo por produto; (b) ler a categoria que a FONTE mostra na página de cada produto, em vez de adivinhar pelo nome — provavelmente o melhor caminho, porque a informação existe e é confiável. ⚠️ Uns 300 produtos ficaram com categoria possivelmente errada: não deu para isolá-los (ver a lição no [[icompras-projeto]]).
+36. ✅ **RESOLVIDO em 16-17/08.** Os itens 21, 31, 36 e 37 abaixo estão **superados**: a leitura da categoria declarada pela fonte recuperou **117.628 + 253 produtos**, e sobraram ~26 mil (dos quais 10.546 o coletor pega sozinho). O caminho (b) do item 36 — ler a categoria que a FONTE mostra — foi o que funcionou. O item 37 (marcar o que o robô tocou) virou a tabela `alteracao_massa` e o `--desfazer`, usados de verdade. **Ver a seção de categorias de 17/08 em [[icompras-projeto]].** O texto original fica abaixo só como histórico.
+
+36. 🔴 ~~**A CATEGORIZAÇÃO AUTOMÁTICA NÃO SERVE — decisão pendente dele.**~~ (histórico) Testada em 16/08 com 500 produtos: **8 secadores de cabelo classificados como "informatica"**, taxa de ~10 acertos em 20 (o critério era 8 em 10). Parada. Restam ~140 mil produtos sem categoria. **Alternativas:** (a) IA de verdade — DeepSeek já configurado em Admin › IA, com custo por produto; (b) ler a categoria que a FONTE mostra na página de cada produto, em vez de adivinhar pelo nome — provavelmente o melhor caminho, porque a informação existe e é confiável. ⚠️ Uns 300 produtos ficaram com categoria possivelmente errada: não deu para isolá-los (ver a lição no [[icompras-projeto]]).
 
 37. ⚠️ **O CATEGORIZADOR PRECISA MARCAR O QUE CLASSIFICOU.** Hoje não marca, e por isso não deu para desfazer os 500 do teste — só os 192 que vinham do mapa. Antes de rodar qualquer coisa em massa de novo, acrescentar um campo (ou uma tabela de registro) dizendo o que o robô tocou e quando.
 

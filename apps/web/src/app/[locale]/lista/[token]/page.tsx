@@ -19,6 +19,8 @@ import { paginaMeta } from "@/lib/seo";
 // aparecer na busca do Google mesmo sendo abertas por link.
 
 const COTA_USD = 500;
+/** 50% sobre o EXCEDENTE, não sobre a compra toda. Ver MinhasListas.tsx. */
+const ALIQUOTA = 0.5;
 
 interface Item { p: number; q: number; o?: string }
 
@@ -179,7 +181,7 @@ export default async function ListaCompartilhadaPage({
           <div className="mt-3 border-t border-slate-200 pt-3">
             <div className="flex items-baseline justify-between text-sm">
               <span className="text-slate-600">{t("cota")}</span>
-              <span className={passou ? "font-semibold text-rose-600" : "font-medium text-slate-700"}>
+              <span className={`shrink-0 whitespace-nowrap text-right ${passou ? "font-semibold text-rose-600" : "font-medium text-slate-700"}`}>
                 {passou
                   ? `${t("passou")} US$ ${(total - COTA_USD).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
                   : `${t("aindaCabe")} US$ ${(COTA_USD - total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
@@ -190,6 +192,28 @@ export default async function ListaCompartilhadaPage({
             </div>
             <p className="mt-1.5 text-[11px] text-slate-400">{t("cotaNota")}</p>
           </div>
+
+          {/* O MESMO AVISO DE IMPOSTO DA LISTA PRÓPRIA (16/08/2026).
+              Quem recebe a lista de um amigo é quem MAIS precisa da conta: vai
+              atravessar com aquilo e não montou nada, só recebeu. Mostrar o
+              total sem o imposto aqui seria justamente esconder do desavisado. */}
+          {passou && (
+            <div className="mt-3 rounded-xl bg-rose-50 p-3 ring-1 ring-rose-100">
+              <div className="flex items-baseline justify-between gap-2 text-sm">
+                <span className="text-rose-900/70">{t("imposto")}</span>
+                <span className="shrink-0 font-semibold text-rose-700">
+                  US$ {((total - COTA_USD) * ALIQUOTA).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="mt-2 flex items-baseline justify-between gap-2 border-t border-rose-200/70 pt-2">
+                <span className="text-sm font-medium text-rose-900">{t("totalComImposto")}</span>
+                <span className="shrink-0 text-xl font-bold text-rose-700">
+                  US$ {(total + (total - COTA_USD) * ALIQUOTA).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <p className="mt-1.5 text-[11px] leading-snug text-rose-900/50">{t("impostoNota")}</p>
+            </div>
+          )}
         </footer>
       </div>
 

@@ -39,3 +39,6 @@ Thumbs.db
 servidores.txt
 senhas*.txt
 *.credenciais
+
+# mapa do site da fonte baixado pelo robo (30 MB, refeito sozinho a cada 7 dias)
+.cache/

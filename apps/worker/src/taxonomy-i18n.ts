@@ -111,6 +111,10 @@ export const CATEGORY_I18N: Record<string, { es: string; en: string }> = {
   "aquarismo": { es: "Acuarismo", en: "Aquariums" },
   "colchao-inflavel-barraca": { es: "Carpas y Colchones Inflables", en: "Tents & Air Beds" },
   "bicicleta": { es: "Bicicletas", en: "Bicycles" },
+  // Criada à mão em 17/08/2026: a fonte passou a usá-la e a nossa árvore ainda
+  // não tinha. A tradução fica aqui para sobreviver ao próximo `npm run
+  // taxonomia`, que reescreve os nomes a partir deste arquivo.
+  "bicicleta-eletrica": { es: "Bicicletas Eléctricas", en: "Electric Bicycles" },
   "binoculos-telescopio": { es: "Binoculares y Telescopios", en: "Binoculars & Telescopes" },
   "brinquedos": { es: "Juguetes", en: "Toys" },
   "caixa-bolsa-termica": { es: "Conservadoras", en: "Coolers & Cooler Bags" },

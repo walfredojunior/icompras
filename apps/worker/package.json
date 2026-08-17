@@ -15,6 +15,8 @@
     "recategorize": "tsx src/scripts/recategorize.ts",
     "taxonomia": "tsx src/scripts/taxonomia.ts",
     "recategorizar": "tsx src/scripts/recategorizar.ts",
+    "recuperar-categoria": "tsx src/scripts/recuperar-categoria.ts",
+    "categorizar-ia": "tsx src/scripts/categorizar-ia.ts",
     "guardiao": "tsx src/scripts/guardiao.ts",
     "auditoria": "tsx src/scripts/auditoria.ts",
     "marcas": "tsx src/scripts/marcas.ts",

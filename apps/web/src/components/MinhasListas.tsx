@@ -10,6 +10,20 @@ import {
 /** Cota da Receita Federal por pessoa, via terrestre. Ver o comentário do total. */
 const COTA_USD = 500;
 
+/**
+ * O QUE SE PAGA SOBRE O QUE PASSOU DA COTA — 50%.
+ *
+ * Regime de tributação especial de bagagem: a alíquota incide **só sobre o
+ * excedente**, não sobre a compra inteira. Quem atravessa com US$ 600 paga
+ * sobre US$ 100, e não sobre os 600 — é o erro de conta mais comum na fila da
+ * ponte, e mostrar a conta certa é exatamente o que o dono pediu em 16/08/2026.
+ *
+ * ⚠ Estes dois números (cota e alíquota) são REGRA DA RECEITA, não decisão
+ * nossa: se mudarem, é aqui que se troca — os dois num lugar só, e a tela
+ * inteira acompanha. O texto ao lado sempre diz que é estimativa.
+ */
+const ALIQUOTA = 0.5;
+
 interface Preco {
   id: number; preco: number | null; lojas: number; slug: string; nome: string;
   imagem: string | null;
@@ -128,6 +142,9 @@ export function MinhasListas({ textos }: { textos: Record<string, string> }) {
         const semPreco = itens.length - comPreco.length;
         const pctCota = Math.min(999, Math.round((total / COTA_USD) * 100));
         const passou = total > COTA_USD;
+        // Imposto de importação no regime de bagagem: 50% sobre o que passa da
+        // cota — não sobre o total. Quem leva US$ 600 paga sobre US$ 100.
+        const imposto = passou ? (total - COTA_USD) * ALIQUOTA : 0;
 
         return (
           <section key={l.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -252,7 +269,7 @@ export function MinhasListas({ textos }: { textos: Record<string, string> }) {
                 <div className="mt-3 border-t border-slate-200 pt-3">
                   <div className="flex items-baseline justify-between text-sm">
                     <span className="text-slate-600">{textos.cota}</span>
-                    <span className={passou ? "font-semibold text-rose-600" : "font-medium text-slate-700"}>
+                    <span className={`shrink-0 whitespace-nowrap text-right ${passou ? "font-semibold text-rose-600" : "font-medium text-slate-700"}`}>
                       {passou
                         ? `${textos.passou} US$ ${(total - COTA_USD).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
                         : `${textos.aindaCabe} US$ ${(COTA_USD - total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
@@ -266,6 +283,33 @@ export function MinhasListas({ textos }: { textos: Record<string, string> }) {
                   </div>
                   <p className="mt-1.5 text-[11px] text-slate-400">{textos.cotaNota}</p>
                 </div>
+
+                {/* QUANTO VAI PAGAR DE IMPOSTO — pedido dele em 16/08/2026.
+                    A barra acima já dizia "passou em US$ 380", mas quem está na
+                    fila da ponte não quer saber o excedente: quer saber quanto
+                    vai SAIR DO BOLSO. É a conta que a pessoa faria no papel, e
+                    o comparador pode fazer por ela.
+
+                    ⚠ SÓ APARECE QUANDO PASSA DA COTA. Abaixo dela o imposto é
+                    zero, e um "imposto: US$ 0,00" fixo na tela só ensina a
+                    ignorar o aviso justamente para quem ele importa. */}
+                {passou && (
+                  <div className="mt-3 rounded-xl bg-rose-50 p-3 ring-1 ring-rose-100">
+                    <div className="flex items-baseline justify-between gap-2 text-sm">
+                      <span className="text-rose-900/70">{textos.imposto}</span>
+                      <span className="shrink-0 font-semibold text-rose-700">
+                        US$ {imposto.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-baseline justify-between gap-2 border-t border-rose-200/70 pt-2">
+                      <span className="text-sm font-medium text-rose-900">{textos.totalComImposto}</span>
+                      <span className="shrink-0 text-xl font-bold text-rose-700">
+                        US$ {(total + imposto).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                    <p className="mt-1.5 text-[11px] leading-snug text-rose-900/50">{textos.impostoNota}</p>
+                  </div>
+                )}
               </footer>
             )}
           </section>

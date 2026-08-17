@@ -8,12 +8,133 @@ metadata:
   node_type: memory
   type: project
   originSessionId: ce2fa394-0b2c-4043-b6bc-350c598dbbf7
-  modified: 2026-08-16T07:18:36.584Z
+  modified: 2026-08-17T15:22:29.340Z
 ---
 
 **iCompras**: comparador de preços estilo PriceRunner para o Paraguai, com painel B2B (lojas + planos mensais), API de ingestão de listas de preço, camada de IA configurável, e módulo de seed/scraper.
 
 Plano completo em `C:\projetos\icompras\docs\PLANO.md`; como rodar em `docs\COMO-RODAR.md`.
+
+## 🐌🔥 O BANCO RODAVA COM 128 MB — E O SITE FICOU 20× MAIS RÁPIDO (2026-08-17) · LEITURA OBRIGATÓRIA
+
+**O maior ganho isolado até hoje, e a causa estava numa linha de configuração que nunca foi tocada.**
+
+| | Antes | Depois |
+|---|---|---|
+| Home (medida pelo nginx) | 4,5 a 6,7 s | **0,27 a 0,70 s** |
+| Carga | 7,07 | **2,24** |
+| Espera de disco (`wa`) | 54% | **4,9%** |
+| Leitura do MariaDB | 113 MB/s | **5 MB/s** |
+
+**O `innodb_buffer_pool_size` estava em 128 MB — o padrão de fábrica**, num servidor de 15 GB. A tabela `product_embedding` tem **1,7 GB**. Resultado: cada página de produto ia ao DISCO buscar os vetores.
+
+### O gatilho fomos nós — e isso é o mais importante
+
+A consulta de **produtos relacionados** junta *todos os produtos da mesma categoria* e calcula `VEC_DISTANCE_COSINE` em cada um, para escolher 6. Até 16/08 isso era barato **porque os produtos estavam sem categoria** e ela achava poucos irmãos. Ao recuperar 117 mil categorias, `cosmetico` passou a ter **21.240 produtos** e `perfume` **26.309** — e a consulta passou a ler 21 mil vetores por visita, levando **até 11 segundos**.
+
+💡 **Consertar um dado pode acordar uma consulta que nunca escalou.** Não foi regressão de código: o código era o mesmo. Depois de qualquer correção em massa, vale perguntar *"o que ficava barato só porque este dado estava errado?"*.
+
+### ⚠ Como achei (o método, de novo, é o que vale)
+
+Segui a regra do 12/08 — **olhar o que está rodando AGORA** — mas com um passo a mais que faltava naquele dia:
+
+1. `top` mostrou **54% de `wa`** e só 3% ocioso → o gargalo é DISCO, não processador. Sem esse passo eu teria caçado consulta lenta de CPU.
+2. **Leitura por processo**, comparando `/proc/<pid>/io` em duas amostras de 5s → `mariadbd` lendo **113 MB/s**, todo o resto em zero. Isso apontou o culpado sem adivinhação.
+3. Só então amostrei `information_schema.processlist` 8 vezes seguidas e agrupei: a MESMA consulta de relacionados aparecia em quase toda amostra, com `time` de até 11s.
+
+### ⚠⚠ NO MariaDB 11.8 NÃO DÁ PARA CRESCER A MEMÓRIA COM O BANCO NO AR
+
+`SET GLOBAL innodb_buffer_pool_size` **é aceito e não faz nada**, com um aviso fácil de perder: `Truncated incorrect innodb_buffer_pool_size value`. O motivo é a variável nova **`innodb_buffer_pool_size_max`**, fixada no valor de partida (128 MB). **Só muda reiniciando o serviço.** Escrito em `/etc/mysql/mariadb.conf.d/50-server.cnf` (cópia do original em `50-server.cnf.bak-17082026`).
+
+O reinício levou segundos e **nenhum aplicativo caiu** — os oito PM2 reconectaram sozinhos, inclusive os quatro coletores, que nem reiniciaram.
+
+🔜 **Falta o conserto de fundo:** limitar quantos irmãos a consulta de relacionados examina (hoje olha 21 mil para escolher 6). Isso exige recompilar o site — fica para uma janela de madrugada, com teste em porta isolada antes.
+
+## 🔎 O MEILISEARCH PASSOU DE 100 MB E MATAVA OS COLETORES (2026-08-17)
+
+`syncProducts` mandava o catálogo INTEIRO num pedido só. O Meilisearch recusa acima de 100 MB, e o catálogo passou disso com ~350 mil produtos:
+
+```
+"The provided payload reached the size limit. The maximum accepted payload size is 100 MB."  (payload_too_large)
+```
+
+A recusa virava exceção, **a exceção matava o coletor**, o PM2 o reerguia e ele refazia o trabalho de partida — inclusive ler o catálogo inteiro para tentar o mesmo envio condenado. **70 dessas quedas** estavam nos registros dos quatro robôs. E o efeito silencioso era pior: **a busca parou de receber produto novo** (é a explicação da pendência que dizia que a busca mostrava coisa velha).
+
+**Conserto:** enviar em pedaços de 20.000 (~6 MB por pedido, folga de 16×). Em `packages/search/src/index.ts`.
+
+⚠ **O arquivo foi copiado mas NADA foi reiniciado, de propósito:** cada coletor pega o código novo na próxima queda — que o próprio defeito provoca dentro de uma hora. **A próxima queda de cada robô é a última**, sem gastar nenhum reinício. (Conferir depois: `grep -c payload_too_large` nos logs de erro do PM2 deve parar de crescer.)
+
+⚠ **Reiniciar os 4 coletores juntos foi erro meu.** Fiz isso às 11h24 para eles pegarem código novo; os quatro tentaram o envio condenado ao mesmo tempo e ficaram em fase, quando antes trabalhavam desencontrados. A carga saiu de ~1,0 para 4,1. **Reiniciar robôs: sempre espaçado, ou deixar que caiam sozinhos.**
+
+## 🗂️ CATEGORIAS: A BARRA PERDIDA, O REGISTRO DO QUE A FONTE DIZ (2026-08-17) — NO AR
+
+### A barra que custou 77 produtos
+
+A fonte escreve **"Bolsa para Câmera/Filmadora"** no texto do JSON-LD e publica **`/bolsa-para-camerafilmadora/`** no endereço — e foi do endereço que a nossa árvore foi copiada. A barra virava traço de um lado e sumia do outro. Mesmo caso em "Captura de Vídeo/TV" (7 produtos).
+
+**Conserto:** comparar também **sem nenhum traço** (`bolsaparacamerafilmadora`). Conferido contra colisão: as 516 categorias dão 516 chaves distintas. Terceira tentativa: aceitar a nossa versão `outros-<slug>` (a fonte diz "Utensílios Domésticos", nós temos `outros-utensilios-domesticos`).
+
+**No primeiro teste, 72 dos 98 produtos recuperados vieram só dessa correção.**
+
+### `apps/worker/src/categoriaDaFonte.ts` — a leitura agora mora num lugar só
+
+Estava copiada no coletor e no processo de recuperação, com um comentário dizendo *"se mudar aqui, mudar lá"*. 💡 **Aviso em comentário não impede ninguém de mudar só um lado** — e o estrago seria silencioso: o produto trocaria de categoria conforme quem passasse por último.
+
+### Migração 060 — `produto_categoria_fonte`
+
+A rodada de 16/08 **contou** ("5.960 são Diversos") e o número, sozinho, não deixou agir: para saber QUAIS produtos eram, seria preciso visitar as 26 mil páginas de novo. Agora grava por produto o que a fonte declarou — inclusive quando não dá para usar.
+
+⚠⚠ **NÃO DEU PARA PÔR AS COLUNAS EM `product`.** O MariaDB recusou as duas formas que não prejudicariam o site: `ALGORITHM=INSTANT` → *"not supported for this operation"*; `LOCK=NONE` → *"Fulltext index creation requires a lock. Try LOCK=SHARED"*. **A causa é o índice de texto completo `ft_prod_name`**, que a busca usa: tabela com FULLTEXT não aceita coluna nova sem reconstruir, e reconstruir exige trava. Aceitar `LOCK=SHARED` seria parar a escrita na tabela mais movimentada do sistema com gente usando o site. **Tabela separada nasce vazia e não trava nada** — criada em menos de 1 segundo. Sem chave estrangeira de propósito (criá-la pediria trava momentânea em `product`).
+
+### O resultado da releitura de 17/08
+
+16.116 páginas conferidas, 253 categorias recuperadas, e o retrato do que sobra:
+
+```
+9.371  a fonte não declara nada
+6.519  a fonte diz "Diversos" (a gaveta de bagunça DELA:
+       a trilha da página dela é "Início › Categorias › Diversos")
+10.546 não estavam no mapa — o coletor pega ao revisitar
+```
+
+**Categorias criadas à mão:** `bicicleta-eletrica` (a fonte passou a ter, nós não) e `essencia-para-narguile` (61 produtos), ambas em Lazer, com tradução em `taxonomy-i18n.ts` para sobreviverem ao próximo `npm run taxonomia`.
+
+## 🤖 CLASSIFICADOR POR IA (2026-08-17) — PRONTO, AGENDADO PARA 18/08 ÀS 4h
+
+`apps/worker/src/scripts/categorizar-ia.ts`, DeepSeek, para os ~15.890 produtos **à venda** que a fonte não classifica. **Agendado por ele para as 4h do Paraguai = 07:00 UTC** (`/opt/icompras/rodar-categorizacao-ia.sh`, no cron, e **a tarefa se remove do cron sozinha ao terminar**).
+
+### Medido, não estimado — quatro simulações antes de gravar qualquer coisa
+
+| Versão | Classificados de 40 | Acerto na conferência à mão |
+|---|---|---|
+| lista simples | 29 | ~88% (3 erros em 25) |
+| + família + advertência forte | **5** | virou medroso demais |
+| + regras reequilibradas | 33 | ~88% |
+| + ele declarar a própria certeza | 32, com 7 recusados por ele | **18/20 no teste real** |
+
+**O que fez a diferença: pedir que ele declare se está seguro** (`"k": "alta"` ou `"media"`), e **só aceitar "alta"**. Conferi 20 dos recusados como "media" à mão: **6 estavam claramente errados** (capa de sonar Garmin → capa de celular, álbum de figurinhas → material escolar, bandeja de fibra ótica → cesto organizador). **A autoavaliação dele é honesta** — o que ele diz não saber, ele realmente não sabe.
+
+💡 **Também aceito: a FAMÍLIA** (`casa-construcao`) quando nenhuma folha serve. Descobri isso **olhando o que ele recusava** — para luva de trabalho, sapateira e absorvente a nossa árvore não tem folha nenhuma. Família é muito melhor que "Diversos": é uma página que a pessoa navega.
+
+**Números finais do teste real (200 produtos, gravados e desfazíveis):** 114 classificados, 80 recusados por falta de certeza, 5 "não sei", 1 código inválido. **18 de 20 certos na conferência à mão.** Custo: US$ 0,0157 por 200 → **~US$ 1,25 para os 15.890**, em ~400 chamadas (teto do mês: 2.000).
+
+### ⚠⚠ UM DEFEITO MEU QUE QUASE PASSOU: PERDA SILENCIOSA
+
+O primeiro teste real gravou **47 de 200** e o relatório **não acusou nada**. A causa: `classificarLote` devolvia `[]` quando a resposta vinha malformada, e o código só testava `if (!escolhas)` — **`[]` é verdadeiro em JavaScript**, então o lote inteiro sumia sem entrar em conta nenhuma. Só apareceu porque fui contar as linhas no banco.
+
+💡 **Contador que não fecha é pior que contador nenhum: ele dá confiança falsa.** Agora `vistos = classificados + não sei + sem certeza + inválidos + sem resposta`, e produto que o modelo deixa de responder é contado.
+
+### Travas, todas testadas
+
+Marca em `alteracao_massa` **antes** de mudar (desfazer é um comando — usei de verdade, para refazer o teste com as regras novas); teto de chamadas do mês lido de `ia_config`; chave decifrada com `AUTH_SECRET`; 1 segundo de pausa entre lotes; `AND category_id IS NULL` no UPDATE para não atropelar o coletor.
+
+⚠ `packages/core/src/segredos/index.ts` nasceu para o robô poder decifrar a chave. **A cópia em `apps/web/src/lib/segredos.ts` continua lá de propósito** — mudá-la obrigaria a recompilar o site. Na próxima publicação, aquele arquivo deve virar um repasse deste.
+
+## 🔧 O EXECUTOR DE MIGRAÇÕES ESTAVA TRAVADO DESDE A 038 (2026-08-17) — RESOLVIDO
+
+`npm run db:migrate` falhava em `Duplicate key name 'idx_offer_external'`: o banco só tinha registro até a **038**, mas as de **039 a 059 tinham sido aplicadas na mão**. Ou seja, toda alteração de banco vinha sendo manual — e manual é onde nascem esses desencontros.
+
+⚠ **O risco do conserto era marcar como aplicada uma migração que não foi** — ela ficaria pulada para sempre, em silêncio. Então **não marquei no olho**: extraí de cada arquivo os objetos que ele cria (tabelas, colunas, índices) e conferi **33 objetos** contra `information_schema`, incluindo o único `MODIFY COLUMN` (o `gone_reason` da 054, que meu teste inicial não pegava e fui conferir à parte). Todos presentes → registrei as 22. Hoje `db:migrate` responde "Nada novo a aplicar".
 
 ## ✅ PUBLICAÇÃO DE 16/08/2026 — favoritos, e-mail, datas e anotações NO AR
 

@@ -156,6 +156,34 @@ export function estaEmAlguma(produtoId: number): boolean {
   return lerListas().some((l) => l.itens.some((i) => i.id === produtoId));
 }
 
+/**
+ * TIRA O PRODUTO DE TODAS AS LISTAS — o clique que desmarca o favorito.
+ *
+ * ⚠ POR QUE EXISTE (16/08/2026). O coração acendia e não apagava: clicar de
+ * novo num produto já favoritado chamava `adicionar()`, que **somava mais uma
+ * unidade** em vez de desmarcar. Ou seja, a única forma de tirar era abrir a
+ * página de favoritos e usar a lixeira — e o botão ficava mentindo, porque
+ * parecia um interruptor e só ligava. O dono pediu: *"se eu marcar um favorito
+ * eu poder desmarcar"*.
+ *
+ * Tira de TODAS as listas, e não de uma: o coração responde à pergunta "este
+ * produto está nos meus favoritos?". Apagá-lo de uma lista só deixaria o
+ * coração aceso (ainda está em outra), o que pareceria que o clique falhou.
+ * Quem tem várias listas e quer precisão usa o menu, que mostra uma a uma.
+ *
+ * Devolve de quantas listas saiu, para quem quiser avisar a pessoa.
+ */
+export function desmarcarDeTodas(produtoId: number): number {
+  let n = 0;
+  const listas = lerListas().map((l) => {
+    if (!l.itens.some((i) => i.id === produtoId)) return l;
+    n++;
+    return { ...l, itens: l.itens.filter((i) => i.id !== produtoId) };
+  });
+  if (n) gravar(listas);
+  return n;
+}
+
 /** Os ids das listas que contêm este produto — o menu marca essas. */
 export function listasComOProduto(produtoId: number): string[] {
   return lerListas().filter((l) => l.itens.some((i) => i.id === produtoId)).map((l) => l.id);

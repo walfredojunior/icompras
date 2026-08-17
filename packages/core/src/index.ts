@@ -1,4 +1,5 @@
 export * from "./ai/index.js";
+export * from "./segredos/index.js";
 export * from "./embedding/index.js";
 export * from "./categorize/index.js";
 export * from "./payment/index.js";

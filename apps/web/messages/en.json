@@ -255,7 +255,11 @@
     "foraDoArVarios": "products are no longer sold and were not counted",
     "emQualLista": "Which list?",
     "novaLista": "New list",
-    "fechar": "Close"
+    "fechar": "Close",
+    "removerDosFavoritos": "Remove from favourites",
+    "imposto": "Estimated tax (50% on the excess)",
+    "totalComImposto": "Total with tax",
+    "impostoNota": "Estimate. At the land border, anything above the allowance pays 50% import tax. The allowance is per person."
   },
   "recuperar": {
     "titulo": "Reset password",

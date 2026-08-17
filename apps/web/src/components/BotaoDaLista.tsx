@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Heart, Check, Plus } from "lucide-react";
-import { adicionar, estaEmAlguma, totalDeItens, lerListas, EVENTO } from "@/lib/listaLocal";
+import { adicionar, desmarcarDeTodas, estaEmAlguma, totalDeItens, lerListas, EVENTO } from "@/lib/listaLocal";
 import { EscolherLista } from "./EscolherLista";
 import { soltarCoracoes } from "@/lib/coracoesVoando";
 
@@ -68,12 +68,17 @@ export function BotaoAdicionar({
   produto,
   rotuloAdd,
   rotuloNaLista,
+  rotuloRemover,
   compacto = false,
   textosMenu,
 }: {
   produto: { id: number; slug: string; nome: string; imagem: string | null };
   rotuloAdd: string;
   rotuloNaLista: string;
+  /** O que o clique FAZ quando já está marcado. Vira o título e o rótulo de
+   *  acessibilidade — quem usa leitor de tela precisa saber a ação, não só o
+   *  estado. Sem ele, fica o texto de estado (comportamento antigo). */
+  rotuloRemover?: string;
   compacto?: boolean;
   /** Textos do menu de escolha. Sem eles o menu não abre (fica o jeito antigo). */
   textosMenu?: Record<string, string>;
@@ -107,15 +112,24 @@ export function BotaoAdicionar({
       return;
     }
 
-    const jaEstava = dentro;
+    // ⚠ O BOTÃO É UM INTERRUPTOR: se já está marcado, DESMARCA.
+    //
+    // Até 16/08/2026 clicar de novo chamava `adicionar()` outra vez, que somava
+    // mais uma unidade do mesmo produto. O coração acendia e nunca apagava — a
+    // única forma de tirar era ir aos favoritos e usar a lixeira. Um botão que
+    // parece interruptor e só liga é um botão quebrado. O dono pediu para
+    // poder desmarcar, e tinha razão.
+    if (dentro) {
+      desmarcarDeTodas(produto.id);
+      return;
+    }
+
     adicionar(produto);
-    // Corações SÓ ao acrescentar, nunca ao clicar de novo num que já está.
-    // Comemorar o mesmo produto duas vezes esvazia a comemoração — e quem
-    // clica de novo geralmente quer conferir, não festejar.
+    // Corações SÓ ao acrescentar — comemorar não combina com desmarcar.
     //
     // `compacto` são os cartões: efeito curto, porque ali a pessoa adiciona
     // vários seguidos varrendo a lista.
-    if (!jaEstava) soltarCoracoes(botaoRef.current, !compacto);
+    soltarCoracoes(botaoRef.current, !compacto);
   };
 
   const menu = textosMenu ? (
@@ -135,8 +149,8 @@ export function BotaoAdicionar({
         ref={botaoRef}
         type="button"
         onClick={clicar}
-        aria-label={dentro ? rotuloNaLista : rotuloAdd}
-        title={dentro ? rotuloNaLista : rotuloAdd}
+        aria-label={dentro ? rotuloRemover ?? rotuloNaLista : rotuloAdd}
+        title={dentro ? rotuloRemover ?? rotuloNaLista : rotuloAdd}
         className={`flex h-8 w-8 items-center justify-center rounded-full border transition ${
           dentro
             ? "border-brand-green bg-brand-green text-white"
@@ -156,6 +170,7 @@ export function BotaoAdicionar({
       ref={botaoRef}
       type="button"
       onClick={clicar}
+      title={dentro ? rotuloRemover ?? rotuloNaLista : rotuloAdd}
       className={`inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition ${
         dentro
           ? "border-brand-green bg-brand-green/10 text-brand-green-dark"

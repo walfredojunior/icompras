@@ -244,6 +244,7 @@ export default async function ProductPage({
               }}
               rotuloAdd={tl("adicionar")}
               rotuloNaLista={tl("naLista")}
+              rotuloRemover={tl("removerDosFavoritos")}
               textosMenu={{
                 emQualLista: tl("emQualLista"),
                 novaLista: tl("novaLista"),

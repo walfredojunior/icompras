@@ -224,9 +224,38 @@ export async function syncProducts(): Promise<number> {
     colors: colorsById.get(Number(r.id)) ?? [],
   }));
 
-  const task = await client().index(PRODUCTS_INDEX).addDocuments(docs);
-  // Idem: indexar 166 mil produtos não cabe nos 5s do padrão.
-  await client().waitForTask(task.taskUid, { timeOutMs: ESPERA_MS, intervalMs: 1000 });
+  // ------------------------------------------------------------------
+  // MANDA EM PEDAÇOS — e isto NÃO é otimização, é o que impede a queda.
+  //
+  // ⚠ O QUE ACONTECIA (achado em 17/08/2026). Este envio era um só, com o
+  // catálogo inteiro. O Meilisearch recusa pedido acima de 100 MB, e o
+  // catálogo passou disso quando chegou a ~350 mil produtos:
+  //
+  //     "The provided payload reached the size limit.
+  //      The maximum accepted payload size is 100 MB."  (payload_too_large)
+  //
+  // A recusa virava exceção, a exceção **matava o coletor**, o pm2 o
+  // reerguia, e ao subir ele refazia o trabalho pesado de partida — inclusive
+  // ler o catálogo inteiro de novo para tentar o mesmo envio condenado. 70
+  // dessas quedas estavam registradas nos registros dos quatro robôs, e no dia
+  // 17/08 a carga do servidor foi de ~1,0 para 4,1 (pico 8,57) por causa
+  // disso, com o site respondendo em segundos em vez de milissegundos.
+  //
+  // Efeito colateral silencioso e pior: **a busca parou de ser atualizada**.
+  // Como o envio falhava sempre, nada novo entrava no índice.
+  //
+  // 20 mil por vez dá ~6 MB por pedido, com folga de 16 vezes até o limite —
+  // margem para o catálogo dobrar sem que ninguém precise voltar aqui.
+  // ------------------------------------------------------------------
+  const POR_ENVIO = 20_000;
+  const c = client().index(PRODUCTS_INDEX);
+  for (let i = 0; i < docs.length; i += POR_ENVIO) {
+    const task = await c.addDocuments(docs.slice(i, i + POR_ENVIO));
+    // Espera cada pedaço antes de mandar o próximo: enfileirar 18 tarefas de
+    // uma vez faria o Meilisearch competir com o site pelo mesmo processador,
+    // que é justamente o que se quer evitar.
+    await client().waitForTask(task.taskUid, { timeOutMs: ESPERA_MS, intervalMs: 1000 });
+  }
   return docs.length;
 }
 

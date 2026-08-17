@@ -255,7 +255,11 @@
     "foraDoArVarios": "produtos saíram de venda e não entraram na soma",
     "emQualLista": "Em qual lista?",
     "novaLista": "Nova lista",
-    "fechar": "Fechar"
+    "fechar": "Fechar",
+    "removerDosFavoritos": "Remover dos favoritos",
+    "imposto": "Imposto estimado (50% sobre o que passou)",
+    "totalComImposto": "Total com imposto",
+    "impostoNota": "Estimativa. Na fronteira terrestre, o que passa da cota paga 50% de imposto de importação. A cota é por pessoa."
   },
   "recuperar": {
     "titulo": "Recuperar senha",
