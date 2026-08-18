@@ -15,7 +15,9 @@ metadata:
 
 Plano completo em `C:\projetos\icompras\docs\PLANO.md`; como rodar em `docs\COMO-RODAR.md`.
 
-## 🐛 O CONTADOR DE ONLINE NASCEU QUEBRADO — sempre zero (2026-08-18) — CORRIGIDO
+## 🐛 O CONTADOR DE ONLINE NASCEU QUEBRADO — sempre zero (2026-08-18) — ✅ **CORRIGIDO E CONFERIDO POR ELE NA TELA**
+
+✅ **Ele confirmou em 18/08:** *"numero de pessoas agora ja funciona"* e, minutos depois, *"agora marca 8 pessoas no site"* — **8 às 19h**, dentro da faixa de 5 a 15 que eu previ para o horário de pico. Fechado, com número real na tela e não só no meu teste.
 
 Ele reclamou no fim do dia: *"o pessoas agora no monitor de visitas não tá funcionando, sempre tá
 zero, sendo que já tive mais de 2 mil visitas"*. Estava certo, e o defeito era meu.
