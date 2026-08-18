@@ -15,6 +15,54 @@ metadata:
 
 Plano completo em `C:\projetos\icompras\docs\PLANO.md`; como rodar em `docs\COMO-RODAR.md`.
 
+## 🧠 O VAZAMENTO NÃO ERA DO NAVEGADOR (2026-08-18) — teto de memória por robô
+
+Ele perguntou: *"a cada quanto reiniciar os navegadores dos robôs? a cada 1 hora?"*. Fui medir
+antes de escolher um número, e a premissa (minha, anotada há semanas) estava **errada**.
+
+⚠ **A reciclagem do navegador JÁ EXISTIA e funciona**: `recycleIfNeeded()`, a cada 120 produtos,
+com `sinceRecycle` zerado dentro de `launchBrowser`. Os seis navegadores somavam **734 MB no
+total**. Quem crescia era o **processo Node do robô**: 428, 491, 493, 554, 658 e **703 MB** com
+menos de 2 horas de vida.
+
+💡 **A pista que denunciou:** o `pm2 list` mostra os robôs com ~54 MB, e o `ps` mostra 700. O PM2
+mede o `npm` que ele lançou, não o `node` neto que faz o trabalho. **Olhar só o painel do PM2
+esconde o problema inteiro.**
+
+### Por que POR TAMANHO e não por tempo (a pergunta dele)
+
+Relógio tem dois defeitos: derruba robô que não está inchado, perdendo o trabalho à toa; e
+**sincroniza** — os seis reiniciariam juntos, que foi exatamente o que fez a carga saltar de 1,0
+para 4,1 em 17/08. Por tamanho, cada um chega ao teto na sua hora e eles se espalham sozinhos.
+
+E o crescimento é irregular demais para relógio: medido em 5 minutos, um robô subiu **+90 MB** e
+outro **+0 MB**.
+
+### Como ficou
+
+`saiSePesado()` em `crawl.ts`: teto de **800 MB** (`CRAWL_TETO_MEMORIA_MB`), conferido **entre uma
+unidade de trabalho e a seguinte** — nunca no meio, senão o que já foi baixado daquela unidade
+seria refeito. Sai com código **12** e não 0, porque `stop_exit_codes: [0]` no PM2 quer dizer
+"saída 0 é parada de propósito, não religue" — aqui a gente QUER que religue.
+
+Chamado em três pontos seguros: depois de `catDone` (robôs normais), no fim da volta dos quentes,
+e no fim da varredura dos novos. Neste último há um bônus: ao voltar, o robô varre o mapa na hora
+em vez de esperar os 30 minutos.
+
+### ✅ Provado, não suposto
+
+Baixei o teto de UM robô para 150 MB e acompanhei:
+
+```
+09:45:12   fonte · página 14 · 169 coletados      ← trabalhando
+09:45:58   reiniciando por memória (411 MB)       ← esperou a unidade fechar
+09:46:43   mochilas-bolsas · página 1             ← voltou limpo, 45s depois
+```
+
+Depois devolvi o teto padrão com `pm2 delete` + `pm2 start ecosystem --only` (o `--update-env`
+sozinho não tira a variável que foi injetada; o PM2 guarda). Conferido lendo
+`/proc/<pid>/environ` de cada robô, não o que eu achava que tinha mandado.
+
 ## ✅ 18/08/2026 — A MADRUGADA, O QUE FALHOU NELA, E O DIA QUE SAIU DALI
 
 ### ⚠ A publicação abortou às 6h02 — por erro meu, e a trava salvou

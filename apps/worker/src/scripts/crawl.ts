@@ -126,6 +126,25 @@ const RECRAWL_HOURS = Number(process.env.CRAWL_RECRAWL_HOURS ?? 24);
 const MONITOR = process.env.CRAWL_MONITOR === "true";
 const CYCLE_MIN = Number(process.env.CRAWL_CYCLE_MIN ?? 180);
 const RECYCLE_EVERY = Number(process.env.CRAWL_RECYCLE_EVERY ?? 120);
+
+// TETO DE MEMÓRIA DO PRÓPRIO ROBÔ (18/08/2026).
+//
+// ⚠ O VAZAMENTO NÃO ERA DO NAVEGADOR, como estava anotado há semanas. Medido
+// neste dia: os navegadores somavam 734 MB nos SEIS robôs juntos e são
+// reciclados a cada 120 produtos (`recycleIfNeeded`, que funciona). Quem
+// crescia era o processo do robô em si — 428, 491, 493, 554, 658 e **703 MB**
+// com menos de 2 horas de vida, e ainda subindo.
+//
+// 💡 POR TAMANHO, E NÃO POR TEMPO. O dono perguntou "reiniciar a cada 1 hora?".
+// Por relógio tem dois defeitos: derruba robô que não está inchado (perdendo o
+// trabalho da volta à toa) e, pior, **sincroniza** — os seis reiniciariam
+// juntos, que foi exatamente o que fez a carga saltar de 1,0 para 4,1 em
+// 17/08. Por tamanho, cada um chega ao teto na sua hora e eles se espalham
+// sozinhos.
+//
+// 800 MB dá umas 2 a 4 horas por robô, pelo crescimento medido. Seis vezes 800
+// são 4,8 GB no pior caso — cabe com folga ao lado dos 4 GB do banco.
+const TETO_MEMORIA_MB = Number(process.env.CRAWL_TETO_MEMORIA_MB ?? 800);
 const DRY = process.argv.includes("--dry");
 // Só a varredura pelo mapa do site, sem percorrer categoria nenhuma.
 // Serve para recuperar na hora o que ficou para trás, sem esperar a volta.
@@ -189,6 +208,25 @@ async function getPage(): Promise<Page> {
     await launchBrowser();
   }
   return page as Page;
+}
+
+/**
+ * SAI DE PROPÓSITO quando o robô ficou pesado, para o PM2 o trazer de volta
+ * limpo. **Só deve ser chamada entre uma unidade de trabalho e a seguinte** —
+ * no meio de uma, o que já foi baixado daquela unidade seria refeito.
+ *
+ * Sai com código 12 e não 0: `stop_exit_codes: [0]` no PM2 significa "saída 0 é
+ * parada de propósito, não religue". Aqui a gente QUER que religue.
+ */
+async function saiSePesado(onde: string): Promise<void> {
+  if (!TETO_MEMORIA_MB) return;
+  const mb = Math.round(process.memoryUsage().rss / 1048576);
+  if (mb < TETO_MEMORIA_MB) return;
+  console.log(`  ♻ robô com ${mb} MB (teto ${TETO_MEMORIA_MB} MB) — saindo em ${onde} para subir limpo`);
+  await ctlBeat(`reiniciando por memória (${mb} MB)`).catch(() => {});
+  await closeBrowser().catch(() => {});
+  await pool.end().catch(() => {});
+  process.exit(12);
 }
 
 async function recycleIfNeeded(): Promise<void> {
@@ -2988,6 +3026,7 @@ async function loopQuentes(): Promise<void> {
       `=== Quentes: volta concluída, ${feitos} produto(s) · ` +
         `${usouRapido} sem navegador · ${usouNavegador} com navegador ===`,
     );
+    await saiSePesado("fim da volta dos quentes");
     if (MONITOR && !stopRequested) await esperarBatendo(ESPERA_ENTRE_VOLTAS_MS, "quentes · aguardando próxima volta");
   } while (MONITOR && !stopRequested);
 }
@@ -3037,6 +3076,9 @@ async function loopNovos(): Promise<void> {
     await roboCicloFecha(total);
     await ctlBeat(`novos · ${total} encontrado(s) (mapa ${doMapa}, marcas ${deMarcas})`);
     console.log(`=== Novos: ${total} produto(s) (mapa ${doMapa}, marcas ${deMarcas}) ===`);
+    // Sair aqui não custa nada — a varredura acabou. E tem um bônus: ao voltar,
+    // o robô varre o mapa na hora, em vez de esperar os 30 minutos.
+    await saiSePesado("fim da varredura dos novos");
     if (MONITOR && !stopRequested) await esperarBatendo(ESPERA_ENTRE_VOLTAS_MS, "novos · aguardando próxima varredura");
   } while (MONITOR && !stopRequested);
 }
@@ -3154,6 +3196,9 @@ async function main(): Promise<void> {
         if (stopRequested) break;
         if (!DRY) {
           await catDone(cat, n, !falhaDaUnidade, falhaDaUnidade ?? "");
+          // Aqui é o ponto seguro: a unidade acabou de ser fechada e a próxima
+          // ainda não foi reivindicada, então sair não desperdiça nada.
+          await saiSePesado("entre unidades");
           // As varreduras de fim de volta são do CHEFE.
           //
           // Rodar em quatro seria quatro vezes o mesmo trabalho — e quatro
