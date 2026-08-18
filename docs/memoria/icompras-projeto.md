@@ -15,6 +15,93 @@ metadata:
 
 Plano completo em `C:\projetos\icompras\docs\PLANO.md`; como rodar em `docs\COMO-RODAR.md`.
 
+## ✅ 18/08/2026 — A MADRUGADA, O QUE FALHOU NELA, E O DIA QUE SAIU DALI
+
+### ⚠ A publicação abortou às 6h02 — por erro meu, e a trava salvou
+
+`EADDRINUSE` na porta 3001: **eu escolhi o número sem conferir se estava livre**, e ela é do
+`icompras-api`, de pé há 6 dias. O roteiro fez o certo — não encostou na produção, e o site
+passou a noite no ar com a versão anterior. Custou uma noite, não um estrago.
+
+💡 **Conserto em dois níveis, e o segundo é o que importa:** troquei para a 3010 **e** fiz o
+roteiro CONFERIR se a porta está livre antes de tentar. Trocar o número consertaria hoje;
+conferir impede a classe inteira do erro. Pior ainda seria a porta ocupada por outro programa
+que RESPONDESSE — aí o teste aprovaria a publicação lendo a tela errada.
+
+**Publicado às 07:19 UTC**, com o roteiro corrigido: home 200 em 0,249s, rota nova devolvendo 401.
+
+### 📉 O conserto dos relacionados, medido em produção
+
+Página de produto em `cosmetico` (21.240 irmãos), a mesma consulta que na véspera levava 11s:
+
+```
+0,156s   0,044s   0,044s     ← 44 MILISSEGUNDOS
+```
+
+### 🔎 A VARREDURA CEGA — o conserto de maior impacto do dia
+
+|  | Antes | Depois |
+|---|---|---|
+| Produtos que a varredura enxerga | 21.738 | **336.652** |
+| O que ela dizia | "tudo o que existe na fonte já está aqui" | **8.451 faltando** |
+
+As **três partes juntas**, porque o padrão sozinho teria afogado o banco:
+1. `_{1,2}` no padrão (a fonte usa dois formatos de endereço);
+2. conferência **em lote** — era uma consulta por endereço (seriam 314 mil a cada 30 min), virou
+   ~340 em blocos de 1.000;
+3. **teto de 400 por varredura**, avisado no registro — sem ele, a primeira rodada depois do
+   conserto tentaria recolher dezenas de milhares de páginas de uma vez, que é como se leva 403.
+
+E mais duas correções do mesmo espírito: `MINIMO_ESPERADO` de 15.000 → **200.000** (o guarda nunca
+disparava, porque 21.784 passa por 15.000), e o relatório final, que gravava `faltando: 0` sempre.
+
+💡 **A lição que fica: rede de segurança que mede errado é PIOR que rede nenhuma** — ela emite o
+"tudo certo" que impede alguém de ir olhar. Foi assim por semanas.
+
+### 🤖 6 ROBÔS (era 4) — ideia dele, decidida por medida
+
+O que justificou: **teto de 2 páginas/s, uso real de 0,75** (64.815 em 24h) — 37% da própria
+permissão. Cada página levava ~5,3s, dos quais só 2s eram a pausa; o resto era robô PARADO
+esperando a fonte. Robô que espera não gasta nada.
+
+⚠ **Não aumenta a pressão sobre a fonte:** a pausa é `robôs ÷ ritmo`, então com 6 cada um espera
+3s e o total segue em 2/s. Os dois novos entraram como "normal" (0,1,4,5 na volta pelo catálogo;
+2 quentes; 3 novos). Reiniciei **um a um, espaçados** — a lição de 17/08, quando reiniciei os
+quatro juntos e a carga foi de 1,0 para 4,1.
+
+### 🤖 A CLASSIFICAÇÃO POR IA — resultado real
+
+```
+16.579 vistos · 7.841 classificados (488 na família) · 474 "não sei"
+7.783 recusados por falta de certeza · 481 código inválido
+Custo: US$ 1,29   (estimativa da véspera: US$ 1,25)
+Cache: 2,92 de 3,33 milhões de tokens de entrada reaproveitados (88%)
+```
+
+**Conferi 20 sorteados à mão: 18 certos.** Passou no critério.
+
+💡 **A lista de códigos inválidos virou pauta, não lixo.** O que ele pediu e não temos:
+`acessorios-para-cabelo` (95×), `acessorios-para-camera` (62×), `acustica` (34×),
+`pecas-para-drone` (30×), `suporte-para-tablet` (23×), `peruca` (15×), `tomada` (12×),
+`megafone` (9×), `tabaco` (9×). Parte são **categorias que faltam de verdade**; parte são
+**quase-acertos** que a regra `outros-` já resolve no coletor e faltou aplicar no classificador.
+
+### 📦 O "DIVERSOS" — a rede de segurança dele, executada por último
+
+Decisão dele: *"se o produto tá à venda e não tem categoria, jogar em Diversos"*. Feito **depois**
+da IA, de propósito: jogar tudo lá antes apagaria a informação que a IA usa.
+
+Categoria criada como **grupo de topo** (id 1598, última posição do menu) — o menu do site aceita
+raiz com produtos próprios, conferido no código antes de criar. **19.026 produtos** movidos;
+sobraram **61**, que são os que NÃO estão à venda — exatamente a regra dele.
+
+⚠ Marcado em `alteracao_massa` (lote `20260818-diversos`) e com a lista guardada em
+`backup_diversos_18082026`. **UPDATE em blocos de 50 mil ids**, não de uma vez: transação grande
+em `product` já segurou o banco por 3h52 em 07/08.
+
+**Medido depois:** página da categoria Diversos em 0,078s, e produto com 19 mil irmãos em 0,017s —
+o teto de 300 candidatos dos relacionados aguenta a categoria nova sem sentir.
+
 ## 📅 AGENDADO PARA A MADRUGADA DE 18/08/2026 — duas tarefas, uma hora entre elas
 
 O servidor roda em **UTC** e o Paraguai é **UTC−3** — conferido no dia, e é onde já se errou antes.

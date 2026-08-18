@@ -33,7 +33,12 @@ set -u
 LOG=/var/log/publicar-site.log
 APP=/opt/icompras/app
 WEB=$APP/apps/web
-PORTA_TESTE=3001
+# ⚠ 3010 e NÃO 3001. Na primeira tentativa (18/08/2026, 06:02) escolhi 3001 sem
+# conferir, e a publicação abortou com `EADDRINUSE`: a porta é do `icompras-api`,
+# de pé há 6 dias. O roteiro se comportou certo (não tocou na produção), mas a
+# noite foi perdida por eu ter suposto em vez de olhar. Por isso, além de trocar
+# o número, ele agora CONFERE antes de tentar — ver logo abaixo.
+PORTA_TESTE=3010
 
 registrar() { echo "$(date -u '+%H:%M:%S') $*" >> "$LOG"; }
 sair_do_cron() { crontab -l 2>/dev/null | grep -v 'publicar-site.sh' | crontab -; }
@@ -59,6 +64,13 @@ fi
 registrar "montagem concluída"
 
 # ------------------------------------------------- 2. teste em porta isolada
+# Porta ocupada é motivo para desistir ANTES de mexer em qualquer coisa: subir
+# ali daria erro e, pior, um teste que aponta para o processo de OUTRO programa
+# aprovaria a publicação lendo a tela errada.
+if ss -ltn 2>/dev/null | grep -q ":$PORTA_TESTE "; then
+  desistir "a porta $PORTA_TESTE já está ocupada — escolher outra livre em PORTA_TESTE"
+fi
+
 registrar "subindo cópia de teste na porta $PORTA_TESTE..."
 ( cd "$APP" && NEXT_DIST_DIR=.next-novo PORT=$PORTA_TESTE npm run start -w @icompras/web >> "$LOG" 2>&1 ) &
 TESTE_PID=$!

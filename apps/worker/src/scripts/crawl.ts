@@ -2464,10 +2464,19 @@ async function listarSitemaps(): Promise<string[]> {
   return [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
 }
 
-// Abaixo disto o mapa está claramente quebrado (em 01/08/2026 tinha 21.696).
-// Sem esta guarda, uma mudança de formato na fonte deixaria a rede de segurança
-// desligada em silêncio — e ninguém ficaria sabendo até alguém reclamar.
-const MINIMO_ESPERADO = 15000;
+// Abaixo disto o mapa está claramente quebrado.
+//
+// ⚠ ERA 15.000, e por isso NUNCA DISPAROU — o que é o pior defeito possível
+// numa guarda. O padrão de leitura enxergava só os endereços de um sublinhado
+// (21.784 de 341.756), e 21.784 passa folgado por 15.000: a rede de segurança
+// ficou coberta em 6% do catálogo por semanas, dando "tudo certo".
+//
+// 💡 O número de uma guarda tem de acompanhar a realidade que ela guarda. Um
+// teto escolhido quando o catálogo tinha 21 mil produtos vira decoração quando
+// ele chega a 350 mil. Em 18/08/2026 o mapa tinha 341.756 endereços; 200.000
+// dá folga para a fonte encolher bastante sem alarme falso, e ainda assim
+// grita se o formato mudar de novo.
+const MINIMO_ESPERADO = Number(process.env.CRAWL_MINIMO_MAPA ?? 200000);
 
 async function gravarCobertura(
   status: string,
@@ -2495,7 +2504,23 @@ async function varrerSitemap(): Promise<number> {
   for (const m of mapas) {
     const xml = await fetchText(m);
     if (xml) {
-      for (const mm of xml.matchAll(/<loc>https?:\/\/[^/]+(\/[a-z0-9-]+_\d+\/)<\/loc>/gi)) {
+      // ⚠⚠ `_{1,2}` E NÃO `_`. A FONTE USA DOIS FORMATOS DE ENDEREÇO, e até
+      // 18/08/2026 esta linha só aceitava UM sublinhado. Contado no mapa
+      // daquele dia:
+      //
+      //     com um sublinhado:      21.784   ← era só isto que ela via
+      //     com dois sublinhados:  314.432   ← ignorava
+      //
+      // Ou seja: a rede de segurança contra "produto que existe lá e não
+      // existe aqui" cobria **6% do catálogo** — e concluía, em
+      // `catalog_coverage`, "tudo o que existe na fonte já está aqui".
+      //
+      // 💡 Rede de segurança que mede errado é PIOR que rede nenhuma: ela dá o
+      // "tudo certo" que impede alguém de ir olhar. E gerou um fato falso —
+      // havia um comentário aqui perto afirmando que os endereços com `__` não
+      // aparecem no mapa do site. Aparecem. Alguém mediu com este padrão
+      // furado, viu zero, e anotou a conclusão como se fosse da fonte.
+      for (const mm of xml.matchAll(/<loc>https?:\/\/[^/]+(\/[a-z0-9-]+_{1,2}\d+\/)<\/loc>/gi)) {
         caminhos.add(mm[1]);
       }
     }
@@ -2504,7 +2529,7 @@ async function varrerSitemap(): Promise<number> {
   }
 
   if (caminhos.size < MINIMO_ESPERADO) {
-    console.log(`  ⚠ mapa do site veio com só ${caminhos.size} produtos (esperado 15 mil+) — não confio, varredura cancelada`);
+    console.log(`  ⚠ mapa do site veio com só ${caminhos.size} produtos (esperado ${MINIMO_ESPERADO.toLocaleString("pt-BR")}+) — não confio, varredura cancelada`);
     await gravarCobertura(
       "mapa-suspeito",
       `o mapa do site devolveu ${caminhos.size} produtos, muito abaixo do normal — a fonte pode ter mudado o formato`,
@@ -2514,13 +2539,30 @@ async function varrerSitemap(): Promise<number> {
 
   // Fica só com o que o coletor nunca viu. Produto já conhecido é assunto da
   // volta normal, que o revisita a cada RECRAWL_HOURS.
-  const inéditos: string[] = [];
+  //
+  // ⚠ A CONFERÊNCIA É EM LOTE, e isso não é capricho. Aqui havia um
+  // `SELECT COUNT(*) … WHERE external_id = ?` DENTRO do laço: uma consulta por
+  // endereço. Com os 21 mil que o padrão furado enxergava já eram 21 mil
+  // consultas a cada varredura; com os 314 mil de verdade seriam 314 mil, de
+  // meia em meia hora — o conserto do padrão, sozinho, teria afogado o banco.
+  // Em blocos de 1.000, o mesmo trabalho vira ~340 consultas.
+  const porId = new Map<string, string>();
   for (const path of caminhos) {
     const idM = path.match(/_(\d+)\/$/);
-    if (!idM) continue;
-    const [r] = await pool.query("SELECT COUNT(*) n FROM scrape_log WHERE external_id = ?", [`cp-${idM[1]}`]);
-    if (Number(r.n) === 0) inéditos.push(path);
+    if (idM) porId.set(`cp-${idM[1]}`, path);
   }
+  const conhecidos = new Set<string>();
+  const ids = [...porId.keys()];
+  for (let i = 0; i < ids.length; i += 1000) {
+    const bloco = ids.slice(i, i + 1000);
+    const linhas: Array<{ external_id: string }> = await pool.query(
+      `SELECT external_id FROM scrape_log WHERE external_id IN (${bloco.map(() => "?").join(",")})`,
+      bloco,
+    );
+    for (const l of linhas) conhecidos.add(l.external_id);
+  }
+  const inéditos: string[] = [];
+  for (const [ext, caminho] of porId) if (!conhecidos.has(ext)) inéditos.push(caminho);
   console.log(`\n=== Mapa do site: ${caminhos.size} produtos na fonte · ${inéditos.length} nunca visitados ===`);
   await gravarCobertura(
     inéditos.length ? "faltando" : "ok",
@@ -2531,8 +2573,29 @@ async function varrerSitemap(): Promise<number> {
   );
   if (!inéditos.length) return 0;
 
+  // ⚠ TETO POR VARREDURA — e ele é AVISADO, nunca silencioso.
+  //
+  // Na primeira varredura depois do conserto do padrão, o número de inéditos
+  // salta de ~zero para dezenas de milhares (o acúmulo de tudo que a rede
+  // cega deixou passar). Recolher todos de uma vez seria horas de pressão
+  // contínua sobre a fonte — exatamente o que rende 403 e custa dias.
+  //
+  // A cada meia hora ele leva mais um pedaço, e em poucos dias zera. Em regime
+  // normal, o número de inéditos por varredura é pequeno e o teto nunca pega.
+  //
+  // 💡 Limite que não aparece no registro vira "cobri tudo" na cabeça de quem
+  // lê — por isso a linha abaixo diz em voz alta quantos ficaram para depois.
+  const TETO_POR_VARREDURA = Number(process.env.CRAWL_TETO_MAPA ?? 400);
+  const fila = inéditos.slice(0, TETO_POR_VARREDURA);
+  if (inéditos.length > fila.length) {
+    console.log(
+      `  ⚠ teto desta varredura: recuperando ${fila.length} agora, ` +
+        `${(inéditos.length - fila.length).toLocaleString("pt-BR")} ficam para as próximas`,
+    );
+  }
+
   let colhidos = 0;
-  for (const path of inéditos) {
+  for (const path of fila) {
     if (stopRequested) break;
     const ext = `cp-${path.match(/_(\d+)\/$/)![1]}`;
     try {
@@ -2552,17 +2615,24 @@ async function varrerSitemap(): Promise<number> {
     } catch (e) {
       console.log(`  (erro em ${path}: ${(e as Error).message})`);
     }
-    await ctlBeat(`mapa do site · ${colhidos}/${inéditos.length} recuperados`);
+    await ctlBeat(`mapa do site · ${colhidos}/${fila.length} recuperados`);
     await sleep(DELAY);
   }
   console.log(`=== Mapa do site: ${colhidos} produto(s) recuperados ===\n`);
   // Depois de recuperar, o que sobrou são páginas sem loja vendendo.
+  // ⚠ O QUE FICOU PARA DEPOIS ENTRA NO RELATÓRIO. Antes esta linha gravava
+  // `faltando: 0` sempre — e foi assim que a tela passou semanas dizendo "tudo
+  // o que existe na fonte já está aqui" enquanto 94% do catálogo nem era
+  // olhado. Relatório que não sabe contar o que sobrou é o mesmo erro, de novo.
+  const restam = inéditos.length - fila.length;
   await gravarCobertura(
-    "ok",
-    colhidos
-      ? `${colhidos} produto(s) recuperados pelo mapa do site; o resto são páginas sem loja vendendo`
-      : `os ${inéditos.length} que faltavam não têm loja vendendo — nada a recuperar`,
-    { fonte: caminhos.size, vistos: caminhos.size, faltando: 0 },
+    restam ? "faltando" : "ok",
+    restam
+      ? `${colhidos} recuperados nesta varredura; ${restam.toLocaleString("pt-BR")} ainda na fila (teto por varredura)`
+      : colhidos
+        ? `${colhidos} produto(s) recuperados pelo mapa do site; o resto são páginas sem loja vendendo`
+        : `os ${inéditos.length} que faltavam não têm loja vendendo — nada a recuperar`,
+    { fonte: caminhos.size, vistos: caminhos.size - restam, faltando: restam },
   );
   return colhidos;
 }

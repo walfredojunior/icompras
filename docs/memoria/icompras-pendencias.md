@@ -13,99 +13,52 @@ metadata:
 
 Estado em **2026-08-08**. Os detalhes de cada item estão em [[icompras-projeto]], na seção do dia em que o assunto apareceu.
 
-## ⏰ AGENDADO — classificação por IA, 18/08/2026 às 4h do Paraguai (07:00 UTC)
+## ✅ TUDO DE 17-18/08 FOI EXECUTADO — o que sobrou está listado abaixo
 
-Cron chamando `/opt/icompras/rodar-categorizacao-ia.sh`; log em `/var/log/categorizar-ia.log`.
-**A tarefa se remove do cron sozinha ao terminar.** Vai classificar por DeepSeek os ~15.890
-produtos à venda que a fonte não classifica. Custo estimado **~US$ 1,25**, ~400 chamadas
-(teto do mês: 2.000). Aprovado por ele depois de ver 20 conferidos à mão (18 certos).
+Publicação do site, classificação por IA, conserto da varredura cega, 6 robôs e o "Diversos":
+**todos feitos em 18/08/2026**. Detalhes e números na seção do dia em [[icompras-projeto]].
 
-- **Conferir de manhã:** `tail -30 /var/log/categorizar-ia.log`, e depois sortear 20 do lote
-  para conferir à mão de novo — a amostra de 200 não garante os 15.890.
-- **Desfazer:** `npm run categorizar-ia -w @icompras/worker -- --desfazer=<lote>` (o lote sai no
-  fim do log). Já foi usado de verdade em 17/08, funciona.
-- Só aceita o que a IA declara saber com certeza; o resto fica sem categoria de propósito.
-- **DEPOIS disso é a vez do "Diversos"** — ver o item logo abaixo.
+## 🔜 O QUE FICOU PARA A PRÓXIMA CONVERSA
 
-## 🔴 COMBINADO PARA 18/08 — a rede de segurança da descoberta está cega (achado 17/08, à noite)
+1. **Medir os 6 robôs por um dia inteiro.** Esperado: de ~65 mil para ~95 mil páginas/dia, e a
+   volta completa de ~5,5 para ~3,5 dias. Conferir com
+   `SELECT COUNT(*) FROM scrape_log WHERE last_crawled_at > NOW() - INTERVAL 24 HOUR`.
+   ⚠ Só pensar em mais robôs depois dessa medida: o gargalo pode deixar de ser a espera e passar
+   a ser o processador dos navegadores.
 
-**`varrerSitemap()` em `crawl.ts` enxerga 6% do catálogo e conclui "tudo o que existe na fonte já
-está aqui".** É o robô "novos", que deveria achar produto novo a cada 30 min.
+2. **Aplicar as regras de quase-acerto no classificador por IA.** O `casarCategoria` do coletor já
+   resolve "só a pontuação difere" e "a nossa é a versão `outros-`", mas `categorizar-ia.ts`
+   compara direto. Recupera ~100 dos 481 códigos inválidos (`acessorios-para-camera` →
+   `outros-acessorios-para-camera`, `pecas-para-drone` → `acessorios-para-drone`).
 
-A fonte usa DOIS formatos de endereço e o padrão dessa função só aceita um:
+3. **Criar as categorias que a IA pediu e não existem:** `acessorios-para-cabelo` (95 pedidos),
+   `acustica` (34), `peruca` (15), `tomada` (12), `megafone` (9), `tabaco` (9),
+   `suporte-para-tablet` (23). ⚠ Conferir antes se não é quase-acerto de alguma que já temos.
 
-```
-/[a-z0-9-]+_\d+/     ← o que ela procura (UM sublinhado):    21.784 endereços
-                        o que existe com DOIS sublinhados:  314.432 endereços
-```
+4. **Acompanhar a recuperação pelo mapa.** Eram 8.451 nunca visitados; o robô "novos" leva 400 por
+   varredura, a cada ~30 min. Deve zerar em ~10 horas.
+   Conferir: `SELECT * FROM catalog_coverage ORDER BY id DESC LIMIT 1`.
 
-`catalog_coverage` confirma: `source_total = 21.738`, status **ok**. O guarda `MINIMO_ESPERADO =
-15000` nunca dispara porque 21.738 passa. 💡 **Rede de segurança que mede errado é pior que rede
-nenhuma: ela dá o "tudo certo" que impede alguém de ir olhar.**
+5. **Os 7.783 que a IA recusou estão no "Diversos"** — não estão perdidos, estão marcados
+   (`alteracao_massa`, lote `20260818-diversos`, lista em `backup_diversos_18082026`). Se um dia
+   houver um jeito melhor de classificá-los, é de lá que se parte.
 
-⚠⚠ **E gerou um "fato" falso na documentação:** há um comentário no código afirmando que os
-endereços com `__` "NÃO aparecem no mapa do site". Aparecem — são 314 mil. Alguém mediu com o
-padrão furado, viu zero, e anotou a conclusão como se fosse comportamento da fonte.
+## ✅ O "DIVERSOS" — FEITO em 18/08/2026 (era decisão dele, e a ordem importava)
 
-**⚠ CONSERTAR O PADRÃO SOZINHO PIORA TUDO.** A função faz **uma consulta ao banco por endereço**
-(`SELECT COUNT(*) FROM scrape_log WHERE external_id = ?`): passaria de 21 mil para 314 mil
-consultas a cada 30 minutos, e ainda tentaria coletar ~26 mil páginas de uma vez. **São três
-partes juntas:** (1) o padrão `_{1,2}`; (2) a conferência em LOTE, não uma por endereço; (3) um
-teto de quantos recuperar por varredura. E subir `MINIMO_ESPERADO` para ~200.000, senão a guarda
-segue inútil.
+Regra dele: **produto à venda e sem categoria vai para "Diversos"**. Executado DEPOIS da IA, de
+propósito — jogar tudo lá antes apagaria a informação que a IA usa, e ela custou 16 mil visitas
+à fonte.
 
-**Ganho:** produto novo entra em ~30 min em vez de dias. Medido em 17/08 com um produto real que
-ele perguntou (um console Valve): nunca visitado, e só entraria ~4h depois, pela rotação do mapa.
+**19.026 produtos movidos**; sobraram 61, que são os que não estão à venda. Categoria criada como
+grupo de topo (id **1598**, última do menu). Desfazível: `alteracao_massa`, lote
+`20260818-diversos`, e a lista em `backup_diversos_18082026`.
 
-## 🔜 DEPOIS DO CONSERTO ACIMA — 4 robôs → 6, e medir um dia
+## ✅ CONSERTO DO MEILISEARCH — CONFIRMADO em 18/08/2026
 
-Pergunta dele em 17/08: *"tem mais recursos da máquina, e se colocar mais robôs?"*. **Sim, ajuda,
-e o risco para a fonte é zero** — está escrito no próprio `crawl.ts`: os robôs dividem um teto
-único de 2 pedidos/s e a pausa de cada um é `robôs ÷ ritmo`. Mais robôs **não** aumentam a
-pressão sobre a fonte.
-
-**O número que decide:** o teto é 2 páginas/s e estamos em **0,75** (64.815 páginas em 24h) — 37%
-da nossa própria permissão. Cada página leva ~5,3s, dos quais só 2s são a pausa; os outros 3,3s
-são robô parado esperando a fonte. Robô esperando é exatamente o caso em que mais robôs rendem.
-
-Mexer em `ecosystem.config.cjs` (o laço que cria os robôs + `CRAWL_WORKERS`). Esperado: 65 mil →
-~95 mil páginas/dia, volta completa de ~5,5 para ~3,5 dias. Ir a 6, **medir um dia inteiro**, só
-então pensar em mais.
-
-⛔ **NÃO subir `CRAWL_RPS`.** Esse sim aumenta a pressão sobre a fonte — é a classe de risco que
-custou os 403 e obrigou a montar o servidor de Dallas.
-
-## 🔜 O "DIVERSOS" — decisão dele, e a ordem importa
-
-Ele decidiu em 17/08: **produto que está à venda e continua sem categoria vai para "Diversos"**.
-Combinado que isso é o ÚLTIMO passo, depois da IA — jogar tudo lá antes apagaria a informação
-que a IA usa, e a informação custou 16 mil visitas à fonte. Sobra estimada depois da IA:
-**algo entre 6 e 9 mil produtos**. A categoria "Diversos" ainda NÃO existe no nosso banco.
-
-## ⏰ AGENDADO TAMBÉM — publicação do site, 18/08/2026 às 3h do Paraguai (06:00 UTC)
-
-`/opt/icompras/publicar-site.sh`, log em `/var/log/publicar-site.log`. **Sai do cron sozinho.**
-Leva o **teto de 300 candidatos nos "produtos relacionados"** (a consulta que afogou o site em
-17/08) e o **contador de pessoas online** em Admin › Visitas.
-
-- **Conferir de manhã:** `tail -40 /var/log/publicar-site.log`. Deve terminar em
-  "✅ publicado e conferido pela tela servida".
-- Se tiver voltado sozinho, a montagem ruim fica em `apps/web/.next-quebrado` para examinar.
-- **Conferência independente**, sem precisar entrar no admin: `/api/admin/online` tem de
-  devolver **401**. Se devolver 404, o código novo NÃO está no ar.
-- ⚠ O contador de online **zera a cada publicação** — é esperado, enche em segundos.
-
-~~2. `apps/web/src/lib/segredos.ts` deve virar repasse de `@icompras/core`.~~ ❌ **ABANDONADO em
-17/08, e foi certo:** o site não importa nenhum `@icompras/*`, é propositalmente independente.
-Unificar exigiria mexer na montagem inteira por 40 linhas de cifra. A duplicação ficou
-**explícita e avisada nos dois arquivos** — se divergir, o robô para de decifrar e reclama.
-
-## ⏳ ESPERANDO CAIR SOZINHO — conserto do Meilisearch
-
-`packages/search/src/index.ts` foi copiado para a VPS em 17/08 e **nada foi reiniciado de
-propósito**: cada coletor pega o código novo na próxima queda, que o próprio defeito provoca.
-**Conferir se parou:** `grep -c payload_too_large /root/.pm2/logs/icompras-crawler-*-error.log`
-não deve mais crescer, e o número de reinícios (`pm2 list`, coluna ↺) deve estabilizar.
+O envio em pedaços de 20 mil funcionou. Nenhuma queda por `payload_too_large` desde 17/08 nos
+seis robôs (os registros de erro de 0 a 3 não são escritos desde ontem; 4 e 5 nasceram limpos).
+A estratégia de **copiar o arquivo e não reiniciar nada** deu certo: cada robô pegou o código
+novo na queda que o próprio defeito provocava, sem gastar nenhum reinício.
 
 ## 🔴 DEPENDE DELE — cobrar
 
