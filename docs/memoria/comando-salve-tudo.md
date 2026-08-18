@@ -19,7 +19,11 @@ Combinado com ele em **07/08/2026**: **"quando eu digitar `salve tudo`, você sa
 
 **1. Gravar a memória** do que foi feito na conversa. O de sempre: o *porquê*, o que foi medido, o que deu errado no caminho. Atualizar [[icompras-projeto]] e [[icompras-pendencias]]; ajustar o índice em `MEMORY.md` se algo importante mudou.
 
-**2. Refazer a cópia limpa** em `docs/memoria/` na VPS. **A cópia NÃO se atualiza sozinha.** Copiar os `.md` de `C:\Users\walfr\.claude\projects\C--projetos-icompras\memory\`, pôr o aviso no topo de cada arquivo e trocar as senhas — **do padrão MAIS LONGO para o mais curto**, senão uma troca atropela a outra:
+**2. Refazer a cópia limpa** em `docs/memoria/` na VPS. 💡 **O filtro já existe pronto:**
+`python .limpar-memoria.py` dentro da própria pasta da memória — ele lê os `.md` originais, troca
+as senhas, confere que nenhuma sobrou e escreve em `memoria-limpa/`. ⚠ Ele mora ali, e não na
+pasta temporária da sessão, porque aquela é apagada pelo sistema no meio do trabalho (reescrevi o
+mesmo arquivo três vezes em 18/08/2026). E não é versionado: contém os valores que filtra. **A cópia NÃO se atualiza sozinha.** Copiar os `.md` de `C:\Users\walfr\.claude\projects\C--projetos-icompras\memory\`, pôr o aviso no topo de cada arquivo e trocar as senhas — **do padrão MAIS LONGO para o mais curto**, senão uma troca atropela a outra:
 
 | Procurar (sem diferenciar maiúscula) | Trocar por |
 |---|---|

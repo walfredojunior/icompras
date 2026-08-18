@@ -9,6 +9,12 @@ import { quantosAgora, JANELA_MINUTOS } from "@/lib/online";
 // cada 30 segundos não pode custar consulta nenhuma, senão a própria tela de
 // medir audiência vira carga. Aqui só se lê um Map da memória do processo —
 // ver `lib/online.ts`.
+// Nunca prerenderizar: o número é do INSTANTE, e uma resposta guardada de
+// antes seria pior que não mostrar nada — parece atual e não é. Na prática a
+// rota já é dinâmica porque confere a senha do admin (lê cookie), mas deixar
+// escrito evita que uma mudança futura a torne estática sem ninguém notar.
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   if (!(await getCurrentAdmin())) {
     return NextResponse.json({ error: "Acesso negado." }, { status: 401 });

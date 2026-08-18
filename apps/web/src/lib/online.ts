@@ -38,8 +38,10 @@ import { createHash, randomBytes } from "node:crypto";
 // dependência nova: é uma listinha na memória, com custo de microssegundos.
 //
 // ⚠ ISTO SÓ FUNCIONA PORQUE O SITE RODA NUM PROCESSO SÓ (`pm2`, modo `fork`,
-// uma instância — conferido em 17/08/2026). **Se um dia o site passar a rodar
-// em várias cópias, cada uma contará só a sua parte e o número sairá menor.**
+// uma instância — conferido em 17/08/2026). ⚠ Conferir o PM2 NÃO BASTA: o Next
+// tem processos internos próprios, e é por isso que a lista mora no
+// `globalThis` (ver abaixo). **Se um dia o site passar a rodar em várias
+// cópias, cada uma contará só a sua parte e o número sairá menor.**
 // Nesse dia, a conta muda de lugar (Redis, que já está no ar para as filas) —
 // e é por isso que esta observação está escrita aqui, e não na cabeça de
 // ninguém.
@@ -56,13 +58,33 @@ const JANELA_MS = 5 * 60 * 1000;
  */
 const TETO = 20_000;
 
+// ⚠⚠ A LISTA E O TEMPERO VIVEM NO `globalThis`, E NÃO COMO VARIÁVEL DO MÓDULO.
+//
+// **Foi assim que este contador nasceu quebrado (18/08/2026).** Ele mostrava
+// SEMPRE zero, com o site recebendo mais de cem visitas por hora. A causa: o
+// Next monta pacotes separados para a página e para a rota da API, e cada
+// pacote ganha a SUA cópia do módulo. A página anotava as pessoas numa lista;
+// o painel lia outra, recém-criada e vazia.
+//
+// 💡 O projeto já tinha resolvido isso em `lib/db.ts` (o pool do banco mora no
+// `globalThis` pelo mesmo motivo) e eu não segui o padrão que estava do lado.
+// Antes de guardar estado em módulo no Next, procurar como o resto do projeto
+// faz — a resposta costuma estar no arquivo vizinho.
+//
+// O tempero também precisa ser o mesmo nos dois pacotes: com temperos
+// diferentes, a MESMA pessoa vira duas chaves e a conta infla.
+const g = globalThis as unknown as {
+  _icomprasOnline?: Map<string, number>;
+  _icomprasOnlineTempero?: Buffer;
+};
+
 /**
  * Sorteado a cada vez que o site sobe, e nunca guardado. É o que impede que o
  * resumo embaralhado seja revertido em IP, mesmo por quem tem o servidor.
  */
-const TEMPERO = randomBytes(32);
+const TEMPERO: Buffer = g._icomprasOnlineTempero ?? (g._icomprasOnlineTempero = randomBytes(32));
 
-const vistos = new Map<string, number>();
+const vistos: Map<string, number> = g._icomprasOnline ?? (g._icomprasOnline = new Map<string, number>());
 
 /** Resumo curto e irreversível de quem está pedindo a página. */
 export function chaveDePresenca(ip: string, navegador: string): string {

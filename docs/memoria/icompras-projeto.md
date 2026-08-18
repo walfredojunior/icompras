@@ -15,6 +15,36 @@ metadata:
 
 Plano completo em `C:\projetos\icompras\docs\PLANO.md`; como rodar em `docs\COMO-RODAR.md`.
 
+## 🐛 O CONTADOR DE ONLINE NASCEU QUEBRADO — sempre zero (2026-08-18) — CORRIGIDO
+
+Ele reclamou no fim do dia: *"o pessoas agora no monitor de visitas não tá funcionando, sempre tá
+zero, sendo que já tive mais de 2 mil visitas"*. Estava certo, e o defeito era meu.
+
+**A causa:** guardei a lista de presenças numa variável de módulo. **O Next monta pacotes
+separados para cada rota**, e cada pacote ganha a SUA cópia do módulo — a página anotava as
+pessoas numa lista e a rota da API lia outra, recém-criada e vazia.
+
+💡 **Prova, e não suposição:** `grep -rl '_icomprasOnline' .next/server/` devolve **18 arquivos**.
+Eram 18 cópias do mesmo código, cada uma com o seu `Map`.
+
+**O conserto:** a lista e o tempero passam a viver no `globalThis`, que é único no processo.
+⚠ **O projeto JÁ FAZIA ISSO em `lib/db.ts`** (o pool do banco mora lá pelo mesmo motivo) e eu não
+segui o padrão que estava no arquivo vizinho. **Antes de guardar estado em módulo no Next,
+procurar como o resto do projeto faz.**
+
+### ⚠ Duas coisas que o diagnóstico revelou de brinde
+
+**1. Havia um processo ÓRFÃO do teste de publicação**, segurando a porta 3010 havia 12 horas
+(`PPID 1`, 87 MB). É o mesmo tipo de coisa que engoliu 14h de publicações em 06/08. O
+`matar_teste` do roteiro mata o filho, mas o neto sobrevive. Encerrado pelo número do processo.
+⚠ Ele teria feito a PRÓXIMA publicação abortar — a conferência de porta livre que pus hoje de
+manhã pegaria. A trava funcionou antes mesmo de ser necessária.
+
+**2. O número vai ser pequeno mesmo funcionando, e isso não é defeito.** "2 mil visitas" é o
+total do DIA; "agora" é uma janela de 5 minutos. Medido no registro do nginx às 17h de uma terça:
+**1 pessoa** — e 800 pedidos de robôs no mesmo período, que o contador ignora de propósito.
+No pico da noite deve mostrar algo entre 5 e 15.
+
 ## 🧠 O VAZAMENTO NÃO ERA DO NAVEGADOR (2026-08-18) — teto de memória por robô
 
 Ele perguntou: *"a cada quanto reiniciar os navegadores dos robôs? a cada 1 hora?"*. Fui medir
