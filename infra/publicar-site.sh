@@ -2,9 +2,8 @@
 # PUBLICAR O SITE — montar em pasta separada, TESTAR em porta isolada, trocar,
 # conferir pela tela servida, e VOLTAR SOZINHO se der errado.
 #
-# Agendado em 17/08/2026 para as 03:00 do Paraguai (06:00 UTC). Leva o conserto
-# dos "produtos relacionados" (o que afogou o site em 17/08) e o contador de
-# pessoas online em Admin › Visitas.
+# Reagendado em 19/08/2026 para as 03:00 do Paraguai (06:00 UTC). Leva a foto do
+# produto que abre grande ao clicar, pedida por ele em 19/08.
 #
 # ====================================================================
 # AS REGRAS QUE ESTE ROTEIRO EXISTE PARA CUMPRIR
@@ -23,9 +22,17 @@
 # 4. **Falhou? Não toca na produção.** E se falhar DEPOIS da troca, volta
 #    sozinho para a pasta anterior. Ninguém estará olhando às 3 da manhã.
 #
-# A PROVA de que o código novo está no ar é a rota `/api/admin/online`: ela não
-# existia antes (devolvia 404) e agora tem de devolver 401 — existe, mas exige
-# senha. É uma conferência que não depende de estar logado.
+# A PROVA de que o código novo está no ar é a etiqueta "ampliar foto" no HTML de
+# uma página de produto: ela nasce hoje, junto com a janela da foto.
+#
+# ⚠ TROQUEI A PROVA DE PROPÓSITO (19/08/2026). A anterior era a rota
+# `/api/admin/online` devolver 401 — e isso JÁ É VERDADE em produção desde
+# ontem. Uma prova que passa mesmo sem a mudança nova não prova nada: aprovaria
+# uma publicação que não subiu. **Toda publicação precisa da SUA própria prova.**
+#
+# O produto é escolhido no banco na hora, e não fixo no roteiro: produto some do
+# catálogo, e um endereço chumbado faria a publicação abortar às 3 da manhã por
+# um motivo que não tem nada a ver com o código.
 #
 # Ao terminar, este roteiro se remove do cron.
 set -u
@@ -95,6 +102,19 @@ matar_teste() {
     j=$((j + 1))
     sleep 1
   done
+  # ⚠⚠ O NETO SOBREVIVE (visto em 18/08/2026). `npm run start` lança o `next`
+  # como neto: matar o filho não mata quem realmente segura a porta, e em 18/08
+  # um desses ficou 12 HORAS de pé com a 3010 na mão. Se a porta continuar
+  # ocupada, encerra quem está nela PELO NÚMERO DO PROCESSO.
+  # 💡 Pelo dono da porta, nunca por padrão de texto: `pkill -f` já casou com o
+  # próprio comando SSH duas vezes num dia.
+  DONO=$(ss -ltnpH "sport = :$PORTA_TESTE" 2>/dev/null | grep -oE 'pid=[0-9]+' | head -1 | cut -d= -f2)
+  if [ -n "${DONO:-}" ]; then
+    registrar "⚠ a porta $PORTA_TESTE ficou com o processo $DONO (neto órfão) — encerrando"
+    kill "$DONO" 2>/dev/null
+    sleep 3
+    ss -ltn 2>/dev/null | grep -q ":$PORTA_TESTE " && kill -9 "$DONO" 2>/dev/null
+  fi
 }
 
 if [ "$ok" != "1" ]; then
@@ -103,12 +123,19 @@ if [ "$ok" != "1" ]; then
 fi
 registrar "cópia de teste respondeu em ${i}s"
 
-CODIGO=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORTA_TESTE/api/admin/online")
-matar_teste
-if [ "$CODIGO" != "401" ]; then
-  desistir "a rota nova respondeu $CODIGO na cópia de teste (esperado 401)"
+SLUG=$(mysql -uroot icompras -N -e "SELECT slug FROM product WHERE primary_image_url LIKE '/media/%/400.webp' ORDER BY updated_at DESC LIMIT 1" 2>/dev/null)
+if [ -z "$SLUG" ]; then
+  matar_teste
+  desistir "não achei nenhum produto com foto para conferir a janela da foto"
 fi
-registrar "código novo confirmado na cópia de teste"
+registrar "conferindo a janela da foto no produto: $SLUG"
+if curl -s "http://127.0.0.1:$PORTA_TESTE/pt-BR/produto/$SLUG" | grep -q 'ampliar foto'; then
+  matar_teste
+  registrar "código novo confirmado na cópia de teste (a etiqueta da foto está no HTML)"
+else
+  matar_teste
+  desistir "a página do produto na cópia de teste não trouxe a janela da foto"
+fi
 
 # ------------------------------------------------------ 3. trocar e reiniciar
 registrar "trocando .next e reiniciando o site..."
@@ -123,11 +150,16 @@ sleep 15
 
 # ------------------------------------------- 4. conferir a TELA SERVIDA
 HOME_COD=$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: icompras.com.py' http://127.0.0.1/es)
-NOVA_COD=$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: icompras.com.py' http://127.0.0.1/api/admin/online)
 TEMPO=$(curl -s -o /dev/null -w '%{time_total}' -H 'Host: icompras.com.py' http://127.0.0.1/es)
-registrar "produção: home $HOME_COD em ${TEMPO}s · rota nova $NOVA_COD"
+# A MESMA prova da cópia de teste, agora na tela que o visitante recebe.
+if curl -s -H 'Host: icompras.com.py' "http://127.0.0.1/pt-BR/produto/$SLUG" | grep -q 'ampliar foto'; then
+  NOVA="sim"
+else
+  NOVA="não"
+fi
+registrar "produção: home $HOME_COD em ${TEMPO}s · janela da foto na tela servida: $NOVA"
 
-if [ "$HOME_COD" != "200" ] || [ "$NOVA_COD" != "401" ]; then
+if [ "$HOME_COD" != "200" ] || [ "$NOVA" != "sim" ]; then
   registrar "⚠ conferência reprovou — VOLTANDO para a montagem anterior"
   rm -rf "$WEB/.next-quebrado"
   mv "$WEB/.next" "$WEB/.next-quebrado"

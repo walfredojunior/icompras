@@ -96,7 +96,9 @@
     "closePanel": "Close",
     "specsShort": "Specifications",
     "soldBy": "Sold by",
-    "noProductLink": "Go to store website"
+    "noProductLink": "Go to store website",
+    "zoom": "enlarge photo",
+    "zoomClose": "Close"
   },
   "store": {
     "products": "Products",

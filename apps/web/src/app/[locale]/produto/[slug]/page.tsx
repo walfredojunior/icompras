@@ -17,6 +17,7 @@ import { Suspense } from "react";
 import { EsqueletoRelacionados } from "@/components/Esqueleto";
 // import { PriceAlertForm } from "@/components/PriceAlertForm";  // volta com o alerta
 import { FavoriteButton } from "@/components/FavoriteButton";
+import { FotoAmpliavel } from "@/components/FotoAmpliavel";
 import { isFavorite } from "@/lib/favorites";
 
 /** Os preços reais desta página (loja sem oferta não tem preço). */
@@ -208,8 +209,12 @@ export default async function ProductPage({
       <div className="mt-4 flex flex-col gap-8 sm:flex-row">
         <div className="flex h-64 w-full items-center justify-center rounded-2xl border border-slate-200 bg-white sm:w-64">
           {product.image_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={product.image_url} alt={product.name} className="max-h-60 object-contain" />
+            <FotoAmpliavel
+              url={product.image_url}
+              alt={product.name}
+              rotuloAmpliar={t("zoom")}
+              rotuloFechar={t("zoomClose")}
+            />
           ) : (
             <span className="text-6xl font-bold text-slate-300">
               {(product.brand || product.name).slice(0, 1).toUpperCase()}

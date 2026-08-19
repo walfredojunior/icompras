@@ -82,6 +82,15 @@ novo na queda que o próprio defeito provocava, sem gastar nenhum reinício.
 
 ## 🟠 TÉCNICO EM ABERTO
 
+00. 📷 **83.467 OFERTAS APONTAM PARA A MINIATURA PEQUENA DA FONTE** (achado em 19/08/2026, ao fazer
+    a janela da foto). A fonte publica `thumbs/med` (210px) e `thumbs/big` (550px); 297.954 ofertas
+    já usam a `big`, mas **22% ficaram na `med`**. Nesses produtos a foto ampliada sai borrada.
+    💡 **O conserto é trocar uma palavra no endereço** (`thumbs/med` → `thumbs/big`) e recoletar a
+    imagem — não é mexer em tela. ⚠ Só ~4% dos PRODUTOS têm foto abaixo de 400px (a foto principal
+    costuma vir da oferta boa), então isto melhora a ponta, não o grosso. **Não autorizado ainda —
+    perguntar antes**, porque é recoleta de imagem em volume.
+
+
 0. ✅ **RESOLVIDO em 06/08 — a VPS dobrou (4 núcleos, 15 GB, 193 GB) e a carga caiu para 2,73.** Ainda há **roubo de CPU pelo provedor de 34-46%**; acompanhar no Monitor VPS e, se voltar a apertar, o que pedir é plano **dedicado**, não mais núcleos compartilhados. ~~**CARGA DA VPS EM 8,47 COM 2 NÚCLEOS**~~ (era 0,24 em 31/07), processador em 92%, 6 Chromium abertos. Revelado pelo Monitor VPS assim que subiu, em 05/08. O site NÃO está sofrendo (responde em 20-33 ms) porque quem espera é o robô. Provável causa: o robô dos **quentes** renderiza cada página com navegador (~8s/produto). Caminhos: tentar a leitura rápida antes de renderizar, reduzir a lista de quentes, ou baixar a concorrência. **Acompanhar no Monitor VPS antes de mexer — agora dá para ver.**
 
 6. **A recursão que derrubou o site em 04/08 NÃO foi encontrada.** O `--stack-size=4000` é paliativo e volta a estourar conforme o catálogo cresce — e só aparece no START, então pega de surpresa. Pista não investigada no log: `RangeError: Incorrect locale information provided at Number.toLocaleString ... at stringify` (candidatos: `CategoryBlocks.tsx:18`, `SearchOverlay.tsx:200` — provável `toLocaleString("")`).

@@ -15,6 +15,69 @@ metadata:
 
 Plano completo em `C:\projetos\icompras\docs\PLANO.md`; como rodar em `docs\COMO-RODAR.md`.
 
+## 🔍 FOTO DO PRODUTO QUE ABRE GRANDE (2026-08-19) — PRONTO, publicação agendada para 3h
+
+Ele pediu: *"quando clicar na foto do produto, ele aparecer grande... uma janela com a foto maior"*.
+Escolheu a **opção 1 (janela simples)** depois da análise. `FotoAmpliavel.tsx`, encaixado na página
+do produto; a página segue montada no servidor e só a foto virou ilha de cliente.
+
+### 📏 O TETO É DA FONTE — 550px, e não adianta insistir
+
+Medido em 19/08, baixando os arquivos da fonte: ela publica **dois tamanhos só**, `thumbs/med`
+(210×210) e `thumbs/big` (550×550). Nós já guardamos o maior. Na tela a foto rende com **240px**,
+então a janela mostra **550 = 2,3× mais detalhe** — e nada além disso existe.
+
+⚠ **O "800.webp" MENTE no nome.** O gerador (`packages/core/src/media/image.ts`) escreve 200/400/800
+mas com `withoutEnlargement`: o arquivo "800" tem o tamanho do ORIGINAL. Medido: no Alienware tem
+550px (32 KB vs 17 KB do 400); num cabo USB o 800 e o 400 são **byte a byte o mesmo arquivo** —
+ali a janela mostra a mesma foto, só maior na tela. Numa amostra de 200 produtos: **70% têm 550px**,
+96% têm ≥400px, ~4% ficam abaixo disso.
+
+💡 **Formato uniforme:** 314.773 dos produtos com foto usam exatamente `/media/<hash>/400.webp`
+(1 fora do padrão). Por isso a versão grande é uma troca de texto no endereço, e não uma consulta.
+
+### ⚠️⚠️ TODA PUBLICAÇÃO PRECISA DA SUA PRÓPRIA PROVA
+
+O `publicar-site.sh` conferia se `/api/admin/online` devolvia 401. **Isso já era verdade em
+produção desde ontem** — a prova passaria mesmo se o código novo não tivesse subido. Troquei pela
+etiqueta `ampliar foto` no HTML de uma página de produto, que nasce com esta mudança. O produto é
+**escolhido no banco na hora** (`ORDER BY updated_at DESC LIMIT 1`), nunca chumbado: produto sai do
+catálogo e a publicação abortaria às 3h por um motivo que não é o código.
+
+### ⚠️⚠️ O NETO ÓRFÃO, TERCEIRA VEZ — e agora com conserto
+
+Achei um `next-server` **de pé havia 24 horas** segurando a porta 3010 (PPID 1, 77 MB), nascido
+às 20h07 de 18/08 — da publicação que EU fiz. Ele **teria abortado a publicação desta madrugada**,
+porque a trava de porta livre faz o roteiro desistir. Pior: ele respondia **200**, então um teste
+descuidado leria a tela errada.
+
+**A causa:** `npm run start` lança o `next` como NETO. O `matar_teste` matava o filho, e o neto
+ficava com a porta. Aconteceu em 06/08 (14h de publicações engolidas), em 18/08 (12h) e agora 24h.
+**O conserto:** depois de matar o filho, o roteiro pergunta ao sistema **quem é o dono da porta** e
+encerra pelo número (`ss -ltnpH "sport = :$PORTA"` → `kill $PID`). Pelo dono, nunca por `pkill -f`.
+
+### ✅ Provado antes de agendar
+
+Montei em pasta separada (`.next-teste`) e **subi na porta 3011** — de propósito diferente da 3010
+do roteiro, para não deixar sobra no caminho dele. Na tela servida:
+
+```
+"ampliar foto"              → aparece no HTML          ← o código novo subiu
+/media/<hash>/400.webp      → continua no HTML         ← o Google segue vendo a foto
+```
+
+⚠ **O aviso do Next sobre componente de cliente é sobre NAVEGAÇÃO INTERNA.** A documentação da
+versão instalada diz que componente de cliente "renderiza sem HTML do servidor" — li o contexto
+(`01-getting-started/05-server-and-client-components.md`) e isso vale para navegações seguintes,
+não para a primeira carga. Se eu tivesse parado no `grep`, teria desistido de uma solução boa.
+
+### 🕐 CONVERTER FUSO: pelo INSTANTE, nunca pelo texto
+
+`TZ=America/Asuncion date -d '06:00'` devolve 06:00 — ele interpreta a hora escrita **já naquele
+fuso**, não em UTC. Gastei três tentativas achando que o servidor estava errado. **O jeito certo é
+converter o instante:** `S=$(date -u -d '... 06:00' +%s)` e depois `TZ=... date -d @$S`.
+Confirmado assim: **06:00 UTC = 3h no Paraguai e no Brasil**.
+
 ## 💾 "FECHEI A JANELA E NÃO SALVEI A MEMÓRIA" — DÁ PARA RECUPERAR (2026-08-18)
 
 Ele abriu a conversa seguinte com medo de ter perdido o dia: *"eu fechei a janela e nao salvei a
