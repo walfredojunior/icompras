@@ -15,6 +15,52 @@ metadata:
 
 Plano completo em `C:\projetos\icompras\docs\PLANO.md`; como rodar em `docs\COMO-RODAR.md`.
 
+## 🔎 GOOGLE, ESTADO MEDIDO EM 19/08/2026 — e a decisão dele: NÃO MEXER
+
+Ele trouxe uma lista de recomendações de SEO do ChatGPT para eu analisar, com *"analise mas não
+altere nada"*. Depois de ver os números, decidiu: **"pelo que vi o site já tá certo, não precisa
+mudar nada"**. ⛔ **Decisão dele — não reabrir sem ele pedir.**
+
+### O que o site JÁ tinha (conferido na tela servida, não suposto)
+
+Mapas (1 principal com 679 endereços + **38 de produtos**), robots apontando todos, canônico por
+página no idioma dela, hreflang com `x-default`, JSON-LD `Product`/`AggregateOffer`/
+`BreadcrumbList`/`Organization`/`Store`, títulos próprios, Search Console verificado (o arquivo
+responde 200). **Toda a parte técnica da lista já estava pronta desde 08/08.**
+
+### 📈 O NÚMERO QUE DECIDE A ESTRATÉGIA — orçamento de rastreamento
+
+```
+Googlebot:  ~45/dia (08-09/08, antes do conserto da Cloudflare)
+            1.875 em 18/08  ·  3.704 em 19/08
+Páginas de produto DIFERENTES já visitadas:  6.271
+Catálogo:                                  373.134   →  1,7%
+```
+
+⚠️ **Por isso eu discordei da parte "gerar centenas ou milhares de páginas".** Não faltam páginas —
+**sobram 98% que o Google ainda não viu**. Página nova divide o mesmo orçamento de rastreamento, e
+página gerada em massa com pouco texto próprio é o que o buscador desvaloriza. Se o assunto voltar,
+o gargalo é **rastreamento**, não quantidade.
+
+💡 **O único buraco real** era conteúdo editorial (guias: cota, como comprar, imposto, câmbio) —
+o concorrente tem, nós não temos nenhum. Isso é escrever, não programar. E backlinks, que só ele
+consegue. Nada disso é mudança de site, e foi por isso que "não precisa mudar nada" está certo.
+
+### 🔍 O que a busca por "icompras" mostrou (print dele, 19/08)
+
+Aparece em 1º com o título e a descrição que escrevemos em 08/08, **com sitelinks** (Lojas,
+Diversos) — sinal de que o Google entendeu a estrutura. ⚠ **Não confundir com vitória:** é o nome
+próprio dele, ninguém disputa; prova indexação, não competitividade.
+
+Duas manchas visíveis ali, **anotadas e NÃO autorizadas**:
+1. O atalho **"Lojas" mostra o aviso jurídico** ("apenas um portal de comparação de preços...").
+   A página TEM descrição boa escrita; o Google preferiu o texto do corpo. Snippet não se manda.
+2. O outro atalho é **"Diversos"** (20.640 produtos, 3ª maior). No lugar caberia perfume (30.375)
+   ou cosmético (22.795). Sitelink se influencia por estrutura e links internos, não se escolhe.
+
+⚠️ **SE O ASSUNTO FOR CLOUDFLARE, LER ANTES "A REGRA DA CLOUDFLARE"** — foi uma regra dele que
+deixou o site invisível por semanas, e o conserto era uma palavra.
+
 ## 🔍 FOTO DO PRODUTO QUE ABRE GRANDE (2026-08-19) — PRONTO, publicação agendada para 3h
 
 Ele pediu: *"quando clicar na foto do produto, ele aparecer grande... uma janela com a foto maior"*.
