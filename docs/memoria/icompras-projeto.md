@@ -15,6 +15,29 @@ metadata:
 
 Plano completo em `C:\projetos\icompras\docs\PLANO.md`; como rodar em `docs\COMO-RODAR.md`.
 
+## 💾 "FECHEI A JANELA E NÃO SALVEI A MEMÓRIA" — DÁ PARA RECUPERAR (2026-08-18)
+
+Ele abriu a conversa seguinte com medo de ter perdido o dia: *"eu fechei a janela e nao salvei a
+memoria"*. **Não tinha perdido nada** — e o jeito de descobrir isso serve para sempre.
+
+💡 **O transcrito de cada sessão fica gravado em disco**, mesmo se a janela fechar sem salvar:
+`C:\Users\walfr\.claude\projects\C--projetos-icompras\*.jsonl`, um arquivo por sessão, ordenado
+por data de modificação. O mais recente antes do atual é a janela que ele fechou. Cada linha é um
+evento em JSON com `timestamp`, `type` (`user`/`assistant`) e o conteúdo — dá para reconstruir
+pedido a pedido o que foi feito.
+
+⚠ **Dois tropeços que eu levei no caminho, para não repetir:**
+
+1. **A sessão pode atravessar dias.** Filtrei por `timestamp[11:19]` (só a hora) e misturei o dia
+   17 com o 18, lendo como "recente" um trecho da véspera. **Comparar o timestamp INTEIRO**
+   (`ts < '2026-08-18T19:50'`), nunca só a hora.
+2. **O terminal do Windows quebra no emoji.** `print` de texto com ● estoura em `cp1252` e mata o
+   script no meio. Rodar com `PYTHONIOENCODING=utf-8`.
+
+💡 **A conferência que fecha a dúvida** é cruzar três coisas, não confiar em uma: o transcrito,
+os arquivos mudados no PC (`find -newermt`) e o último commit na VPS. Se os três contam a mesma
+história, está salvo. Neste caso contaram: memória gravada às 17h15 e commit `0af613c7` no ar.
+
 ## 🐛 O CONTADOR DE ONLINE NASCEU QUEBRADO — sempre zero (2026-08-18) — ✅ **CORRIGIDO E CONFERIDO POR ELE NA TELA**
 
 ✅ **Ele confirmou em 18/08:** *"numero de pessoas agora ja funciona"* e, minutos depois, *"agora marca 8 pessoas no site"* — **8 às 19h**, dentro da faixa de 5 a 15 que eu previ para o horário de pico. Fechado, com número real na tela e não só no meu teste.
