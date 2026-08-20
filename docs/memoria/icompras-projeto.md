@@ -15,6 +15,58 @@ metadata:
 
 Plano completo em `C:\projetos\icompras\docs\PLANO.md`; como rodar em `docs\COMO-RODAR.md`.
 
+## 🏷️ "DESENVOLVIDO POR INFOSERVE" NO RODAPÉ (2026-08-20) — PRONTO, agendado para 3h
+
+Ele pediu o crédito de autoria no rodapé, com link para `https://infoserve.com.py` (conferido:
+responde 200). Nos três idiomas — *desenvolvido por* / *desarrollado por* / *developed by*, com
+**INFOSERVE** como nome próprio, sem traduzir.
+
+**Onde ficou:** `Footer.tsx` (o crédito) + `globals.css` (a animação). Link externo com
+`rel="noopener noreferrer"`, como o resto do projeto.
+
+### 📍 A POSIÇÃO SAIU DE UM ERRO MEU — e ele preferiu o erro
+
+Ele pediu **centralizado**; eu centralizei no código e montei um demo. **Mas o demo tinha um
+defeito:** fechei a marcação no lugar errado e o crédito caiu como TERCEIRO item do `flex
+justify-between`, ou seja, **à direita**. Ele viu, gostou, e ficou assim de propósito:
+`© copyright · [idioma] · desenvolvido por INFOSERVE`.
+
+⚠ **A lição:** demo montado à mão pode mentir. **Gerar o demo a partir do que o site REALMENTE
+monta** — baixando o HTML e o CSS da cópia de teste na porta isolada — em vez de remendar HTML
+no editor. Foi o que fiz na versão final, e aí o que ele viu era o que ia para o ar.
+
+### ✨ A animação: cintilação, escolhida entre cinco
+
+Ele cogitou *"mini flocos voando"*. Montei cinco opções num demo (flocos sempre, flocos no hover,
+cintilação, brilho atravessando, brilho+cintilação) e ele escolheu a **cintilação**: três pontinhos
+parados ao redor do nome que dão um brilho rápido, um de cada vez, a cada 6 segundos.
+
+💡 **Por que eu desaconselhei os flocos** (e ele concordou): ponto que sobe sem parar lê como
+enfeite e rouba a atenção do nome; ponto que só cintila lê como acabamento. O rodapé é o cartão de
+visitas da INFOSERVE — a mensagem tem de ser "caprichoso", não "gosta de efeitos".
+
+⚠️ **ANIMAR SÓ `opacity` E `transform`.** São as que a placa de vídeo desenha sozinha, sem refazer
+o desenho da página — e isto está em **373 mil páginas**. Animar `top`/`left`/`width` obrigaria o
+navegador a recalcular o rodapé 60 vezes por segundo em cada uma.
+
+⚠️ **`prefers-reduced-motion` não é opcional** — há quem sinta enjoo com movimento e desligue isso
+no sistema. Está no CSS, e é a primeira animação do projeto: `globals.css` não tinha nenhuma.
+
+### ⚠️⚠️ O FILTRO DE SENHAS IA MUTILAR O NOME DA EMPRESA
+
+Achado ao gravar isto: `.limpar-memoria.py` trocava `\binfoserve\b` **sem diferenciar maiúscula**,
+porque `[SENHA-BANCO-LOCAL-REMOVIDA]` minúsculo é a senha do banco LOCAL. Com o nome da empresa entrando na memória,
+toda menção a **INFOSERVE** viraria `[SENHA-BANCO-LOCAL-REMOVIDA]` na cópia do GitHub — e a
+conferência final gritaria **alarme falso a cada rodada**.
+
+**Consertado:** a troca virou `(?<![A-Za-z])[SENHA-BANCO-LOCAL-REMOVIDA](?!\.com|\.py|[A-Za-z])` e passou a ser
+**sensível à caixa** (as demais seguem ignorando). Assim `[SENHA-BANCO-LOCAL-REMOVIDA]` solto e minúsculo continua
+sendo filtrado, mas `INFOSERVE`, `Infoserve` e `infoserve.com.py` passam intactos. Testado nos
+cinco casos antes de usar.
+
+💡 **A mudança de mecanismo:** cada linha de `TROCAS` pode agora trazer um terceiro item com as
+marcas do `re` — sem ele, continua ignorando maiúscula, que é o certo para senha.
+
 ## ⚠️⚠️ O PYTHON NO WINDOWS QUEBROU A PUBLICAÇÃO — E DEPOIS ZEROU ESTA MEMÓRIA (2026-08-20)
 
 Dois estragos no mesmo dia, pela mesma causa raiz: **gravar arquivo com Python no Windows**.
