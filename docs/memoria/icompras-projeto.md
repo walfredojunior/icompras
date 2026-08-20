@@ -15,6 +15,65 @@ metadata:
 
 Plano completo em `C:\projetos\icompras\docs\PLANO.md`; como rodar em `docs\COMO-RODAR.md`.
 
+## ⚠️⚠️ O PYTHON NO WINDOWS QUEBROU A PUBLICAÇÃO — E DEPOIS ZEROU ESTA MEMÓRIA (2026-08-20)
+
+Dois estragos no mesmo dia, pela mesma causa raiz: **gravar arquivo com Python no Windows**.
+
+### 1. A publicação das 3h não aconteceu, e não deixou rastro
+
+O cron disparou na hora (`06:00:01 CRON (root) CMD (/opt/icompras/publicar-site.sh)` no syslog), o
+registro do roteiro **não ganhou uma linha sequer**, e a produção seguiu na versão anterior. Nem
+sucesso, nem "ABORTADO" — silêncio.
+
+**A causa:** editei o roteiro com Python. `io.open(p, "w")` em modo texto **troca `\n` por `\r\n`
+no Windows**, e converteu o arquivo inteiro. O Linux foi abrir o interpretador `/bin/sh\r`:
+
+```
+/opt/icompras/publicar-site.sh: /bin/sh^M: bad interpreter: No such file or directory
+```
+
+O erro vai para a saída do cron, que sem servidor de e-mail é **descartada**
+(`No MTA installed, discarding output`). Daí o silêncio absoluto.
+
+⚠ **O que NÃO denunciou, e por quê:** `sh -n` no Git Bash **passou** (tolera CRLF); o `diff` entre a
+cópia do repositório e a que roda disse **IGUAIS** (as duas vinham do mesmo arquivo estragado); a
+montagem e o teste em porta isolada **passaram** (o problema não era o código).
+
+💡 **O que denuncia:** `file arquivo.sh` diz `with CRLF line terminators`, e `head -1 | od -c`
+mostra o `\r`. **Conferir com `file` todo arquivo executável enviado do Windows.**
+
+💡 **E a lição maior:** agendamento que falha **sem escrever nada** é pior que um que falha
+gritando. Registro sem linha nova na hora marcada = o roteiro **nem começou** — procurar no
+`syslog` / `journalctl -u cron`, não no registro dele.
+
+### 2. E aí eu zerei este arquivo
+
+Ao gravar esta mesma lição, usei `\uXXXX` de emoji em par substituto (`\ud83d\udca1`) dentro do
+Python. Isso não vira 💡 — vira **substituto solto**, que o UTF-8 recusa. O `io.open(p, "w")`
+**trunca o arquivo ANTES de escrever**, então a exceção deixou a memória com **0 byte**.
+
+✅ **Recuperado de `memoria-limpa/`**, a cópia do último `salve tudo` (19/08), sem perder seção
+nenhuma — 86 seções conferidas. Perdi só os VALORES de 4 senhas, que viraram marcador; nenhuma
+falta, porque desde 07/08 elas moram em **Admin › Anotações** e em `servidores.txt`, e a senha SSH
+segue no `MEMORY.md`. **A cópia limpa salvou o dia — é a razão de o `salve tudo` existir.**
+
+### ✅ AS DUAS REGRAS QUE SAEM DISSO
+
+1. **Gravar com `newline=""`:** `io.open(p, "w", encoding="utf-8", newline="")`. Obrigatório para
+   `.sh`; por higiene para `.ts`/`.tsx` (esses compilam com CRLF, mas sujam o repositório).
+2. **Emoji: escrever o caractere direto** no script (a fonte é lida como UTF-8), ou usar `\U0001F4A1`.
+   **Nunca par substituto.** E antes de gravar por cima de arquivo grande, montar o texto inteiro
+   ANTES de abrir para escrita — abrir já apaga.
+
+### ✅ Publicado em 20/08 às 07:29 UTC (4h30 da manhã, longe do pico)
+
+Conferido POR FORA, não pelo que o roteiro diz: a etiqueta aparece nos três idiomas
+("ampliar foto" / "ampliar foto" / "enlarge photo"), inclusive no Alienware que ele mandou.
+Home em 0,28s.
+
+✅ **E o conserto do neto órfão funcionou de primeira:** a porta 3010 ficou **livre** depois da
+publicação. Nas três anteriores sobrava processo segurando a porta por 12 a 24 horas.
+
 ## 🔎 GOOGLE, ESTADO MEDIDO EM 19/08/2026 — e a decisão dele: NÃO MEXER
 
 Ele trouxe uma lista de recomendações de SEO do ChatGPT para eu analisar, com *"analise mas não
