@@ -11,7 +11,8 @@
     "stores": "Tiendas",
     "tagline": "Informativo de Compras — compará precios de las mejores tiendas del Paraguay.",
     "noticeTitle": "Aviso Importante",
-    "noticeText": "iCompras Paraguay es solamente un portal de comparación de precios. No tenemos tiendas físicas ni socios autorizados. Si alguien utiliza nuestra marca o logotipo, eso no significa que exista vínculo con nosotros."
+    "noticeText": "iCompras Paraguay es solamente un portal de comparación de precios. No tenemos tiendas físicas ni socios autorizados. Si alguien utiliza nuestra marca o logotipo, eso no significa que exista vínculo con nosotros.",
+    "developedBy": "desarrollado por"
   },
   "home": {
     "title": "Compará precios de las mejores tiendas del Paraguay",

@@ -2,8 +2,8 @@
 # PUBLICAR O SITE — montar em pasta separada, TESTAR em porta isolada, trocar,
 # conferir pela tela servida, e VOLTAR SOZINHO se der errado.
 #
-# Reagendado em 19/08/2026 para as 03:00 do Paraguai (06:00 UTC). Leva a foto do
-# produto que abre grande ao clicar, pedida por ele em 19/08.
+# Reagendado em 20/08/2026 para as 03:00 do Paraguai (06:00 UTC). Leva o crédito
+# "desenvolvido por INFOSERVE" no rodapé, pedido por ele em 20/08.
 #
 # ====================================================================
 # AS REGRAS QUE ESTE ROTEIRO EXISTE PARA CUMPRIR
@@ -22,8 +22,12 @@
 # 4. **Falhou? Não toca na produção.** E se falhar DEPOIS da troca, volta
 #    sozinho para a pasta anterior. Ninguém estará olhando às 3 da manhã.
 #
-# A PROVA de que o código novo está no ar é a etiqueta "ampliar foto" no HTML de
-# uma página de produto: ela nasce hoje, junto com a janela da foto.
+# A PROVA de que o código novo está no ar é o crédito "desenvolvido por" no HTML
+# da home: ele nasce hoje, junto com o link da INFOSERVE no rodapé.
+#
+# 💡 A prova mudou de PÁGINA junto com o assunto: da página de produto (da vez
+# passada) para a home, porque é o rodapé que mudou. Conferir onde a mudança
+# aparece, não onde a conferência anterior olhava.
 #
 # ⚠ TROQUEI A PROVA DE PROPÓSITO (19/08/2026). A anterior era a rota
 # `/api/admin/online` devolver 401 — e isso JÁ É VERDADE em produção desde
@@ -123,18 +127,13 @@ if [ "$ok" != "1" ]; then
 fi
 registrar "cópia de teste respondeu em ${i}s"
 
-SLUG=$(mysql -uroot icompras -N -e "SELECT slug FROM product WHERE primary_image_url LIKE '/media/%/400.webp' ORDER BY updated_at DESC LIMIT 1" 2>/dev/null)
-if [ -z "$SLUG" ]; then
+registrar "conferindo o crédito da INFOSERVE no rodapé da home..."
+if curl -s "http://127.0.0.1:$PORTA_TESTE/pt-BR" | grep -q 'desenvolvido por'; then
   matar_teste
-  desistir "não achei nenhum produto com foto para conferir a janela da foto"
-fi
-registrar "conferindo a janela da foto no produto: $SLUG"
-if curl -s "http://127.0.0.1:$PORTA_TESTE/pt-BR/produto/$SLUG" | grep -q 'ampliar foto'; then
-  matar_teste
-  registrar "código novo confirmado na cópia de teste (a etiqueta da foto está no HTML)"
+  registrar "código novo confirmado na cópia de teste (o crédito está no HTML)"
 else
   matar_teste
-  desistir "a página do produto na cópia de teste não trouxe a janela da foto"
+  desistir "a home na cópia de teste não trouxe o crédito da INFOSERVE"
 fi
 
 # ------------------------------------------------------ 3. trocar e reiniciar
@@ -152,12 +151,12 @@ sleep 15
 HOME_COD=$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: icompras.com.py' http://127.0.0.1/es)
 TEMPO=$(curl -s -o /dev/null -w '%{time_total}' -H 'Host: icompras.com.py' http://127.0.0.1/es)
 # A MESMA prova da cópia de teste, agora na tela que o visitante recebe.
-if curl -s -H 'Host: icompras.com.py' "http://127.0.0.1/pt-BR/produto/$SLUG" | grep -q 'ampliar foto'; then
+if curl -s -H 'Host: icompras.com.py' http://127.0.0.1/pt-BR | grep -q 'desenvolvido por'; then
   NOVA="sim"
 else
   NOVA="não"
 fi
-registrar "produção: home $HOME_COD em ${TEMPO}s · janela da foto na tela servida: $NOVA"
+registrar "produção: home $HOME_COD em ${TEMPO}s · crédito da INFOSERVE na tela servida: $NOVA"
 
 if [ "$HOME_COD" != "200" ] || [ "$NOVA" != "sim" ]; then
   registrar "⚠ conferência reprovou — VOLTANDO para a montagem anterior"

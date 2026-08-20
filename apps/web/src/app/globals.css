@@ -22,3 +22,55 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
+
+/* ============================================================
+   CRÉDITO DA INFOSERVE NO RODAPÉ — cintilação (20/08/2026)
+   ============================================================
+   Três pontinhos parados ao redor do nome dão um brilho rápido,
+   um de cada vez, a cada 6 segundos.
+
+   💡 POR QUE ASSIM, e não os "floquinhos voando" que ele cogitou:
+   ponto que sobe sem parar lê como enfeite e rouba a atenção do
+   nome; ponto que só cintila lê como acabamento. Ele viu as duas
+   opções lado a lado num demo e escolheu esta.
+
+   ⚠ ANIMAR SÓ `opacity` E `transform`. São as duas propriedades
+   que a placa de vídeo desenha sozinha, sem refazer o desenho da
+   página — e isto fica em TODAS as páginas do site, então o custo
+   por página tem de ser zero. Animar `top`/`left`/`width` aqui
+   obrigaria o navegador a recalcular o rodapé inteiro, 60 vezes
+   por segundo, em 373 mil páginas.
+
+   ⚠ `prefers-reduced-motion` NÃO É OPCIONAL: há quem sinta
+   enjoo com movimento na tela e desligue isso no sistema. */
+
+.isv {
+  position: relative;
+  display: inline-block;
+}
+
+.isv-ponto {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 9999px;
+  /* pointer-events:none para o pontinho nunca "engolir" o clique no link. */
+  pointer-events: none;
+  opacity: 0;
+  animation: isv-cintilar 6s ease-in-out infinite;
+}
+
+/* Cada um espera a sua vez: um de cada vez, nunca os três juntos. */
+.isv-ponto:nth-child(1) { left: -7px;  top: 1px;    background: #2fa043; animation-delay: 0s; }
+.isv-ponto:nth-child(2) { right: -7px; bottom: 2px; background: #123a5e; animation-delay: 2s; }
+.isv-ponto:nth-child(3) { left: 50%;   top: -6px;   background: #2fa043; animation-delay: 4s; width: 2px; height: 2px; }
+
+@keyframes isv-cintilar {
+  /* Fica invisível 88% do tempo: o brilho é um instante, não um pisca-pisca. */
+  0%, 88%, 100% { opacity: 0;   transform: scale(0.4); }
+  94%           { opacity: 0.9; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .isv-ponto { animation: none; opacity: 0; }
+}

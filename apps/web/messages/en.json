@@ -11,7 +11,8 @@
     "stores": "Stores",
     "tagline": "Informativo de Compras — compare prices from the best stores in Paraguay.",
     "noticeTitle": "Important Notice",
-    "noticeText": "iCompras Paraguay is only a price comparison portal. We have no physical stores or authorized partners. If anyone uses our brand or logo, it does not mean there is any connection with us."
+    "noticeText": "iCompras Paraguay is only a price comparison portal. We have no physical stores or authorized partners. If anyone uses our brand or logo, it does not mean there is any connection with us.",
+    "developedBy": "developed by"
   },
   "home": {
     "title": "Compare prices from the best stores in Paraguay",

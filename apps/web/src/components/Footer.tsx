@@ -61,8 +61,36 @@ export async function Footer() {
             quem fala espanhol precisa poder trocar de onde estiver — a maior
             parte das visitas entra pelo Google direto num produto. */}
         <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-6">
+          {/* TRÊS ITENS NUMA LINHA SÓ: copyright · idioma · quem fez.
+              O `justify-between` distribui os três — copyright na esquerda,
+              idioma no meio, crédito na direita. Escolha dele em 20/08/2026,
+              depois de ver as opções lado a lado.
+              💡 Foi um ACIDENTE que virou decisão: o demo que montei fechava
+              uma marcação no lugar errado e jogou o crédito para a direita em
+              vez do centro. Ele viu e preferiu assim.
+              ⚠ Link externo leva `rel="noopener noreferrer"` como o resto do
+              projeto: sem isso a página de destino recebe uma referência à aba
+              de origem e pode redirecioná-la. */}
           <span className="text-xs text-slate-400">© 2026 iCompras · Paraguay</span>
           <LocaleSwitcher />
+          <span className="text-xs text-slate-400">
+            {f("developedBy")}{" "}
+            <a
+              href="https://infoserve.com.py"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="isv font-semibold text-slate-500 transition hover:text-brand-navy hover:underline"
+            >
+              INFOSERVE
+              {/* Os três pontinhos que cintilam. Ficam DENTRO do link para
+                  acompanharem o nome quando a linha quebra no celular.
+                  `aria-hidden`: são enfeite, e um leitor de tela anunciando
+                  três pontos vazios só atrapalharia quem usa. */}
+              <i className="isv-ponto" aria-hidden="true" />
+              <i className="isv-ponto" aria-hidden="true" />
+              <i className="isv-ponto" aria-hidden="true" />
+            </a>
+          </span>
         </div>
       </div>
     </footer>
