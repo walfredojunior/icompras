@@ -2,8 +2,9 @@
 # PUBLICAR O SITE — montar em pasta separada, TESTAR em porta isolada, trocar,
 # conferir pela tela servida, e VOLTAR SOZINHO se der errado.
 #
-# Reagendado em 20/08/2026 para as 03:00 do Paraguai (06:00 UTC). Leva o crédito
-# "desenvolvido por INFOSERVE" no rodapé, pedido por ele em 20/08.
+# Reagendado em 20/08/2026 para as 03:00 do Paraguai (06:00 UTC). Leva o conserto
+# do rodapé no CELULAR: os três itens da última linha (copyright, idioma e o
+# crédito da INFOSERVE) passam a empilhar centralizados em tela estreita.
 #
 # ====================================================================
 # AS REGRAS QUE ESTE ROTEIRO EXISTE PARA CUMPRIR
@@ -22,12 +23,16 @@
 # 4. **Falhou? Não toca na produção.** E se falhar DEPOIS da troca, volta
 #    sozinho para a pasta anterior. Ninguém estará olhando às 3 da manhã.
 #
-# A PROVA de que o código novo está no ar é o crédito "desenvolvido por" no HTML
-# da home: ele nasce hoje, junto com o link da INFOSERVE no rodapé.
+# A PROVA de que o código novo está no ar é a classe `flex-col` na última linha
+# do rodapé da home — ela nasce com este conserto.
 #
-# 💡 A prova mudou de PÁGINA junto com o assunto: da página de produto (da vez
-# passada) para a home, porque é o rodapé que mudou. Conferir onde a mudança
-# aparece, não onde a conferência anterior olhava.
+# ⚠⚠ A PROVA ANTERIOR ("desenvolvido por" no HTML) NÃO SERVE MAIS: o crédito foi
+# publicado hoje às 17h15, então aquele texto JÁ ESTÁ em produção e a conferência
+# passaria mesmo se nada novo subisse. É a mesma armadilha de 19/08, e ela volta
+# a cada publicação: **a prova tem de ser algo que ainda NÃO existe no ar.**
+#
+# 💡 Como escolhi esta: comparei o HTML servido pela produção com o da cópia de
+# teste e peguei o que só existe no segundo.
 #
 # ⚠ TROQUEI A PROVA DE PROPÓSITO (19/08/2026). A anterior era a rota
 # `/api/admin/online` devolver 401 — e isso JÁ É VERDADE em produção desde
@@ -127,13 +132,13 @@ if [ "$ok" != "1" ]; then
 fi
 registrar "cópia de teste respondeu em ${i}s"
 
-registrar "conferindo o crédito da INFOSERVE no rodapé da home..."
-if curl -s "http://127.0.0.1:$PORTA_TESTE/pt-BR" | grep -q 'desenvolvido por'; then
+registrar "conferindo o rodapé empilhado do celular na home..."
+if curl -s "http://127.0.0.1:$PORTA_TESTE/pt-BR" | grep -q 'pt-6 text-center sm:flex-row'; then
   matar_teste
-  registrar "código novo confirmado na cópia de teste (o crédito está no HTML)"
+  registrar "código novo confirmado na cópia de teste (o rodapé do celular está no HTML)"
 else
   matar_teste
-  desistir "a home na cópia de teste não trouxe o crédito da INFOSERVE"
+  desistir "a home na cópia de teste não trouxe o rodapé empilhado do celular"
 fi
 
 # ------------------------------------------------------ 3. trocar e reiniciar
@@ -151,12 +156,12 @@ sleep 15
 HOME_COD=$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: icompras.com.py' http://127.0.0.1/es)
 TEMPO=$(curl -s -o /dev/null -w '%{time_total}' -H 'Host: icompras.com.py' http://127.0.0.1/es)
 # A MESMA prova da cópia de teste, agora na tela que o visitante recebe.
-if curl -s -H 'Host: icompras.com.py' http://127.0.0.1/pt-BR | grep -q 'desenvolvido por'; then
+if curl -s -H 'Host: icompras.com.py' http://127.0.0.1/pt-BR | grep -q 'pt-6 text-center sm:flex-row'; then
   NOVA="sim"
 else
   NOVA="não"
 fi
-registrar "produção: home $HOME_COD em ${TEMPO}s · crédito da INFOSERVE na tela servida: $NOVA"
+registrar "produção: home $HOME_COD em ${TEMPO}s · rodapé do celular na tela servida: $NOVA"
 
 if [ "$HOME_COD" != "200" ] || [ "$NOVA" != "sim" ]; then
   registrar "⚠ conferência reprovou — VOLTANDO para a montagem anterior"

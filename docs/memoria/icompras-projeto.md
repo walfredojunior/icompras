@@ -15,7 +15,7 @@ metadata:
 
 Plano completo em `C:\projetos\icompras\docs\PLANO.md`; como rodar em `docs\COMO-RODAR.md`.
 
-## 🏷️ "DESENVOLVIDO POR INFOSERVE" NO RODAPÉ (2026-08-20) — PRONTO, agendado para 3h
+## 🏷️ "DESENVOLVIDO POR INFOSERVE" NO RODAPÉ (2026-08-20) — ✅ NO AR desde 17h15
 
 Ele pediu o crédito de autoria no rodapé, com link para `https://infoserve.com.py` (conferido:
 responde 200). Nos três idiomas — *desenvolvido por* / *desarrollado por* / *developed by*, com
@@ -51,6 +51,44 @@ navegador a recalcular o rodapé 60 vezes por segundo em cada uma.
 
 ⚠️ **`prefers-reduced-motion` não é opcional** — há quem sinta enjoo com movimento e desligue isso
 no sistema. Está no CSS, e é a primeira animação do projeto: `globals.css` não tinha nenhuma.
+
+### ✅ Publicado em 20/08 às 17h15 — e ELE escolheu a hora pelo contador
+
+Ele olhou o painel e disse: *"tem 3 pessoas agora, acho que dá pra trocar"*. Conferi no registro do
+nginx: **3 pessoas de verdade** mesmo (e 796 robôs no mesmo período), carga 0,53. Publicado com o
+site respondendo em 0,28s a 0,31s.
+
+💡 **O contador que nasceu quebrado em 18/08 virou ferramenta de decisão em dois dias.** Vale
+lembrar disso quando ele pedir algo que pareça só enfeite.
+
+✅ O conserto do neto órfão funcionou de novo: porta 3010 livre depois da publicação.
+
+### 📱 E QUEBROU NO CELULAR — culpa minha, e eu tinha previsto
+
+*"no celular não ficou muito bom o rodapé"*. Estava certo. A última linha era
+`flex flex-wrap justify-between` **sem nenhuma regra para tela estreita**: quando os três itens não
+cabem, a linha quebra e o `justify-between` ESTICA o que sobrou até as pontas — buraco no meio e
+texto colado nas bordas.
+
+⚠️ **O pior é que eu tinha escrito isso no próprio código** quando o crédito estava centralizado
+("some a disputa por espaço quando a tela é estreita"). Aí ele preferiu à direita, eu mudei — e
+**não refiz a conta para o celular**. Ao mudar um layout, reconferir os tamanhos de tela que o
+layout anterior resolvia.
+
+**Conserto:** `flex-col items-center text-center` + `sm:flex-row sm:justify-between sm:text-left`.
+Empilhado e centralizado no celular; a partir de 640px, a linha única de sempre. Nada muda no
+computador. **Agendado para as 3h de 21/08.**
+
+### ⚠️⚠️ COMO MONTAR UM DEMO DE CELULAR QUE NÃO MENTE
+
+Usei **`<iframe>` com largura de 390**, e não um `div` estreito. Motivo: as regras `sm:` do Tailwind
+olham a largura da **JANELA**, não a do quadro que contém o elemento. Num `div` de 390px dentro de
+uma janela larga, o navegador aplica o layout de COMPUTADOR — o demo mostraria tudo certo e eu
+publicaria o defeito. O iframe tem viewport próprio, então a regra dispara de verdade.
+
+⚠ **Alarme falso que me custou tempo:** procurar `sm\:flex-row` no CSS **através do SSH** deu 0 e
+me fez pensar que a classe não tinha sido gerada. Era o escape da barra invertida se perdendo nas
+camadas de aspas. **Baixar o arquivo e conferir localmente** quando o padrão tem barra invertida.
 
 ### ⚠️⚠️ O FILTRO DE SENHAS IA MUTILAR O NOME DA EMPRESA
 

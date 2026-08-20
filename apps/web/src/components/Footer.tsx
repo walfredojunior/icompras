@@ -60,8 +60,16 @@ export async function Footer() {
         {/* Idioma no rodapé, em todas as páginas: o site abre em português e
             quem fala espanhol precisa poder trocar de onde estiver — a maior
             parte das visitas entra pelo Google direto num produto. */}
-        <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-6">
-          {/* TRÊS ITENS NUMA LINHA SÓ: copyright · idioma · quem fez.
+        <div className="mt-8 flex flex-col items-center gap-3 border-t border-slate-100 pt-6 text-center sm:flex-row sm:flex-wrap sm:justify-between sm:text-left">
+          {/* NO CELULAR OS TRÊS EMPILHAM, CENTRALIZADOS (conserto de 20/08/2026,
+              ele viu no aparelho: "no celular não ficou muito bom o rodapé").
+              ⚠ A causa: `justify-between` sem nenhuma regra para tela estreita.
+              Quando os três não cabem, o `flex-wrap` quebra a linha e o
+              `justify-between` ESTICA o que sobrou até as pontas — sobram
+              buracos no meio e o texto encosta nas bordas. Empilhar e centralizar
+              resolve, e a partir de 640px volta a ser a linha única de sempre.
+
+              TRÊS ITENS NUMA LINHA SÓ (no computador): copyright · idioma · quem fez.
               O `justify-between` distribui os três — copyright na esquerda,
               idioma no meio, crédito na direita. Escolha dele em 20/08/2026,
               depois de ver as opções lado a lado.

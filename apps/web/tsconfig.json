@@ -38,7 +38,9 @@
     ".next-medida/types/**/*.ts",
     ".next-medida/dev/types/**/*.ts",
     ".next-novo/types/**/*.ts",
-    ".next-novo/dev/types/**/*.ts"
+    ".next-novo/dev/types/**/*.ts",
+    ".next-teste/types/**/*.ts",
+    ".next-teste/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"
