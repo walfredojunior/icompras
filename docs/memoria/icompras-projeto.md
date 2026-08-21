@@ -105,6 +105,62 @@ cinco casos antes de usar.
 💡 **A mudança de mecanismo:** cada linha de `TROCAS` pode agora trazer um terceiro item com as
 marcas do `re` — sem ele, continua ignorando maiúscula, que é o certo para senha.
 
+## 🍽️ "ONDE COMER NO PARAGUAI" — FEITO EM 21/08/2026 (pronto no local)
+
+Ele retomou a ideia de 04/08, que estava pausada. **O plano já estava fechado na memória** — não
+refiz do zero, só atualizei com o que mudou. E mudou muito: em 04/08 **não havia onde cobrar**;
+hoje há tabela de preços e conta do cliente.
+
+💡 **O alerta de 04/08 caducou.** Eu havia dito "não conte com esse dinheiro tão cedo, o site tem
+pouca visita". Medido em 21/08: **~2.700 páginas/dia**, estáveis há uma semana, e a **home é a
+página mais vista de longe** (30.119 em 30 dias) — que é justamente onde a faixa fica.
+
+### 📱 A DECISÃO DE FORMATO: nem carrossel, nem só grade
+
+Ele pediu "banners rotativo"; eu recomendei grade (quem procura onde almoçar quer **comparar**, e o
+carrossel faz esperar 8s por opção). **Fiz os dois:** no celular é uma tira que **desliza com o
+dedo** (passa, mas quem manda é a pessoa, e dá para voltar); no computador, grade com todos
+visíveis. Com 95% de acesso por celular, o deslizar é o que vale.
+
+### As decisões que tomei
+
+⚠️ **Cidade guardada desde o primeiro cadastro**, mesmo sem uso imediato: quem vai a Ciudad del
+Este não almoça em Salto del Guairá. Quando houver restaurantes demais, a faixa vai precisar
+filtrar — e acrescentar a coluna depois obrigaria a rever cada cadastro à mão.
+
+⚠️ **Serviço próprio na tabela de preços** (US$ 40/mês inicial), fora das faixas de categoria:
+restaurante não tem categoria nem produto, então "grande/média/pequena" não diz nada aqui.
+
+⚠️ **`rel="sponsored"` no link**, além da etiqueta de publicidade. Sem isso o Google pode ler a
+faixa como recomendação editorial nossa. E a etiqueta aqui importa MAIS que nos outros espaços:
+banner de loja o visitante entende como anúncio, restaurante ele lê como **indicação nossa** — e o
+rodapé diz que não temos parceiros. Um almoço ruim viraria reclamação contra o iCompras.
+
+⚠️ **"restaurante" entrou na lista de lugares válidos** de `editar()`. Sem isso, editar um
+restaurante o transformaria em banner de home — exatamente o defeito que consertei no vídeo
+flutuante horas antes.
+
+💡 **A faixa some sozinha se não houver restaurante** — mesma regra dos Destaques. A home não ganha
+espaço vazio enquanto ele não vender o primeiro.
+
+### ⚠️ ARMADILHA DE TESTE: `curl` é tratado como ROBÔ
+
+O clique não aparecia no contador e quase saí caçando defeito. **`registrarCliqueBanner` ignora
+robôs de propósito** (`if (v.robo) return`), e o `curl` sem identificação é robô. Com
+`-A "Mozilla/5.0 (Android...)"` contou na hora. **Testar clique/visita sempre com identificação de
+navegador** — vale para qualquer medição do site.
+
+### 🖼️ As imagens dos banners agora estão no PC
+
+Ele pediu, e faz diferença: `apps/web/public/media/banners` (13 arquivos, 1,1 MB) veio da VPS, e os
+banners de teste apontam para imagens de verdade. Sem isso o teste local era quadrado cinza.
+
+**Fora de escopo (o passo 2 de 04/08, só se os cliques mostrarem que vale):** página por
+restaurante, mapa e `/onde-comer` indexável. ⚠ Lembrar que **"onde comer em Ciudad del Este" é
+busca do Google** — a página traria visitante NOVO; a faixa só aparece para quem já entrou.
+
+⏸️ **NÃO PUBLICADO.**
+
 ## 💵 TRÊS ESPAÇOS + TABELA DE PREÇOS EM DÓLAR (2026-08-21) — PRONTO NO LOCAL
 
 Segunda rodada do mesmo trabalho. Ele pediu: **três banners por categoria** (topo, meio e fim da
@@ -2427,7 +2483,7 @@ Ele viu "12 freios" no painel e mandou analisar. **Não era com a gente.**
 
 ✅ **A REGRA NOVA DE DEPLOY FUNCIONOU PELA PRIMEIRA VEZ:** o script subiu o build novo em **porta isolada (3020)**, conferiu que o processo sobrevive e que home/admin respondem 200, e **só então** reiniciou a produção — com `exit 1` antes de tocar no pm2 se qualquer coisa falhasse. **Manter esse padrão em todo deploy do site.**
 
-## 💡 IDEIA DELE: "ONDE COMER NO PARAGUAI" (2026-08-04) — ANALISADA, **NÃO AUTORIZADA** ("não altere nada")
+## 💡 IDEIA DELE: "ONDE COMER NO PARAGUAI" (2026-08-04) — ✅ **EXECUTADA EM 21/08**, ver a seção nova acima
 
 Ideia dele: uma faixa de banners na home, **depois dos Destaques**, para restaurantes — ele cadastra cada banner com o link do restaurante.
 
