@@ -105,6 +105,76 @@ cinco casos antes de usar.
 💡 **A mudança de mecanismo:** cada linha de `TROCAS` pode agora trazer um terceiro item com as
 marcas do `re` — sem ele, continua ignorando maiúscula, que é o certo para senha.
 
+## 💵 TRÊS ESPAÇOS + TABELA DE PREÇOS EM DÓLAR (2026-08-21) — PRONTO NO LOCAL
+
+Segunda rodada do mesmo trabalho. Ele pediu: **três banners por categoria** (topo, meio e fim da
+lista), **tabela de preços** para escolher na hora de vender, e apontou o buraco: *"não sei como
+esses banners entram na conta do cliente"*. **Cobra em DÓLAR** (confirmado por ele).
+
+### ⚠️⚠️ 95% DE QUEM USA O SITE ESTÁ NO CELULAR
+
+Ele lembrou no meio do trabalho, e medi: **58.676 acessos de celular contra 2.751 de computador**
+num dia. Isso mudou o desenho — três banners de até 156 KB cada seriam ~300 KB de publicidade
+baixados em internet móvel ANTES de a pessoa ver qualquer produto.
+
+**Conserto:** só o banner do TOPO carrega de imediato (`loading="eager"`); meio e fim usam
+`loading="lazy"` e só baixam se a pessoa rolar até lá. Conferido no HTML servido: 1 eager, 2 lazy.
+💡 **Toda decisão de peso nesse site é decisão de celular.**
+
+### 📐 As decisões que tomei, e por quê
+
+**Exclusividade por (categoria + ESPAÇO + período).** Cada categoria virou 3 espaços vendáveis
+independentes: loja A compra o topo de perfume, loja B o meio, no mesmo mês. A mensagem de recusa
+diz qual espaço está ocupado.
+
+**O corte da lista é diferente em cada tela:** busca corta em 12 (página de 24), categoria em 24
+(página de 48). ⚠ Número igual nas duas poria o banner no primeiro quarto da página de categoria.
+
+**Espaço some quando a lista é curta:** meio abaixo de 12 produtos, fim abaixo de 6. Medido antes:
+**92% das buscas devolvem 24+ resultados**, então quase nada é cortado — mas nos 7% restantes, três
+anúncios em volta de cinco produtos ficaria ridículo.
+
+**Faixas de preço pelo TAMANHO da categoria** (medido no catálogo real, não chutado):
+grande 3.000+ → **22 categorias**; média 500+ → **118**; pequena → **378**. Preço por categoria
+seria impossível (são 519); preço único seria burro (perfume tem 30.603 produtos, abajur tem
+dezenas).
+
+**Etiqueta "publicidade"** nos espaços pagos. O campo `is_paid` existia desde sempre e nunca
+aparecia na tela. Triplicar o espaço publicitário sem identificar o que é pago contradiz o aviso do
+rodapé de que não há parceiros — e gasta a confiança que faz a pessoa voltar.
+
+### 🔗 O BURACO QUE ELE ACHOU: as duas telas não se falavam
+
+Eu tinha construído a tela de banners e a conta do cliente **sem ligação**. Era preciso criar o
+banner numa e, na outra, digitar de novo descrição, categoria e datas. Retrabalho garantido — e
+dava para vender setembro e pôr o banner em outubro sem ninguém notar. A coluna `banner_id`
+existia em `pedido_item` e **nenhuma tela preenchia**: eu tinha deixado a ponte no banco e não
+construído a passagem.
+
+**Conserto:** botão **"⚠ ainda não está na conta — lançar"** na própria lista de banners. O item
+nasce DO banner (categoria, espaço, período e loja copiados), o preço vem da tabela, e quem já foi
+lançado mostra **"✓ na conta · pedido 2026-0002 · US$ 60"**. Não deixa lançar duas vezes.
+
+💡 **O histórico de preço se resolve sozinho:** `pedido_item.valor` guarda uma CÓPIA do valor no
+momento da venda. Se apontasse para a tabela, um reajuste reescreveria contas antigas.
+
+### ⚠️ Armadilhas que me pegaram no caminho
+
+1. **`grep` com `·` (ponto médio) não casa no HTML servido** — passei um tempo achando que o
+   vínculo não aparecia na tela, e ele estava lá. **Conferir por um trecho sem caractere especial.**
+2. **`grep -c` conta LINHAS, não ocorrências.** Num HTML minificado (tudo numa linha), 33 campos
+   viram "1". Usar `grep -o ... | wc -l`.
+3. **Heredoc do Bash quebra com arquivo grande** contendo aspas e acentos — o arquivo simplesmente
+   não é criado. Para componentes longos, usar a ferramenta de escrita direta.
+
+### O que ficou pronto (tudo testado no local)
+
+Migração **062**: coluna `slot` no banner, tabela `preco_tabela` (11 linhas iniciais em dólar),
+`pedido.currency` para USD, `preco_id`/`duracao`/`slot` no item. Tela **Admin › Tabela de preços**
+com mês/trimestre/semestre. Preço de tabela aparece na hora de montar o banner.
+
+⏸️ **NÃO PUBLICADO** — ele testa no PC primeiro.
+
 ## 🏪 BANNER POR CATEGORIA COMO PRODUTO DE VENDA (2026-08-21) — PRONTO NO LOCAL, não publicado
 
 Ideia dele: vender o espaço de banner por categoria (quem procura perfume vê o banner da loja que
