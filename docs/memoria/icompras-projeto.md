@@ -105,6 +105,46 @@ cinco casos antes de usar.
 💡 **A mudança de mecanismo:** cada linha de `TROCAS` pode agora trazer um terceiro item com as
 marcas do `re` — sem ele, continua ignorando maiúscula, que é o certo para senha.
 
+## 🗂️ ORGANIZAÇÃO DA PARTE COMERCIAL (2026-08-21) — PRONTO NO LOCAL
+
+Depois de aprovar o resto ("ficou muito bom"), ele pediu para organizar cadastro de banners, preço
+e conta do cliente. Achei três problemas — e **código meu na gaveta**.
+
+### ⚠️ TRÊS FUNÇÕES QUE EU ESCREVI E NUNCA CHAMEI
+
+`emAbertoPorLoja()`, `pedidosRecentes()` e `TAMANHO_RECOMENDADO` estavam prontas e **sem uso em
+lugar nenhum** — inclusive a que responde "quanto cada loja me deve". Trabalho pago e guardado.
+💡 **Conferir funções órfãs ao fechar um trabalho:** `grep` pelo nome e contar os usos fora da
+própria declaração. Se der zero, ou falta tela ou sobra código.
+
+### O que mudou
+
+**1. Menu agrupado por assunto.** Era lista plana de 15 itens, com a parte comercial espalhada
+entre Scraper, Monitor VPS e Câmbio. Agora: **Publicidade** (Vendas e contas · Banners · Tabela de
+preços), **Clientes**, **Site**, **Sistema**. A ordem é a de uso; o que guarda segredo (PYIA,
+Anotações, Senha) fica por último.
+
+**2. A tela de banners abre pela LISTA.** O formulário de criação ficava escancarado no topo com
+uma dúzia de campos, e a lista — o que se consulta todo dia — ficava embaixo de tudo. Agora é um
+botão "+ Novo banner", e o formulário fecha sozinho ao salvar.
+
+**3. Tela nova `/admin/vendas` — "Vendas e contas".** Três números no topo:
+`Em aberto (US$ e quantos clientes)` · `Vence em 7 dias` · **`No ar sem cobrar`**.
+⚠️ **O terceiro é o que mais vale:** banner pago, publicado e que ninguém lançou na conta é dinheiro
+escapando — antes só se descobria olhando banner por banner. Abaixo: a lista dos não cobrados, os
+que vencem, quem deve e os últimos pedidos.
+
+**4. A venda fecha na própria tela.** Criar o banner devolve o `id`, e se ele é pago e tem loja
+aparece na hora *"Falta lançar na conta de X — o preço vem da tabela"*, com o botão. Antes eram
+três passos: criar, voltar à lista, achar a linha, clicar.
+
+### ✅ Conferido no site rodando
+
+Os números da tela batem com o banco (1 vencendo, 9 sem cobrar) — inclusive o singular/plural.
+Criei um banner pela API, ele apareceu no painel como "no ar sem cobrar", e apaguei em seguida.
+
+⏸️ **NÃO PUBLICADO.**
+
 ## 🍽️ "ONDE COMER NO PARAGUAI" — FEITO EM 21/08/2026 (pronto no local)
 
 Ele retomou a ideia de 04/08, que estava pausada. **O plano já estava fechado na memória** — não
