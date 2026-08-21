@@ -105,6 +105,95 @@ cinco casos antes de usar.
 💡 **A mudança de mecanismo:** cada linha de `TROCAS` pode agora trazer um terceiro item com as
 marcas do `re` — sem ele, continua ignorando maiúscula, que é o certo para senha.
 
+## 🏪 BANNER POR CATEGORIA COMO PRODUTO DE VENDA (2026-08-21) — PRONTO NO LOCAL, não publicado
+
+Ideia dele: vender o espaço de banner por categoria (quem procura perfume vê o banner da loja que
+comprou aquele espaço), lançar o valor na conta do cliente, com **vários banners e outros serviços
+por cliente**. Pediu para eu analisar, melhorar e **testar tudo no PC antes de publicar**.
+
+### 🧪 AMBIENTE LOCAL — o primeiro trabalho testado no PC antes do ar
+
+⚠️ **NÃO trazer o banco inteiro: são 2,9 GB** (1,7 GB só de vetores de IA, 400 MB de ofertas). As
+tabelas que este trabalho usa somam **menos de 1 MB**. Trouxe `category`, `category_translation`,
+`store`, `plan`, `subscription`, `payment`, `banner`, `analytics_*`.
+
+💡 **Os IDs batem entre local e VPS** (mesma origem) — conferido antes de importar, senão os 7.228
+produtos locais ficariam apontando para categorias erradas.
+
+🔐 **As 163 lojas vieram ANONIMIZADAS na origem**: a consulta que gerou os INSERTs já trocou e-mail
+por `loja<id>@exemplo.local` e apagou a senha. O dado real nunca saiu da VPS.
+
+🧪 **Tarja no admin local** (`admin/layout.tsx`): reconhece pelo `DB_HOST` ser 127.0.0.1, **não pelo
+NODE_ENV** — que é "production" também num teste de publicação e mentiria justamente na hora errada.
+
+**Acessos locais:** site em `http://localhost:3020` (`cd apps/web && npx next dev -p 3020`),
+admin `admin@local.test`, painel da loja `loja@local.test`, senha `[SENHA-DE-TESTE-LOCAL]` nos dois.
+
+⚠️ **O Meilisearch local estava na v1.11 e a VPS na v1.51.** A indexação falhava com
+`attributeRank ranking rule is invalid`. Atualizei o `docker-compose.yml` e **apaguei `data/meili`**
+(o banco do índice não migra sozinho entre versões distantes; e ele é 100% reconstruível pelo
+`npm run search:sync`). **Ambiente de teste que não espelha a produção testa outra coisa.**
+
+### ⚠️⚠️ A DESCOBERTA QUE MUDOU O DESENHO: a faceta mentia
+
+Para mostrar o banner quando a pessoa só DIGITA (sem filtrar categoria), eu ia usar a faceta do
+Meilisearch, que conta o resultado inteiro. **Medi antes de confiar, e estava errado:**
+
+```
+           | resultado inteiro (faceta) | 1ª página (o que a pessoa vê)
+  iphone   | capa-para-celular  38%     | celular    100%
+  celular  | capa-para-celular  26%     | celular    100%
+  cafeteira| cafeteira          48%     | cafeteira  100%
+```
+
+"iphone" tem MILHARES de capas e películas, que afogam os celulares na contagem total — mas a busca
+põe os celulares em primeiro, porque são os mais relevantes. **Com a faceta, só "perfume" passava
+do corte; pela página, todos acertam.** Ficou: maioria simples dos produtos da página, mínimo de 3.
+💡 **A lição: o que importa é o que a pessoa VÊ, não o que existe no catálogo.**
+
+### ⚠️⚠️ EXCLUSIVIDADE É POR PERÍODO, NÃO POR CATEGORIA
+
+Ele pediu "não pode ter dois banners por categoria, tem que avisar que já está ocupado". **A trava
+literal quebraria o negócio dele:** impediria vender OUTUBRO enquanto setembro está no ar — e
+vender adiantado é o que dá previsibilidade. A regra é sobreposição de datas
+(`inicioA <= fimB E fimA >= inicioB`), com data vazia valendo "sem limite".
+
+⚠️ **A trava existe nos DOIS lados**: avisa na tela enquanto digita, e **recusa no servidor** (409).
+Só na tela não basta — duas janelas abertas furariam. Testado nos 5 cenários (dentro, fora,
+encostando nas duas pontas, sem datas).
+
+### 🐛 Três defeitos que apareceram no caminho
+
+1. ⚠️ **A ficha do cliente dava 404 para 162 das 163 lojas.** `getClient()` fazia JOIN com
+   `subscription`, então só abria para quem tinha plano. Passou despercebido enquanto a ficha só
+   mostrava plano e vencimento; virou impeditivo quando ela ganhou a CONTA — vender banner para
+   loja sem plano é o caso normal. A LISTA continua só com assinantes (as outras são leads do
+   coletor e esconderiam quem paga); o que mudou é a ficha ABRIR.
+2. ⚠️ **Editar um banner de vídeo flutuante o transformava em banner de carrossel** — o código era
+   `placement === "category" ? "category" : "home_hero"`, sem prever o terceiro caso. O vídeo sumia
+   da home e ninguém entendia por quê. Lista de lugares agora explícita.
+3. ⚠️ **`String(data).slice(0,10)` na mensagem de erro** entregava "no ar até Wed Sep 30": o driver
+   devolve um objeto Date, e `String()` dele é o formato do JavaScript. Criei `dataBR()`.
+
+### ⚠️ CHAVE ESTRANGEIRA EXIGE `BIGINT UNSIGNED`
+
+As chaves do projeto são `BIGINT UNSIGNED`. Criar a tabela com `BIGINT` sem `unsigned` falha com
+`Foreign key constraint is incorrectly formed` — mensagem que **não diz qual coluna** está errada.
+Custou uma tentativa na migração 061.
+
+### O que ficou pronto (4 partes, testadas no local)
+
+| | |
+|---|---|
+| Tela de banners: procura por título/loja, filtros por tipo com contagem, "Vencendo em 7 dias" | ✅ |
+| Escolher categoria entre **519**: busca, alfabética, mais procuradas no topo, nº de produtos | ✅ |
+| Trava de exclusividade por período (tela + servidor) | ✅ |
+| Banner na busca por TERMO, sem filtro | ✅ |
+| Pedido com itens + conta do cliente (migração 061) | ✅ |
+| Painel do anunciante: cliques + buscas na categoria | ✅ |
+
+⏸️ **NÃO PUBLICADO.** Ele vai testar no PC primeiro.
+
 ## ⚠️⚠️ O PYTHON NO WINDOWS QUEBROU A PUBLICAÇÃO — E DEPOIS ZEROU ESTA MEMÓRIA (2026-08-20)
 
 Dois estragos no mesmo dia, pela mesma causa raiz: **gravar arquivo com Python no Windows**.
