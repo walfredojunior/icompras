@@ -199,6 +199,31 @@ dezenas).
 aparecia na tela. Triplicar o espaço publicitário sem identificar o que é pago contradiz o aviso do
 rodapé de que não há parceiros — e gasta a confiança que faz a pessoa voltar.
 
+### 📏 O TAMANHO DO BANNER DO MEIO: 4:1, escolhido por ele vendo a arte real
+
+Ele mandou uma arte de restaurante/categoria em **818×137 (6:1)** e disse "nessa medida ou uma que
+você achar melhor, porque tem que caber bem no celular também e no PC".
+
+**Montei um demo com a arte REAL dele** nas duas larguras verdadeiras (358px de celular e 830px da
+coluna de resultados) em quatro proporções, e ele escolheu **4:1 → 1200×300**.
+
+| proporção | altura no celular | altura no PC |
+|---|---|---|
+| 2,3:1 (o do topo) | ~156px | ~362px |
+| 4:1 ✅ **escolhido** | **~90px** | ~208px |
+| 6:1 (a arte dele) | ~60px | ~138px |
+
+💡 **O critério foi o celular**, e é o certo neste site: em 6:1 o texto da arte vira borrão numa
+tela de 390px. No computador a diferença entre 6:1 e 4:1 é cosmética; no celular é a diferença
+entre ler e não ler.
+
+⚠️ **A ressalva que dei a ele:** faixa horizontal pede **arte simples** — logo grande e três ou
+quatro palavras. A arte que ele mandou tem texto longo na diagonal e muitos produtos; foi feita
+para espaço maior. Vale passar isso ao anunciante junto com a medida.
+
+💡 **A tela de banners mostra o tamanho a pedir** ao escolher o espaço (858×375 no topo,
+1200×300 no meio e no fim) — quem vende precisa saber o que pedir ANTES de receber a arte.
+
 ### 🔗 O BURACO QUE ELE ACHOU: as duas telas não se falavam
 
 Eu tinha construído a tela de banners e a conta do cliente **sem ligação**. Era preciso criar o
