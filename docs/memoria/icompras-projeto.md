@@ -199,19 +199,49 @@ dezenas).
 aparecia na tela. Triplicar o espaço publicitário sem identificar o que é pago contradiz o aviso do
 rodapé de que não há parceiros — e gasta a confiança que faz a pessoa voltar.
 
-### 📏 O TAMANHO DO BANNER DO MEIO: 4:1, escolhido por ele vendo a arte real
+### 📏 O TAMANHO DO BANNER DO MEIO: **818×137**, decidido no site rodando
 
 Ele mandou uma arte de restaurante/categoria em **818×137 (6:1)** e disse "nessa medida ou uma que
 você achar melhor, porque tem que caber bem no celular também e no PC".
 
 **Montei um demo com a arte REAL dele** nas duas larguras verdadeiras (358px de celular e 830px da
-coluna de resultados) em quatro proporções, e ele escolheu **4:1 → 1200×300**.
+coluna de resultados) em quatro proporções. No demo ele escolheu 4:1 — mas **depois testou no site
+rodando e voltou atrás**: "o formato do banner tá grande, teria que ser 818×137". Ficou **818×137**.
+
+⚠️⚠️ **A LIÇÃO, QUE VALE MAIS QUE A MEDIDA: quem olha a tela decide melhor que quem calcula.**
+Eu defendi 4:1 com uma conta de altura em pixels (em 6:1 a faixa fica com ~60px no celular e o
+texto vira borrão). A conta estava certa e a conclusão errada: **o problema de legibilidade é da
+ARTE**, não da proporção — faixa fina com arte simples (logo grande, três ou quatro palavras) lê
+bem em 60px. E no site montado, 4:1 competia com os produtos. **Demo ajuda a escolher; só o site
+rodando decide.**
 
 | proporção | altura no celular | altura no PC |
 |---|---|---|
-| 2,3:1 (o do topo) | ~156px | ~362px |
-| 4:1 ✅ **escolhido** | **~90px** | ~208px |
-| 6:1 (a arte dele) | ~60px | ~138px |
+| 858×375 (2,3:1) — banner padrão | ~156px | ~362px |
+| 1200×300 (4:1) — testado e rejeitado | ~90px | ~208px |
+| **818×137 (≈6:1)** ✅ **a faixa, escolhida** | **~60px** | ~138px |
+
+### 🖼️ OS DOIS FORMATOS DO SITE, e o ajuste automático no envio
+
+| Formato | Onde |
+|---|---|
+| **858 × 375** | banner padrão: topo da home, topo de categoria, "Onde comer" |
+| **818 × 137** | faixa fina: meio e fim da lista de resultados |
+
+Ele pediu: *"na hora de cadastrar já avisar o formato ou converter"*. **Fiz converter**, que é
+melhor que avisar: o anunciante manda a arte no tamanho que tem, e sem ajuste ela aparecia cortada
+de qualquer jeito pelo `object-cover` do navegador — e só se descobria depois de publicada.
+
+O `/api/admin/upload` passou a receber `formato` (`padrao`|`faixa`) e recorta **pelo centro**
+(`fit: cover`), devolvendo `ajustada`, o tamanho original e o alvo. A tela avisa: *"A arte veio em
+1600 × 687 e foi ajustada para 818 × 137 (recorte pelo centro)"*.
+
+💡 **Não recorta quem já está certo:** compara a proporção com tolerância de 0,01, então uma arte
+de 1636×274 (mesma proporção de 818×137) passa intacta, sem perder qualidade à toa.
+💡 **Recorte pelo CENTRO, não "attention" do sharp** — quem desenhou a arte já pôs o importante no
+meio, e o recorte esperto seria imprevisível.
+💡 **A prévia no formulário agora mostra a arte NO FORMATO REAL** em que vai aparecer. Antes era
+uma miniatura de altura fixa que não parecia com nada — a faixa fina só se revelava publicada.
 
 💡 **O critério foi o celular**, e é o certo neste site: em 6:1 o texto da arte vira borrão numa
 tela de 390px. No computador a diferença entre 6:1 e 4:1 é cosmética; no celular é a diferença
