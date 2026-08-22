@@ -105,6 +105,48 @@ cinco casos antes de usar.
 💡 **A mudança de mecanismo:** cada linha de `TROCAS` pode agora trazer um terceiro item com as
 marcas do `re` — sem ele, continua ignorando maiúscula, que é o certo para senha.
 
+## 💰 O VALOR PASSOU A NASCER COM O BANNER (2026-08-22) — ideia dele, e certa
+
+Ele perguntou: *"a conta do cliente, um banner não tá vinculado ao banner que tá ativo. não era
+melhor ali no banner, se eu colocar o cliente tem também o valor e ele já entrar no contas a
+receber?"*. **Estava certo nas duas coisas.**
+
+### O problema: dois passos, e o segundo se esquece
+
+Era: criar o banner → voltar à lista → clicar em "lançar na conta". **A prova de que não
+funcionava estava na própria tela de Vendas: 9 banners pagos no ar sem cobrança nenhuma.** Passo
+separado é passo esquecido.
+
+**Agora:** o formulário do banner tem um bloco **Cobrança** que aparece quando há *publicidade
+paga + loja escolhida*. Traz **duração** (mensal/trimestral/semestral/avulso) e **valor**, já
+preenchido com o preço de tabela e editável — negociação existe. Ao salvar, o item entra na conta
+no mesmo ato.
+
+⚠️ **Falha ao lançar NÃO desfaz o banner.** Ele já está criado e no ar; apagá-lo seria pior. A tela
+de Vendas mostra "no ar sem cobrar", que é justamente o aviso para lançar à mão.
+
+💡 **O botão "lançar na conta" continua existindo** — para banners criados sem valor e para os que
+já estavam no ar antes desta mudança.
+
+### ⚠️ UMA FUNÇÃO SÓ PARA OS DOIS CAMINHOS
+
+A regra de "achar ou criar o pedido e gravar o item" agora mora em `lancarNaConta()`
+(`lib/pedidos.ts`), usada pela criação do banner **e** pelo botão da lista. Estava escrita duas
+vezes; na primeira mudança, uma das duas ficaria para trás.
+
+### O segundo ponto dele: a conta não dizia se o banner está no ar
+
+Cada item da conta agora mostra **● banner no ar / ● banner fora do ar / ● banner apagado**.
+💡 Item cobrado com o banner fora do ar é **cliente pagando por nada** — e o contrário (no ar sem
+cobrar) é o inverso. Os dois são erros que só aparecem se a tela contar.
+
+### 🐛 A CONTA DO CLIENTE AINDA ESTAVA EM REAIS
+
+Achado ao rever a tela: `ContaDoCliente.tsx` formatava em **BRL**. Quando ele confirmou que cobra
+em dólar (21/08), troquei o banco, a tabela de preços e o item — **e esqueci a tela que ele mais
+olha**. ⚠️ **Ao trocar moeda/unidade, procurar o símbolo em TODO o código** (`grep 'currency:'`),
+não só onde a mudança começou.
+
 ## ⚠️ A IMAGEM ERA PEDIDA ANTES DO ESPAÇO — defeito achado por pergunta dele (22/08/2026)
 
 Ele perguntou: *"não entendi como defino um banner por categoria ou na busca aparecer em qual parte
