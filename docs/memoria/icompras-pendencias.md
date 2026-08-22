@@ -20,6 +20,31 @@ Publicação do site, classificação por IA, conserto da varredura cega, 6 rob�
 
 ## 🔜 O QUE FICOU PARA A PRÓXIMA CONVERSA
 
+### 📌 PARA A PRÓXIMA PUBLICAÇÃO (ele pediu em 22/08/2026: "a gente vê esse problema na próxima atualização")
+
+**1. O aviso "apertado" do guardião é alarme falso.** Dispara só pela swap (41% contra teto de 20%),
+com memória em 59%, disco 21% e carga 0,29 — **6,8 GB livres**. É resíduo dos dias de bloqueio: o
+sistema empurrou banco/site/busca para o disco e o Linux não devolve sozinho.
+💡 **Conserto proposto (melhor que liberar a swap):** só avisar quando swap alta **E** memória alta
+ao mesmo tempo. `conferirLimites()` em `apps/worker/src/metricas.ts`, linha do
+`if (swap >= 20)`. Liberar com `swapoff -a && swapon -a` resolve hoje e volta no próximo aperto.
+
+**2. Os 2% do catálogo que faltam.** A auditoria de 22/08 (já com o proxy corrigido) mostrou:
+```
+338.564 no mapa da fonte · 331.526 visitados · 7.038 faltando · COBERTURA 98%
+```
+E apontou **29 produtos à venda na fonte que faltam aqui** (perfume Chanel Coco Noir, relógios Casio
+G-Shock, HDs Seagate, teclado Logitech…), além de suspeita de **"contador cego"**: numa amostra de
+30 páginas faltavam 147 de 718 produtos, concentrados em `/marcas/samsung/` e nas listas de algumas
+lojas (`mobile-zone`, `star-company`, `one-click`, `topdek-informatica`).
+⚠️ **Ainda NÃO investigado** — pode ser paginação daquelas listas que o coletor não segue até o fim.
+
+**3. Publicar o pacote de publicidade**, que está pronto no PC e **nunca foi ao ar**: três espaços de
+banner, tabela de preços em dólar, conta do cliente, "Onde comer no Paraguai", destaques e blocos
+monetizados com vencimento. Ver as seções de 21 e 22/08 em [[icompras-projeto]].
+
+
+
 1. **Medir os 6 robôs por um dia inteiro.** Esperado: de ~65 mil para ~95 mil páginas/dia, e a
    volta completa de ~5,5 para ~3,5 dias. Conferir com
    `SELECT COUNT(*) FROM scrape_log WHERE last_crawled_at > NOW() - INTERVAL 24 HOUR`.
