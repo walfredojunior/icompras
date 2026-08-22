@@ -105,6 +105,46 @@ cinco casos antes de usar.
 💡 **A mudança de mecanismo:** cada linha de `TROCAS` pode agora trazer um terceiro item com as
 marcas do `re` — sem ele, continua ignorando maiúscula, que é o certo para senha.
 
+## 🔎 "NÃO ACHEI ONDE DIGITAR O PREÇO" (2026-08-22) — a segunda pergunta que era defeito
+
+Ele disse: *"não tem pra digitar o preço ali na hora de cadastrar o banner, bloco de destaque e
+destaques, não achei"*. **O campo existia. A tela é que o escondia.**
+
+⚠️ **A causa:** o bloco de preço só aparecia com DUAS condições — "é publicidade paga" marcado
+**e** cliente escolhido. E os dois gatilhos ficavam longe dele:
+
+```
+Título · [É publicidade paga] ← gatilho 1, no TOPO
+Onde aparece · categoria · espaço · datas
+   [BLOCO DE PREÇO]           ← nasce AQUI
+Imagem
+Destino · [Loja deste banner] ← gatilho 2, no FIM
+```
+
+Escolher a loja no fim fazia o campo de preço nascer **acima, fora da vista**. Ele marcava, não via
+nada e concluía que a tela não tinha onde digitar o valor.
+
+### O conserto
+
+**Um bloco só, "Quem paga por este espaço"**: cliente + "é publicidade paga" + duração + valor,
+tudo junto. Havia **dois campos para a mesma loja** em lugares distantes — o do destino foi
+removido, e quando o banner aponta para a loja é o mesmo cliente (quem paga é quem ele divulga).
+
+💡 **Marcar "é publicidade paga" já traz o preço de tabela** — é o número que ele vai falar ao
+cliente, e poupa um clique.
+
+💡 **Aviso quando falta o cliente:** *"Escolha o cliente acima para poder lançar o valor na conta
+dele"*. Sem isso, a ausência do campo não explicava nada.
+
+Vale para as três telas: Banners, Destaques e Blocos (o `CamposDeVenda` compartilhado ganhou o
+mesmo aviso).
+
+### ⚠️⚠️ A LIÇÃO, DE NOVO — segunda vez em dois dias
+
+Foi a **segunda pergunta dele que virou defeito**: primeiro a imagem pedida antes do espaço, agora
+o preço escondido atrás de dois gatilhos distantes. **Campo que depende de outro tem de ficar ao
+lado dele** — e "o usuário não achou" é quase sempre "a tela escondeu", não "ele não procurou".
+
 ## 🎯 DESTAQUES E BLOCOS TAMBÉM VIRARAM VENDÁVEIS (2026-08-22) — migração 064
 
 Ele pediu: *"Blocos de destaque e Destaques também futuramente vou monetizar, então mesma coisa:
