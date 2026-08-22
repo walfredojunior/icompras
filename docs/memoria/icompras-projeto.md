@@ -105,6 +105,35 @@ cinco casos antes de usar.
 💡 **A mudança de mecanismo:** cada linha de `TROCAS` pode agora trazer um terceiro item com as
 marcas do `re` — sem ele, continua ignorando maiúscula, que é o certo para senha.
 
+## 🏬 A LISTA DE CLIENTES VINHA VAZIA (2026-08-22) — e o filtro estava errado de fundo
+
+Ele disse: *"tô fazendo um banner e quero escolher um cliente, não aparece nenhum na lista"*.
+**Dois problemas de uma vez.**
+
+### 1. No PC, a lista era literalmente vazia
+
+A consulta exigia `EXISTS (SELECT 1 FROM product_store ...)` — só lojas **com produto no site**.
+No banco local: **163 lojas ativas, ZERO com produto** (os produtos daqui são de julho e a tabela
+de ligação não veio). Na VPS eram 158 de 164, então em produção o defeito estaria escondido.
+
+### 2. ⚠️⚠️ O FILTRO ESTAVA ERRADO DE CONCEITO
+
+Exigir produto fazia sentido quando a loja era o **DESTINO** do banner (para levar à página dela).
+Mas **quem PAGA é outra coisa**:
+
+- um restaurante do "Onde comer" **nunca** terá produto no catálogo;
+- uma loja nova que só quer anunciar também não tem;
+- e o cliente que compra o espaço não precisa vender nada aqui.
+
+💡 **Confundir "destino do banner" com "quem paga o banner" limitava a venda a quem já estava no
+catálogo** — justamente o contrário do que ele quer fazer com a publicidade.
+
+**Conserto:** as três telas (Banners, Destaques, Blocos) trazem **todas as lojas ativas**, e a lista
+marca `(sem produto no site)` ao lado de quem ainda não tem — informação, não impedimento.
+
+💡 **A lição que se repete:** o teste local achou o defeito porque os dados aqui são diferentes dos
+de produção. **Ambiente de teste com dados idênticos aos reais esconde esse tipo de erro.**
+
 ## 🔎 "NÃO ACHEI ONDE DIGITAR O PREÇO" (2026-08-22) — a segunda pergunta que era defeito
 
 Ele disse: *"não tem pra digitar o preço ali na hora de cadastrar o banner, bloco de destaque e
