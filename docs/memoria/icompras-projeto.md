@@ -105,6 +105,59 @@ cinco casos antes de usar.
 💡 **A mudança de mecanismo:** cada linha de `TROCAS` pode agora trazer um terceiro item com as
 marcas do `re` — sem ele, continua ignorando maiúscula, que é o certo para senha.
 
+## 📅 DATAS, MOEDA E FORMA DE PAGAMENTO (2026-08-22)
+
+Pedido dele: *"na hora de pagar, lembre-se que a moeda é dólar; sobre data sempre mostre a data
+atual e daí a pessoa altera se quiser, faça igual em todos os cadastros que têm data; forma de
+pagamento já deixa definido pra escolher: efetivo, transferência, cartão (bancard) e outros"*.
+
+### ⚠️⚠️ A ARMADILHA DO FUSO: onde preencher "hoje"
+
+**O servidor roda em UTC e ele está no Paraguai (-3).** Os formulários são componentes de cliente,
+mas o Next também os monta no SERVIDOR na primeira carga. Calcular a data durante a montagem faria,
+**depois das 21h**, o servidor escrever um dia e o navegador outro — divergência na tela e data
+errada bem no horário de pico.
+
+💡 **`hoje()` só dentro de `useEffect`**, que roda apenas no navegador, no fuso dele. E nada de
+`toISOString()`: ele converte para UTC e devolve o dia seguinte. Ver `lib/datas.ts`.
+
+### 💡 O TÉRMINO SE CALCULA, em vez de vir com "hoje"
+
+Preencher "termina em" com hoje criaria anúncio vencendo no mesmo dia. Escolhida a duração
+(mensal/trimestral/semestral), a data de término se preenche sozinha — e continua editável. Mudar o
+início recalcula o fim.
+
+⚠️ **`fimDoPeriodo()` tem dois casos-limite que eu errei na primeira tentativa** (achados por teste,
+não por leitura):
+
+```
+01/01 + 1 mês  ->  31/12 do ano ANTERIOR   ← errado
+31/01 + 1 mês  ->  02/03                   ← errado
+```
+
+- **Dia 1:** `setDate(dia - 1)` vira `setDate(0)`, que o JavaScript lê como o último dia do mês
+  anterior. Certo é subtrair da data já montada, não do número do dia.
+- **Transbordo:** 31/01 + 1 mês vira 03/03 porque fevereiro não tem 31. Aí `setDate(0)` volta para
+  28/02 — e aqui o mesmo `setDate(0)` é a solução, não o problema.
+
+✅ Sete casos testados, incluindo virada de ano e fevereiro.
+
+💡 **O fim é a VÉSPERA** do mesmo dia do mês seguinte: 10/09 + 1 mês = 09/10. Senão o cliente ganha
+um dia a cada renovação e duas vendas seguidas se sobrepõem — o que a trava de exclusividade
+recusaria.
+
+### As formas de pagamento
+
+Lista fechada em `FORMAS_DE_PAGAMENTO`: **efetivo · transferência · cartão (Bancard) · outros**.
+Efetivo é o padrão.
+
+### 🐛 A FORMA ERA GRAVADA E NUNCA MOSTRADA
+
+Achado ao fazer isto: `pedido_pagamento.forma` era salva e **não aparecia em tela nenhuma**. Ele
+registraria "recebi por transferência" e não teria onde conferir. Agora cada pedido lista os
+recebimentos: `recebido em 22/08/2026 · Transferência   +US$ 25,00`.
+💡 **Dado que ninguém vê é o mesmo que dado não guardado.**
+
 ## 🏬 A LISTA DE CLIENTES: VAZIA, DEPOIS CHEIA DE GENTE ERRADA (2026-08-22) — e o filtro estava errado de fundo
 
 Ele disse: *"tô fazendo um banner e quero escolher um cliente, não aparece nenhum na lista"*.
