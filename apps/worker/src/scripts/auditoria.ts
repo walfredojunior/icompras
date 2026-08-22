@@ -16,6 +16,10 @@
 import "../env.js";
 import { pool } from "@icompras/db";
 import { parse as parseHtml } from "node-html-parser";
+// ⚠ O `fetch` VEM DO undici, e não é o global do Node — mesma razão do
+// crawl.ts: o Node 24 traz uma cópia própria do undici, e misturar as duas dá
+// `invalid onRequestStart method`. Ver o comentário longo em crawl.ts.
+import { fetch as buscarNaWeb, ProxyAgent } from "undici";
 
 const BASE = "https://www.comprasparaguai.com.br";
 const SITEMAP = `${BASE}/sitemap.xml`;
@@ -45,11 +49,31 @@ const RAPIDA = process.argv.includes("--rapida");
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// ⚠⚠ ESTA AUDITORIA SAÍA DIRETO, SEM O PROXY (achado em 22/08/2026).
+//
+// O coletor usa o servidor de saída; esta conferência não usava — pedia pelo IP
+// da VPS. Enquanto a fonte não bloqueava esse IP ninguém percebia. Quando
+// bloqueou, o painel passou a dizer **"não consegui ler a lista da fonte"** e a
+// Cobertura do catálogo parou de ser calculada, sem que houvesse nada de errado
+// com o mapa da fonte.
+//
+// 💡 Um caminho de saída que só é usado por PARTE do sistema é um caminho que
+// ninguém testa: o defeito fica escondido até o dia em que o outro caminho cai.
+const PROXY = process.env.CRAWL_PROXY ?? "";
+let despachante: import("undici").ProxyAgent | null = null;
+function comProxy(): { dispatcher?: import("undici").ProxyAgent } {
+  if (!PROXY) return {};
+  // Um só para todo o processo: cada ProxyAgent abre as próprias conexões.
+  if (!despachante) despachante = new ProxyAgent(PROXY);
+  return { dispatcher: despachante };
+}
+
 async function baixar(url: string): Promise<string | null> {
   try {
-    const res = await fetch(url, {
+    const res = await buscarNaWeb(url, {
       headers: { "User-Agent": UA, "Accept-Language": "pt-BR,es;q=0.8" },
       signal: AbortSignal.timeout(40000),
+      ...comProxy(),
     });
     return res.ok ? await res.text() : null;
   } catch {

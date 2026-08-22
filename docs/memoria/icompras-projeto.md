@@ -1479,6 +1479,56 @@ Antes de reiniciar os robôs, quis conferir se o `crawl.ts` novo era válido e r
 
 💡 **Importar um script executável é executá-lo.** Para conferir sintaxe, usar o compilador (`tsc --noEmit`), nunca `import`.
 
+## 🕳️ A AUDITORIA DE COBERTURA SAÍA SEM PROXY (2026-08-22) — defeito escondido por semanas
+
+Depois do proxy voltar, o painel ainda dizia: *"Cobertura do catálogo — não consegui ler a lista da
+fonte"*. **Não era resto do problema anterior: era um defeito próprio.**
+
+⚠️ **`auditoria.ts` usava o `fetch` global, sem proxy**, enquanto o `crawl.ts` usa o servidor de
+saída. Ela pedia o `sitemap.xml` pelo IP da VPS. Testado lado a lado:
+
+```
+sitemap direto:      403
+sitemap pelo proxy:  200
+```
+
+💡 **O defeito existia desde sempre e ninguém via:** enquanto a fonte não bloqueava o IP da VPS, sair
+direto funcionava. Só apareceu quando o outro caminho caiu. **Um caminho de saída usado por apenas
+PARTE do sistema é um caminho que ninguém testa.**
+
+**Conserto:** a auditoria passou a usar `fetch` do **undici** com `ProxyAgent`, igual ao coletor.
+⚠️ Tem de ser o `fetch` do undici do npm, **não o global do Node** — misturar as duas cópias dá
+`invalid onRequestStart method` (o mesmo tropeço de 08/08, documentado no topo de `crawl.ts`).
+
+✅ **Provado:** `338.564 no mapa · 331.526 visitados · 7.038 faltando · COBERTURA 98%`, gravado em
+`catalog_coverage`.
+⚠️ **`--rapida` com tempo limitado não grava:** a escrita acontece só no fim. Rodar em segundo plano
+e conferir a tabela, não o texto na tela.
+
+## ⚠️ O "APERTADO" DO GUARDIÃO ERA ALARME FALSO (2026-08-22) — swap residual
+
+Ele perguntou por que o painel dizia **"Guardião — Atenção: apertado"**. Dos quatro limites, só um
+disparava:
+
+```
+memória   59%   (limite 92)   ok
+disco     21%   (limite 85)   ok
+carga    0,29   (limite 16)   ok
+swap      41%   (limite 20)   ← só este
+```
+
+**Na swap:** banco 1.099 MB, site 393 MB, busca 185 MB. Parado em 36-41% há mais de 30 horas, com
+**6,8 GB de memória disponível**.
+
+💡 **É RESÍDUO, não aperto.** Em algum momento a memória apertou (provavelmente nos dias de bloqueio,
+com os coletores reiniciando) e o sistema empurrou partes para o disco. **O Linux não devolve
+sozinho:** o dado fica na swap até alguém precisar dele.
+
+⚠️ **O aviso está tecnicamente certo e praticamente enganoso** — e a memória deste projeto já
+registra que *alarme falso é o que faz a gente parar de olhar*. **Proposto a ele** (não feito, ele
+não respondeu ainda): só avisar quando swap alta **E** memória alta ao mesmo tempo. Liberar a swap
+(`swapoff -a && swapon -a`) resolve hoje, mas volta no próximo aperto.
+
 ## 🛠️ O PROXY CAIU DE VERDADE (2026-08-22) — a regra órfã que travava o túnel
 
 **Desta vez estava mesmo fora**, e o painel dele acertou de novo: *"medida de 2 dias atrás — o
