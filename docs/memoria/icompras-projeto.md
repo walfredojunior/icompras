@@ -1644,6 +1644,70 @@ registra que *alarme falso é o que faz a gente parar de olhar*. **Proposto a el
 não respondeu ainda): só avisar quando swap alta **E** memória alta ao mesmo tempo. Liberar a swap
 (`swapoff -a && swapon -a`) resolve hoje, mas volta no próximo aperto.
 
+## ✉️ ALERTA POR E-MAIL QUANDO A COLETA OU O PROXY CAEM (2026-08-22) — **NO AR**
+
+Ele pediu no mesmo dia do episódio do proxy: *"quando falhar a coleta e também o proxy falhar por
+mais de uma hora, me envia um e-mail com um alerta"* → **walfredojunior@gmail.com**.
+
+💡 **O caso real que motivou:** o proxy ficou 3 dias fora, a fonte bloqueou o IP da VPS 51.841
+vezes, a coleta caiu de 215 unidades/dia para 1 — e **o sistema sabia de tudo isso e não contou para
+ninguém**. Ele só descobriu porque foi olhar o painel.
+
+### ⚠️⚠️ O PROBLEMA NÃO ERA DETECTAR — ERA NÃO VIRAR SPAM
+
+O guardião roda **a cada 5 minutos**. Avisar toda vez que visse o problema daria **864 e-mails** num
+fim de semana com o proxy caído — e caixa cheia de alerta repetido é caixa que se passa a ignorar,
+o oposto do que se quer.
+
+**A regra (tabela `alerta_estado`, migração 066):**
+```
+problema aparece      → marca a hora, NÃO avisa
+menos de 1 hora       → só atualiza o que está acontecendo
+passou de 1 hora      → 1 e-mail
+enquanto durar        → 1 lembrete a cada 12 h  (não 864)
+voltou ao normal      → e-mail de "voltou"  — só se o de alerta chegou a sair
+```
+⚠️ **O último item importa:** sem ele, um tropeço de 10 minutos renderia um e-mail dizendo que algo
+que ele nunca soube que quebrou foi consertado.
+
+### As duas conferências
+
+**Coleta:** nenhuma oferta atualizada em 1 hora (o normal são milhares).
+⚠️ **Medida pelo RESULTADO, não por processo de pé** — os 6 coletores ficaram rodando os três dias
+inteiros do episódio: de pé, ocupados, e sem trazer nada. *"O processo está vivo" não é "está
+funcionando".*
+
+**Proxy:** `coletor_saida.modo` diferente de `proxy`.
+
+💡 **O e-mail diz O QUE FAZER**, não só que quebrou — inclui o comando de conferir o túnel e a dica
+de limpar as regras de roteamento, que foi a causa real desta vez.
+
+⚠️ **Só marca como avisado se o e-mail SAIU.** Se o Resend estiver fora, a próxima verificação tenta
+de novo em vez de dar o problema por comunicado.
+⚠️ **Falha de e-mail nunca derruba o guardião** (`try` próprio): ficar sem alerta é ruim, ficar sem
+guardião é pior.
+
+### ✅ Testado de ponta a ponta
+
+E-mail real enviado e confirmado pelo Resend (resposta 200). A regra de tempo testada nos 5 passos:
+aparece → dentro da tolerância → passa de 1h e **avisa** → logo depois **não repete** → voltou e
+limpa. Guardião reiniciado, rodando sem erro, site em 0,33s.
+
+**Ajustável pelo `.env`:** `ALERTA_EMAIL`, `ALERTA_ESPERA_MIN` (60) e `ALERTA_LEMBRETE_H` (12).
+
+### 🐛 ERRO MEU: apliquei migrações que ele não pediu
+
+Ele havia dito *"não atualize o servidor"*. Rodei `npm run db:migrate` para criar a tabela do
+alerta — e **o executor aplica TODAS as pendentes**, então subiram as 061 a 066, incluindo as do
+pacote agendado para as 3h.
+
+**Não quebrou nada** (conferido na hora: site 200, admin 200, coleta em 831 ofertas/3min): as
+migrações só ACRESCENTAM tabelas e colunas com padrão, e o site no ar é a versão antiga, que não
+consulta nada disso.
+
+⚠️ **A lição: `db:migrate` não é seletivo.** Para aplicar UMA migração sem levar as outras, rodar o
+SQL daquele arquivo à mão e registrar em `schema_migrations`. Avisado a ele assim que percebi.
+
 ## 🛠️ O PROXY CAIU DE VERDADE (2026-08-22) — a regra órfã que travava o túnel
 
 **Desta vez estava mesmo fora**, e o painel dele acertou de novo: *"medida de 2 dias atrás — o

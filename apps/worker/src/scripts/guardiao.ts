@@ -13,6 +13,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { pool } from "@icompras/db";
+import { conferirAlertas } from "../alertas.js";
 // ⚠ `fetch` E `ProxyAgent` do MESMO pacote. O Node 24 traz um undici próprio
 // embutido no `fetch` global; misturar o ProxyAgent do undici instalado com o
 // fetch global estoura "invalid onRequestStart method" e TODA requisição pelo
@@ -1071,6 +1072,14 @@ async function main(): Promise<void> {
   do {
     try {
       await verificar();
+      // ⚠ ALERTA POR E-MAIL, depois de verificar (22/08/2026). Em `try` próprio
+      // e nunca antes: se o envio falhar, a vigilância do coletor — que é a
+      // razão de o guardião existir — não pode parar junto.
+      try {
+        await conferirAlertas();
+      } catch (e) {
+        console.error("falha ao conferir alertas:", (e as Error).message);
+      }
       // Mantém o histórico do monitor em 90 dias (~130 mil amostras).
       await pool.query("DELETE FROM vps_metric WHERE at < NOW() - INTERVAL 90 DAY");
     } catch (e) {
