@@ -473,7 +473,7 @@ Criei um banner pela API, ele apareceu no painel como "no ar sem cobrar", e apag
 
 ⏸️ **NÃO PUBLICADO.**
 
-## 🍴 O GUIA DE RESTAURANTES (2026-08-22) — migração 065, pronto no local
+## 🍴 O GUIA DE RESTAURANTES (2026-08-22) — migração 065 · **AGENDADO para as 3h de 23/08**
 
 Ele redesenhou a ideia de ontem: em vez de uma faixa de banners na home, **um bloco que reveza** e
 leva a uma **página com todos os restaurantes**, com três espaços de anúncio dentro. E dois produtos
@@ -532,6 +532,23 @@ parceiros; um guia pago precisa dizer o que é, senão um almoço ruim vira recl
    removidos) e a montagem quebra. O projeto **já resolvia isso** em `SigaNoInstagram.tsx`
    desenhando o SVG à mão — procurei tarde. **Antes de importar ícone de marca, ver como o projeto
    já faz.**
+
+### ⚠️⚠️ A PUBLICAÇÃO PRECISA RODAR AS MIGRAÇÕES ANTES DE MONTAR
+
+Achado ao agendar (22/08): **as migrações 061 a 065 nunca rodaram na produção**. As tabelas
+`pedido`, `pedido_item`, `preco_tabela` e `restaurante` **não existem lá**.
+
+⚠️ Publicar sem elas poria no ar um site que consulta tabela inexistente: o admin quebraria inteiro
+e a home tentaria ler os restaurantes. **O roteiro ganhou um passo 0** — `npm run db:migrate`
+ANTES da montagem, e desiste se falhar (a produção segue na versão anterior, que não conhece essas
+tabelas e não sente falta delas).
+
+💡 **Lição para todo trabalho que mexe no banco:** enviar o `.sql` para a VPS **não** aplica nada.
+Conferir com `SELECT ... FROM information_schema.tables` antes de agendar, não depois de publicar.
+
+**A prova desta publicação:** `/pt-BR/onde-comer` responder **200** — hoje devolve **404**, porque a
+página não existe. Conferido antes de agendar, como manda a regra de que toda publicação precisa da
+sua própria prova.
 
 ### 📐 O BLOCO DA HOME: DUAS VOLTAS ATÉ ACERTAR, E DOIS TAMANHOS DIFERENTES
 
