@@ -16,6 +16,7 @@ import type { Metadata } from "next";
 import { paginaMeta, enderecoDe, jsonLd, SITE_URL } from "@/lib/seo";
 import { lerYoutube } from "@/lib/youtube";
 import { AoVivo } from "@/components/AoVivo";
+import { OndeComer } from "@/components/OndeComer";
 
 export async function generateMetadata({
   params,
@@ -225,6 +226,14 @@ export default async function HomePage({
           </div>
         </section>
       )}
+
+      {/* "ONDE COMER NO PARAGUAI" — logo DEPOIS dos Destaques, como ele pediu.
+          O componente some sozinho se não houver restaurante cadastrado, então
+          a home não ganha um espaço vazio enquanto ele não vender o primeiro —
+          mesma regra dos Destaques e das quedas de preço. */}
+      <div className="mx-auto max-w-6xl px-4">
+        <OndeComer locale={locale} />
+      </div>
 
       {/* CONVITE DO INSTAGRAM — no FIM da home, de proposito.
           ⚠ Estava logo apos o bloco de quedas de preco, pela ideia de aproveitar

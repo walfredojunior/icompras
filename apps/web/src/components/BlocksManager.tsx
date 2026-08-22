@@ -2,6 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "@/i18n/navigation";
+import {
+  CamposDeVenda,
+  VENDA_VAZIA,
+  type DadosDaVenda,
+  type LinhaDePrecoLite,
+} from "./CamposDeVenda";
 import { BLOCK_ICONS, blockIcon } from "@/lib/categoryIcons";
 
 interface Cat {
@@ -23,6 +29,13 @@ interface BlockRow {
   position: number;
   active: boolean;
   categories: Array<{ id: number; slug: string; count: number }>;
+  /** Venda: quem paga, até quando, e se já foi lançado na conta. */
+  store_id?: number | null;
+  store_name?: string | null;
+  is_paid?: number;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  pedido_numero?: string | null;
 }
 
 const vazio = {
@@ -39,9 +52,21 @@ const vazio = {
   categories: [] as number[],
 };
 
-export function BlocksManager({ blocks, categories }: { blocks: BlockRow[]; categories: Cat[] }) {
+export function BlocksManager({
+  blocks,
+  categories,
+  stores,
+  precos,
+}: {
+  blocks: BlockRow[];
+  categories: Cat[];
+  stores: Array<{ id: number; name: string }>;
+  precos: LinhaDePrecoLite[];
+}) {
   const router = useRouter();
   const [f, setF] = useState({ ...vazio });
+  // Os campos de venda do bloco, no mesmo formato dos banners e destaques.
+  const [venda, setVenda] = useState<DadosDaVenda>(VENDA_VAZIA);
   const [busca, setBusca] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -81,6 +106,16 @@ export function BlocksManager({ blocks, categories }: { blocks: BlockRow[]; cate
       active: b.active,
       categories: b.categories.map((c) => c.id),
     });
+    setVenda({
+      ...VENDA_VAZIA,
+      store_id: b.store_id ? String(b.store_id) : "",
+      is_paid: !!b.is_paid,
+      starts_at: b.starts_at ? String(b.starts_at).slice(0, 10) : "",
+      ends_at: b.ends_at ? String(b.ends_at).slice(0, 10) : "",
+      // O valor fica em branco: o que já foi cobrado está no item de venda, e
+      // reescrevê-lo aqui mudaria o passado.
+      valor: "",
+    });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -91,7 +126,15 @@ export function BlocksManager({ blocks, categories }: { blocks: BlockRow[]; cate
       const r = await fetch("/api/admin/blocks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(f),
+        body: JSON.stringify({
+          ...f,
+          store_id: venda.store_id || null,
+          is_paid: venda.is_paid,
+          starts_at: venda.starts_at || null,
+          ends_at: venda.ends_at || null,
+          valor: venda.valor ? Number(venda.valor) : null,
+          duracao: venda.duracao,
+        }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error ?? "Não deu para salvar.");
@@ -183,6 +226,18 @@ export function BlocksManager({ blocks, categories }: { blocks: BlockRow[]; cate
             <input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} />
             Ativo
           </label>
+        </div>
+
+        {/* VENDA DO BLOCO (22/08/2026) — mesmo bloco dos banners e destaques. */}
+        <div className="mt-4">
+          <CamposDeVenda
+            dados={venda}
+            onChange={setVenda}
+            stores={stores}
+            precos={precos}
+            servico="bloco"
+            titulo="Quem paga por este bloco"
+          />
         </div>
 
         {/* Categorias */}

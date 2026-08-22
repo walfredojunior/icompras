@@ -13,6 +13,7 @@ import { search, type SortOption } from "@/lib/search";
 import { buildHref } from "@/components/SearchFilters";
 import { Paginacao } from "@/components/Paginacao";
 import { getActiveBanners } from "@/lib/banners";
+import { EspacoDeBanner } from "@/components/EspacoDeBanner";
 import { registrarVisita } from "@/lib/analytics";
 import { getRates } from "@/lib/rates";
 import { numeroLocal } from "@/lib/format";
@@ -78,7 +79,12 @@ export default async function CategoryPage({
   const res = await search("", { categories: info.descendantSlugs, perPage: 48, page, sort });
   const hits = res.hits;
   void registrarVisita("categoria", slug);
-  const banners = await getActiveBanners("category", slug);
+  // Os três espaços vendidos desta categoria (topo, meio e fim da lista).
+  const [bannersTopo, bannersMeio, bannersFim] = await Promise.all([
+    getActiveBanners("category", slug, "topo"),
+    getActiveBanners("category", slug, "meio"),
+    getActiveBanners("category", slug, "fim"),
+  ]);
   const rates = await getRates();
   const quedas = await quedasPorSlug(hits.map((h) => h.slug));
 
@@ -87,11 +93,12 @@ export default async function CategoryPage({
       <div className="flex flex-col gap-6 lg:flex-row">
         <CategorySidebar locale={locale} activeSlug={slug} />
         <div className="flex-1">
-          {banners.length > 0 && (
-            <div className="mb-5">
-              <BannerCarousel banners={banners} />
-            </div>
-          )}
+          <EspacoDeBanner
+            banners={bannersTopo}
+            slot="topo"
+            totalNaPagina={hits.length}
+            rotuloPublicidade={ts("ad")}
+          />
 
           {/* Breadcrumb */}
           <nav className="mb-2 text-sm text-slate-400">
@@ -167,19 +174,55 @@ export default async function CategoryPage({
             {hits.length === 0 ? (
               <p className="text-slate-500">{ts("noResults")}</p>
             ) : (
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-                {hits.map((hit) => (
-                  <ProductCard
-                    key={hit.id}
-                    hit={hit}
-                    locale={locale}
-                    fromLabel={th("from")}
-                    storesLabel={th("stores")}
-                    rates={rates}
-                    quedaPct={quedas.get(hit.slug)}
-                  />
-                ))}
-              </div>
+              <>
+                {/* ⚠ O CORTE É EM 24, e não em 12 como na busca: esta página
+                    carrega 48 produtos por vez (`perPage: 48` acima), então a
+                    metade é outra. Número chumbado igual nas duas telas poria
+                    o banner no primeiro quarto desta. */}
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                  {hits.slice(0, 24).map((hit) => (
+                    <ProductCard
+                      key={hit.id}
+                      hit={hit}
+                      locale={locale}
+                      fromLabel={th("from")}
+                      storesLabel={th("stores")}
+                      rates={rates}
+                      quedaPct={quedas.get(hit.slug)}
+                    />
+                  ))}
+                </div>
+
+                <EspacoDeBanner
+                  banners={bannersMeio}
+                  slot="meio"
+                  totalNaPagina={hits.length}
+                  rotuloPublicidade={ts("ad")}
+                />
+
+                {hits.length > 24 && (
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                    {hits.slice(24).map((hit) => (
+                      <ProductCard
+                        key={hit.id}
+                        hit={hit}
+                        locale={locale}
+                        fromLabel={th("from")}
+                        storesLabel={th("stores")}
+                        rates={rates}
+                        quedaPct={quedas.get(hit.slug)}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                <EspacoDeBanner
+                  banners={bannersFim}
+                  slot="fim"
+                  totalNaPagina={hits.length}
+                  rotuloPublicidade={ts("ad")}
+                />
+              </>
             )}
 
             <Paginacao

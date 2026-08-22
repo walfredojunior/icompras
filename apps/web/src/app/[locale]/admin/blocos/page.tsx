@@ -4,6 +4,7 @@ import { getCurrentAdmin } from "@/lib/adminauth";
 import { pool } from "@/lib/db";
 import { getBlocksForAdmin } from "@/lib/blocks";
 import { BlocksManager } from "@/components/BlocksManager";
+import { tabelaDePrecos } from "@/lib/precos";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export default async function AdminBlocosPage({ params }: { params: Promise<{ locale: string }> }) {
@@ -24,7 +25,18 @@ export default async function AdminBlocosPage({ params }: { params: Promise<{ lo
       ORDER BY count DESC, name`,
     [locale, locale],
   );
-  const blocks = await getBlocksForAdmin();
+  const [blocks, stores, precos] = await Promise.all([
+    getBlocksForAdmin(),
+    pool.query(`SELECT s.id, s.name,
+              (
+                s.is_lead = 0
+                OR EXISTS (SELECT 1 FROM subscription su WHERE su.store_id = s.id)
+                OR EXISTS (SELECT 1 FROM pedido pe WHERE pe.store_id = s.id)
+              ) AS eh_cliente
+         FROM store s WHERE s.status = 'active'
+        ORDER BY eh_cliente DESC, s.name LIMIT 1000`),
+    tabelaDePrecos(),
+  ]);
 
   return (
     <div>
@@ -41,6 +53,12 @@ export default async function AdminBlocosPage({ params }: { params: Promise<{ lo
           count: Number(c.count),
           group: c.group ?? null,
         }))}
+        stores={stores.map((s: any) => ({
+          id: Number(s.id),
+          name: s.name,
+          ehCliente: Number(s.eh_cliente ?? 0) === 1,
+        }))}
+        precos={precos as any}
       />
     </div>
   );

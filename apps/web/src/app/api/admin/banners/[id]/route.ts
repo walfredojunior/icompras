@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 import { getCurrentAdmin } from "@/lib/adminauth";
 import { normalizarDestino } from "@/lib/bannerDestino";
+import { categoriaOcupadaPor, dataBR } from "@/lib/banners";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -55,14 +56,25 @@ async function mover(id: number, direcao: "up" | "down"): Promise<void> {
 // isso bastaria mandar um campo a mais para escrever em qualquer coluna.
 async function editar(id: number, e: any): Promise<void> {
   const imagem = typeof e.image_url === "string" && e.image_url.trim() ? e.image_url.trim() : null;
-  const lugar = e.placement === "category" ? "category" : "home_hero";
+  // ⚠ BUG CONSERTADO EM 21/08/2026: aqui era
+  // `e.placement === "category" ? "category" : "home_hero"`, que transformava
+  // o VÍDEO FLUTUANTE em banner do carrossel toda vez que ele fosse editado —
+  // o vídeo sumia da home e ninguém entendia por quê. A lista de lugares
+  // válidos agora é explícita.
+  const LUGARES = ["home_hero", "category", "video_flutuante", "restaurante"];
+  const lugar = LUGARES.includes(e.placement) ? e.placement : "home_hero";
+  const inicio: string | null = e.starts_at || null;
+  const fim: string | null = e.ends_at || null;
+  const ESPACOS = ["topo", "meio", "fim"];
+  const slot = lugar === "category" ? (ESPACOS.includes(e.slot) ? e.slot : "topo") : null;
   // Editar um banner antigo o converte de 'auto' para o destino escrito na
   // tela — é o que tira a adivinhação do caminho, um banner por vez.
   const d = normalizarDestino(e);
   await pool.query(
     `UPDATE banner
         SET title = ?, link_url = ?, destino_tipo = ?, busca = ?,
-            placement = ?, category_slug = ?, store_id = ?, is_paid = ?
+            placement = ?, category_slug = ?, store_id = ?, is_paid = ?,
+            starts_at = ?, ends_at = ?, slot = ?, cidade = ?
             ${imagem ? ", image_url = ?" : ""}
       WHERE id = ?`,
     [
@@ -74,6 +86,10 @@ async function editar(id: number, e: any): Promise<void> {
       lugar === "category" ? e.category_slug || null : null,
       e.store_id ? Number(e.store_id) : null,
       e.is_paid ? 1 : 0,
+      inicio,
+      fim,
+      slot,
+      lugar === "restaurante" ? (e.cidade || null) : null,
       ...(imagem ? [imagem] : []),
       id,
     ],
@@ -93,6 +109,34 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   if (corpo.edit && typeof corpo.edit === "object") {
+    const e = corpo.edit;
+    const inicio: string | null = e.starts_at || null;
+    const fim: string | null = e.ends_at || null;
+    if (inicio && fim && inicio > fim) {
+      return NextResponse.json({ error: "A data de término é anterior à de início." }, { status: 400 });
+    }
+    // A mesma trava da criação. `Number(id)` entra como "ignorar": um banner
+    // não pode conflitar consigo mesmo ao ser editado.
+    if (e.placement === "category") {
+      if (!e.category_slug) {
+        return NextResponse.json({ error: "Escolha a categoria." }, { status: 400 });
+      }
+      const ESPACOS = ["topo", "meio", "fim"];
+      const slotPedido = ESPACOS.includes(e.slot) ? e.slot : "topo";
+      const ocupada = await categoriaOcupadaPor(e.category_slug, inicio, fim, Number(id), slotPedido);
+      if (ocupada) {
+        const nome = ocupada.title || ocupada.store_name || `banner ${ocupada.id}`;
+        const ate = ocupada.ends_at
+          ? ` (no ar até ${dataBR(ocupada.ends_at)})`
+          : " (sem data de término)";
+        return NextResponse.json(
+          {
+            error: `O ${slotPedido} desta categoria já está ocupado por "${nome}"${ate}. Escolha outro espaço, outro período ou outra categoria.`,
+          },
+          { status: 409 },
+        );
+      }
+    }
     await editar(Number(id), corpo.edit);
     return NextResponse.json({ ok: true });
   }

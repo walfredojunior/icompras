@@ -53,7 +53,8 @@
     "previous": "Anterior",
     "next": "Siguiente",
     "pageOf": "Página {page} de {pages}",
-    "showResults": "Ver {n} resultados"
+    "showResults": "Ver {n} resultados",
+    "ad": "publicidad"
   },
   "product": {
     "code": "Código",
@@ -287,5 +288,18 @@
     "diaDasMaes": "Regalo para mamá…",
     "diaDosNamorados": "Regalo de enamorados…",
     "diaDasCriancas": "Regalo para niños…"
+  },
+  "ondeComer": {
+    "title": "Dónde comer en Paraguay",
+    "subtitle": "Restaurantes para tu viaje de compras.",
+    "seoTitle": "Dónde comer en Paraguay — restaurantes en Ciudad del Este y alrededores",
+    "seoDesc": "Guía de restaurantes en Paraguay para quien va de compras: parrilladas, comida casera, japonesa y más, por ciudad.",
+    "city": "Ciudad",
+    "kind": "Tipo",
+    "all": "Todos",
+    "featured": "Destacado",
+    "empty": "Todavía no hay restaurantes en esta selección.",
+    "seeAll": "Ver todos",
+    "notice": "Espacio publicitario. Los restaurantes de esta página anuncian en iCompras — no son recomendaciones nuestras y no tenemos vínculo con ellos."
   }
 }

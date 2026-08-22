@@ -29,7 +29,14 @@ function pick(row: any, base: string, locale: string): string | null {
 export async function getCategoryBlocks(locale: string): Promise<CategoryBlock[]> {
   const blocks = await pool.query(
     `SELECT id, title_pt, title_es, title_en, subtitle_pt, subtitle_es, subtitle_en, icon
-       FROM category_block WHERE active = 1 ORDER BY position, id`,
+       FROM category_block
+      WHERE active = 1
+        -- ⚠ O PERÍODO MANDA (22/08/2026), como nos banners e destaques: bloco
+        -- vendido por um mês tem de sair sozinho no fim do mês. Sem data
+        -- continua valendo "sempre" — o caso dos blocos do próprio site.
+        AND (starts_at IS NULL OR starts_at <= NOW())
+        AND (ends_at IS NULL OR ends_at >= NOW())
+      ORDER BY position, id`,
   );
   if (!blocks.length) return [];
 
@@ -83,8 +90,19 @@ export async function getCategoryBlocks(locale: string): Promise<CategoryBlock[]
 // Para o painel admin: todos os blocos, inclusive vazios/desligados.
 export async function getBlocksForAdmin(): Promise<any[]> {
   const blocks = await pool.query(
-    `SELECT id, title_pt, title_es, title_en, subtitle_pt, subtitle_es, subtitle_en, icon, position, active
-       FROM category_block ORDER BY position, id`,
+    `SELECT b.id, b.title_pt, b.title_es, b.title_en, b.subtitle_pt, b.subtitle_es, b.subtitle_en,
+            b.icon, b.position, b.active,
+            b.store_id, b.is_paid, b.starts_at, b.ends_at,
+            s.name AS store_name, v.numero AS pedido_numero
+       FROM category_block b
+       LEFT JOIN store s ON s.id = b.store_id
+       LEFT JOIN (
+         SELECT i.bloco_id, MIN(p.numero) AS numero
+           FROM pedido_item i JOIN pedido p ON p.id = i.pedido_id
+          WHERE i.bloco_id IS NOT NULL
+          GROUP BY i.bloco_id
+       ) v ON v.bloco_id = b.id
+      ORDER BY b.position, b.id`,
   );
   const items = await pool.query(
     `SELECT i.block_id, c.id AS category_id, c.slug,

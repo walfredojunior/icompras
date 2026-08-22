@@ -5,6 +5,7 @@ import { pool } from "@/lib/db";
 import { ApiKeyManager } from "@/components/ApiKeyManager";
 import { PlanPicker } from "@/components/PlanPicker";
 import { StoreMenu } from "@/components/StoreMenu";
+import { MeusBanners } from "@/components/MeusBanners";
 import { Link } from "@/i18n/navigation";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -34,6 +35,13 @@ export default async function PanelPage({ params }: { params: Promise<{ locale: 
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-900">{t("title")}</h1>
         <StoreMenu name={store.name} logoutLabel={t("logout")} />
+      </div>
+
+      {/* Os anúncios da loja, quando ela tem algum. O componente se esconde
+          sozinho se não houver nenhum — quem nunca comprou não precisa de uma
+          caixa vazia dizendo que não tem. */}
+      <div className="mt-6">
+        <MeusBanners storeId={Number(store.id)} />
       </div>
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2">

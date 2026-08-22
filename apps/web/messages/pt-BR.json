@@ -53,7 +53,8 @@
     "previous": "Anterior",
     "next": "Próxima",
     "pageOf": "Página {page} de {pages}",
-    "showResults": "Ver {n} resultados"
+    "showResults": "Ver {n} resultados",
+    "ad": "publicidade"
   },
   "product": {
     "code": "Código",
@@ -287,5 +288,18 @@
     "diaDasMaes": "Presente para mãe…",
     "diaDosNamorados": "Presente de namorados…",
     "diaDasCriancas": "Presente de criança…"
+  },
+  "ondeComer": {
+    "title": "Onde comer no Paraguai",
+    "subtitle": "Restaurantes para a sua viagem de compras.",
+    "seoTitle": "Onde comer no Paraguai — restaurantes em Ciudad del Este e região",
+    "seoDesc": "Guia de restaurantes no Paraguai para quem vai fazer compras: churrascarias, comida caseira, japonesa e mais, por cidade.",
+    "city": "Cidade",
+    "kind": "Tipo",
+    "all": "Todos",
+    "featured": "Destaque",
+    "empty": "Ainda não há restaurantes cadastrados nesta seleção.",
+    "seeAll": "Ver todos",
+    "notice": "Espaço publicitário. Os restaurantes desta página anunciam no iCompras — não são recomendações nossas, e não temos vínculo com eles."
   }
 }

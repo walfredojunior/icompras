@@ -39,6 +39,19 @@ export interface SearchResult {
    * "celulares" a faixa real é US$ 1,50 a US$ 1.962, e aí a barra faz sentido.
    */
   priceRange: { min: number; max: number } | null;
+  /**
+   * A categoria dominante do resultado, quando existe uma clara.
+   *
+   * ⚠ POR QUE ISTO EXISTE (21/08/2026). O banner de categoria só aparecia se a
+   * pessoa clicasse no filtro — mas quase ninguém filtra: ela digita
+   * "perfumes" (o termo mais buscado do site) e passa direto pelo espaço que
+   * está vendido. Isto é o que permite mostrar o banner certo mesmo sem filtro.
+   *
+   * Nulo quando o resultado está espalhado por várias categorias: banner errado
+   * é pior que banner nenhum — o anunciante paga por perfume e aparece em
+   * busca de ferramenta.
+   */
+  categoriaDominante: { slug: string; fatia: number } | null;
 }
 
 function client(): MeiliSearch {
@@ -106,6 +119,38 @@ export async function search(query: string, opts: SearchOptions = {}): Promise<S
       ? { min: Math.floor(stats.min), max: Math.ceil(stats.max) }
       : null;
 
+  // A CATEGORIA DOMINANTE — calculada sobre os PRODUTOS DESTA PÁGINA.
+  //
+  // ⚠⚠ MEDIDO EM 21/08/2026, e o resultado derrubou minha primeira ideia. Eu
+  // usava a faceta do Meilisearch, que conta o resultado INTEIRO. Parecia mais
+  // representativo e era pior:
+  //
+  //            | resultado inteiro (faceta)   | 1ª página
+  //   iphone   | capa-para-celular 38%        | celular   100%
+  //   celular  | capa-para-celular 26%        | celular   100%
+  //   cafeteira| cafeteira 48%                | cafeteira 100%
+  //
+  // O motivo: "iphone" tem MILHARES de capas e películas no catálogo, que
+  // afogam os celulares na contagem total — mas a busca põe os celulares em
+  // PRIMEIRO, porque são os mais relevantes. Com a faceta, só "perfume"
+  // passava do corte; pela página, todos acertam a categoria certa.
+  //
+  // 💡 A lição: o que importa é o que a pessoa VÊ, não o que existe no
+  // catálogo. O banner acompanha a tela, não o banco.
+  let categoriaDominante: { slug: string; fatia: number } | null = null;
+  const daPagina = (res.hits as ProductHit[]).map((h) => h.category).filter((c) => c && c.trim());
+  if (daPagina.length >= 3) {
+    const conta = new Map<string, number>();
+    for (const c of daPagina) conta.set(c, (conta.get(c) ?? 0) + 1);
+    const [melhorSlug, melhorN] = [...conta.entries()].sort((a, b) => b[1] - a[1])[0];
+    const fatia = melhorN / daPagina.length;
+    // Maioria simples da página. Abaixo disso o resultado está mesmo
+    // espalhado, e mostrar banner seria entregar ao anunciante uma busca que
+    // não é a dele. O mínimo de 3 produtos evita que "100% de 1 resultado"
+    // valha como maioria.
+    if (fatia >= 0.5) categoriaDominante = { slug: melhorSlug, fatia };
+  }
+
   const r = res as unknown as { totalHits?: number; totalPages?: number };
   return {
     hits: res.hits as ProductHit[],
@@ -114,6 +159,7 @@ export async function search(query: string, opts: SearchOptions = {}): Promise<S
     pages: r.totalPages ?? 1,
     brands,
     priceRange,
+    categoriaDominante,
   };
 }
 

@@ -37,9 +37,20 @@ export async function getClients(): Promise<ClientRow[]> {
             DATEDIFF(sub.current_period_end, NOW()) AS daysLeft,
             (SELECT COUNT(*) FROM api_key k WHERE k.store_id = s.id AND k.revoked = 0) AS activeKeys
      FROM store s
-     JOIN subscription sub ON sub.id = (SELECT MAX(id) FROM subscription WHERE store_id = s.id)
+     -- ⚠⚠ LEFT JOIN, NÃO JOIN (22/08/2026). Era 'JOIN subscription', então a
+     -- lista só mostrava quem assinou um PLANO. Ele reparou: "se eu escolhi um
+     -- lead e ele virar cliente, ele tinha que tá na lista de clientes e não
+     -- aparece". Certo — quem compra um banner por US$ 100 é cliente igual, e
+     -- sumia da tela porque nunca assinou plano nenhum.
+     LEFT JOIN subscription sub ON sub.id = (SELECT MAX(id) FROM subscription WHERE store_id = s.id)
      LEFT JOIN plan p ON p.id = sub.plan_id
-     ORDER BY sub.status = 'active' DESC, sub.current_period_end ASC`,
+     -- A mesma definição de cliente usada no seletor de banners/destaques/blocos.
+     WHERE s.is_lead = 0
+        OR sub.id IS NOT NULL
+        OR EXISTS (SELECT 1 FROM pedido pe WHERE pe.store_id = s.id)
+     -- Assinantes ativos primeiro; depois quem vence antes; por último quem só
+     -- comprou publicidade (sem assinatura, ordenado por nome).
+     ORDER BY sub.status = 'active' DESC, sub.current_period_end ASC, s.name`,
   );
   return rows.map((r: any) => ({
     storeId: Number(r.storeId),
@@ -62,7 +73,48 @@ export async function getClients(): Promise<ClientRow[]> {
 
 export async function getClient(storeId: number): Promise<ClientRow | null> {
   const all = await getClients();
-  return all.find((c) => c.storeId === storeId) ?? null;
+  const comAssinatura = all.find((c) => c.storeId === storeId);
+  if (comAssinatura) return comAssinatura;
+
+  // ⚠ LOJA SEM ASSINATURA TAMBÉM TEM FICHA (21/08/2026).
+  //
+  // `getClients()` faz JOIN com `subscription`, então só enxerga quem assinou
+  // um plano — hoje **1 loja entre as 163**. A ficha do cliente abria 404 para
+  // todas as outras.
+  //
+  // Isso passou despercebido enquanto a ficha só servia para ver plano e
+  // vencimento. Deixou de servir quando ela passou a ter a CONTA DO CLIENTE:
+  // vender banner de categoria para uma loja sem plano é o caso normal, não a
+  // exceção — e sem ficha não haveria onde lançar o que foi cobrado.
+  //
+  // 💡 A LISTA continua mostrando só os assinantes, de propósito: as outras 162
+  // são possíveis clientes trazidos pelo coletor, e despejá-las ali esconderia
+  // quem paga. O que muda é só que a ficha ABRE quando se chega nela.
+  const linhas = await pool.query(
+    `SELECT s.id AS storeId, s.slug, s.name, s.logo_url AS logo,
+            (SELECT COUNT(*) FROM api_key k WHERE k.store_id = s.id AND k.revoked = 0) AS activeKeys
+       FROM store s WHERE s.id = ? LIMIT 1`,
+    [storeId],
+  );
+  const r = linhas[0];
+  if (!r) return null;
+  return {
+    storeId: Number(r.storeId),
+    slug: r.slug,
+    name: r.name,
+    logo: r.logo ?? null,
+    subId: 0,
+    planId: null,
+    planName: null,
+    status: "sem assinatura",
+    interval: "monthly",
+    periodEnd: null,
+    trialEndsAt: null,
+    graceDays: 5,
+    gateway: null,
+    daysLeft: null,
+    activeKeys: Number(r.activeKeys ?? 0),
+  } as ClientRow;
 }
 
 function slugify(s: string): string {

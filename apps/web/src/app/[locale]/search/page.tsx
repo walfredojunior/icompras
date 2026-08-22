@@ -3,13 +3,13 @@ import type { Metadata } from "next";
 import { search, type SortOption } from "@/lib/search";
 import { cortar } from "@/lib/seo";
 import { getActiveBanners } from "@/lib/banners";
+import { EspacoDeBanner } from "@/components/EspacoDeBanner";
 import { registrarVisita, registrarBusca } from "@/lib/analytics";
 import { getRates } from "@/lib/rates";
 import { Link } from "@/i18n/navigation";
 import { SearchBox } from "@/components/SearchBox";
 import { ProductCard } from "@/components/ProductCard";
 import { quedasPorSlug } from "@/lib/quedas";
-import { BannerCarousel } from "@/components/BannerCarousel";
 import { SearchFilters, buildHref } from "@/components/SearchFilters";
 import { Paginacao } from "@/components/Paginacao";
 import { FiltrosMobile } from "@/components/FiltrosMobile";
@@ -97,7 +97,26 @@ export default async function SearchPage({
   void registrarVisita("busca", q || "(sem termo)");
   if (q.trim() && !veioDeBanner) void registrarBusca(q, res.total);
 
-  const categoryBanners = category ? await getActiveBanners("category", category) : [];
+  // O BANNER DA CATEGORIA — inclusive quando a pessoa NÃO filtrou.
+  //
+  // ⚠ Antes era só `category ? ... : []`: o banner vendido só aparecia para
+  // quem clicasse no filtro de categoria. Só que o caminho comum é outro — a
+  // pessoa digita "perfumes" (103 buscas no mês, o termo mais procurado do
+  // site) e vê a lista inteira sem nunca filtrar. O espaço vendido ficava
+  // invisível justamente na busca que mais vale.
+  //
+  // Sem filtro, a categoria é DEDUZIDA do resultado (ver `categoriaDominante`
+  // em lib/search.ts): só vale quando 60% ou mais dos produtos são da mesma
+  // categoria. Busca espalhada não mostra banner de ninguém.
+  const slugDoBanner = category ?? res.categoriaDominante?.slug;
+  // OS TRÊS ESPAÇOS, buscados de uma vez. Cada um é vendido separadamente.
+  const [bannersTopo, bannersMeio, bannersFim] = slugDoBanner
+    ? await Promise.all([
+        getActiveBanners("category", slugDoBanner, "topo"),
+        getActiveBanners("category", slugDoBanner, "meio"),
+        getActiveBanners("category", slugDoBanner, "fim"),
+      ])
+    : [[], [], []];
   const rates = await getRates();
   // Uma consulta só para a página inteira (e não uma por cartão) devolve o
   // selo de queda de cada produto.
@@ -123,13 +142,12 @@ export default async function SearchPage({
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
-      {categoryBanners.length > 0 && (
-        <div className="mb-6">
-          {/* A linha inteira vai para o carrossel: quando um campo novo entra
-              no destino do banner, não há três telas para lembrar de atualizar. */}
-          <BannerCarousel banners={categoryBanners} />
-        </div>
-      )}
+      <EspacoDeBanner
+        banners={bannersTopo}
+        slot="topo"
+        totalNaPagina={res.hits.length}
+        rotuloPublicidade={t("ad")}
+      />
       <SearchBox initial={q} />
 
       <h1 className="mt-8 text-xl font-semibold text-slate-900">
@@ -196,8 +214,13 @@ export default async function SearchPage({
             <p className="mt-6 text-slate-500">{t("noResults")}</p>
           ) : (
             <>
+              {/* A LISTA, PARTIDA NO MEIO pelo segundo espaço de banner.
+                  💡 O corte é em 12 (metade de uma página cheia de 24) e cai
+                  numa linha inteira tanto na grade de 2 colunas do celular
+                  quanto na de 3 do computador — banner no meio de uma fileira
+                  quebrada ficaria torto. */}
               <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
-                {res.hits.map((hit) => (
+                {res.hits.slice(0, 12).map((hit) => (
                   <ProductCard
                     key={hit.id}
                     hit={hit}
@@ -209,6 +232,36 @@ export default async function SearchPage({
                   />
                 ))}
               </div>
+
+              <EspacoDeBanner
+                banners={bannersMeio}
+                slot="meio"
+                totalNaPagina={res.hits.length}
+                rotuloPublicidade={t("ad")}
+              />
+
+              {res.hits.length > 12 && (
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                  {res.hits.slice(12).map((hit) => (
+                    <ProductCard
+                      key={hit.id}
+                      hit={hit}
+                      locale={locale}
+                      fromLabel={th("from") ?? ""}
+                      storesLabel={th("stores") ?? ""}
+                      rates={rates}
+                      quedaPct={quedas.get(hit.slug)}
+                    />
+                  ))}
+                </div>
+              )}
+
+              <EspacoDeBanner
+                banners={bannersFim}
+                slot="fim"
+                totalNaPagina={res.hits.length}
+                rotuloPublicidade={t("ad")}
+              />
 
               <Paginacao
                 page={res.page}

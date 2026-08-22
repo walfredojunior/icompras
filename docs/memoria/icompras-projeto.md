@@ -533,6 +533,35 @@ parceiros; um guia pago precisa dizer o que é, senão um almoço ruim vira recl
    desenhando o SVG à mão — procurei tarde. **Antes de importar ícone de marca, ver como o projeto
    já faz.**
 
+### 📐 O BLOCO DA HOME: DUAS VOLTAS ATÉ ACERTAR, E DOIS TAMANHOS DIFERENTES
+
+A primeira versão era um **cartaz de 375px** com um restaurante por vez. Ele viu e pediu: *"muito
+grande, tinha que ser mais fino e dentro dele aparecer uns 3 de cada vez"*.
+
+💡 **A saída não foi encolher, foi trocar a FORMA do cartão:** de foto grande com o nome por cima
+para **cartão deitado** — foto pequena à esquerda, texto à direita. De 375px para ~88px, e três
+cabem lado a lado.
+
+Depois: *"gostei, mas podia ser um pouquinho maior"* → foto de 64 para 80px.
+E então: **"no celular ficou perfeito, mas no PC podia ser um pouco mais alto"**.
+
+```
+              foto    respiro   altura
+celular       80px      12      ~104px   ← ele aprovou, ficou intacto
+computador   112px      16      ~144px
+```
+
+⚠️⚠️ **A LIÇÃO: não existe "o tamanho do cartão".** O mesmo componente tem **dois tamanhos certos**,
+e quem decide cada um é a tela — no celular ele ocupa a largura toda e 104px já pesam; no
+computador divide a linha com outros dois e some perto dos produtos. Foi ele testando nas duas
+telas que mostrou isso; eu tinha ajustado um número só.
+
+💡 **Crescer a FOTO, não o quadro vazio:** é ela que dá sensação de tamanho, e foto de restaurante
+pequena demais vira borrão — justamente o que faz não clicar.
+
+⚠️ **No celular são TRÊS impossíveis:** cada cartão ficaria com ~110px de largura. Lá a tira desliza
+com o dedo, mostrando um e um pedaço do próximo (o pedaço é o aviso de que há mais).
+
 ### ✅ Testado no local
 
 Página nos 3 idiomas, filtros funcionando (filtrar Ciudad del Este esconde o de Salto del Guairá;

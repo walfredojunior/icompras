@@ -53,7 +53,8 @@
     "previous": "Previous",
     "next": "Next",
     "pageOf": "Page {page} of {pages}",
-    "showResults": "Show {n} results"
+    "showResults": "Show {n} results",
+    "ad": "advertisement"
   },
   "product": {
     "code": "Code",
@@ -287,5 +288,18 @@
     "diaDasMaes": "A gift for mom…",
     "diaDosNamorados": "A gift for your love…",
     "diaDasCriancas": "A gift for kids…"
+  },
+  "ondeComer": {
+    "title": "Where to eat in Paraguay",
+    "subtitle": "Restaurants for your shopping trip.",
+    "seoTitle": "Where to eat in Paraguay — restaurants in Ciudad del Este and around",
+    "seoDesc": "Restaurant guide in Paraguay for shoppers: steakhouses, home cooking, Japanese and more, by city.",
+    "city": "City",
+    "kind": "Kind",
+    "all": "All",
+    "featured": "Featured",
+    "empty": "No restaurants in this selection yet.",
+    "seeAll": "See all",
+    "notice": "Advertising space. The restaurants on this page advertise on iCompras — they are not our recommendations and we have no connection with them."
   }
 }
