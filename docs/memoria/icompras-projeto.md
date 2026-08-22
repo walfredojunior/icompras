@@ -473,7 +473,76 @@ Criei um banner pela API, ele apareceu no painel como "no ar sem cobrar", e apag
 
 ⏸️ **NÃO PUBLICADO.**
 
-## 🍽️ "ONDE COMER NO PARAGUAI" — FEITO EM 21/08/2026 (pronto no local)
+## 🍴 O GUIA DE RESTAURANTES (2026-08-22) — migração 065, pronto no local
+
+Ele redesenhou a ideia de ontem: em vez de uma faixa de banners na home, **um bloco que reveza** e
+leva a uma **página com todos os restaurantes**, com três espaços de anúncio dentro. E dois produtos
+para vender: **estar na lista** e **anunciar em cima dela**.
+
+### ⚠️⚠️ A DECISÃO DE FUNDO: restaurante virou coisa própria, não mais um banner
+
+Ele perguntou a diferença e escolheu a ficha completa (sem preço e sem horário — decisão dele, e
+concordo: os dois desatualizam e valor errado vira reclamação contra o iCompras).
+
+**As duas razões que decidiram:**
+
+1. **Ele cobra DUAS coisas.** Se a listagem fosse só uma imagem levando ao Instagram, **ela seria o
+   banner** — e o cliente perguntaria por que paga duas vezes pelo mesmo.
+2. **O Google não lê texto dentro de imagem.** Com os dados em campos, a página responde "onde comer
+   em Ciudad del Este" e traz visitante NOVO. Como figura, seria invisível para busca e serviria só
+   para quem já está no site — que é o que a faixa de ontem já fazia.
+
+💡 **Argumento que fechou a conversa:** o Google já rastreia `/categorias` (25 visitas) e `/loja`
+(8) — páginas de lista idênticas em formato a esta. Ele está pronto para engolir o guia.
+
+### O que ficou pronto
+
+`restaurante`: nome, slug, foto, cidade, **tipo (lista fechada de 11)**, link, whatsapp, endereço,
+descrição + venda (cliente, pago, destaque, período). ⚠️ **Tipo é lista fechada, não texto livre**:
+com texto livre um vira "Churrascaria", outro "churrasco", outro "Carnes" — e o filtro morre.
+
+**Página `/onde-comer`**: filtros por cidade e tipo, cartões com os dois botões (rede social +
+WhatsApp), selo nos destaques, os 3 espaços de banner (`placement='onde_comer'`) e aviso de espaço
+publicitário. **No mapa do site**, mas só quando há restaurante — página vazia indexada é pior que
+não indexada, e o orçamento de rastreamento aqui é escasso.
+
+**Bloco na home**: reveza a cada 6s, com bolinhas. ⚠️ **O bloco inteiro leva para `/onde-comer`, e
+não para o Instagram do restaurante da vez** — a pessoa não escolheu aquele, ele só calhou de estar
+na tela; e é a página do guia que precisa da visita.
+
+**Cinco produtos na tabela de preços:** listagem (US$ 20), destaque no topo (US$ 35) e os três
+banners da página (60/36/24).
+
+### ⚠️ Decisões que protegem a credibilidade
+
+**A ordem da lista é destaques → alfabética, NUNCA por quem paga mais** sem avisar: lista ordenada
+por dinheiro em silêncio deixa de ser guia e vira ranking pago disfarçado. Quem é destaque leva
+**selo visível**.
+
+**`rel="sponsored"`** nos links e aviso no rodapé da página. O rodapé do site diz que não há
+parceiros; um guia pago precisa dizer o que é, senão um almoço ruim vira reclamação contra o site.
+
+### 🐛 Dois tropeços meus
+
+1. ⚠️ **Repeti a armadilha que eu tinha documentado no dia anterior:** inseri os preços de
+   'restaurante' ANTES de ampliar a lista fechada (ENUM) — os dois INSERT passaram sem erro e **não
+   gravaram nada**. Só notei conferindo a tabela. **Documentar não basta; a ordem tem de estar certa
+   no arquivo.**
+2. ⚠️ **`lucide-react` 1.27 não tem mais `Instagram` nem `Facebook`** (ícones de marca foram
+   removidos) e a montagem quebra. O projeto **já resolvia isso** em `SigaNoInstagram.tsx`
+   desenhando o SVG à mão — procurei tarde. **Antes de importar ícone de marca, ver como o projeto
+   já faz.**
+
+### ✅ Testado no local
+
+Página nos 3 idiomas, filtros funcionando (filtrar Ciudad del Este esconde o de Salto del Guairá;
+filtrar churrascaria esconde a comida caseira), 3 banners no lugar, bloco da home levando à página,
+título indexável, `/onde-comer` no sitemap. Cadastrei um restaurante vendido: entrou no ar e a
+cobrança nasceu como `restaurante_destaque`, US$ 35, no pedido 2026-0002.
+
+⏸️ **NÃO PUBLICADO.**
+
+## 🍽️ "ONDE COMER NO PARAGUAI" — a primeira versão, de 21/08/2026 (SUBSTITUÍDA em 22/08) (pronto no local)
 
 Ele retomou a ideia de 04/08, que estava pausada. **O plano já estava fechado na memória** — não
 refiz do zero, só atualizei com o que mudou. E mudou muito: em 04/08 **não havia onde cobrar**;
