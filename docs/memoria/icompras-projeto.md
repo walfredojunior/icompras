@@ -1479,6 +1479,79 @@ Antes de reiniciar os robôs, quis conferir se o `crawl.ts` novo era válido e r
 
 💡 **Importar um script executável é executá-lo.** Para conferir sintaxe, usar o compilador (`tsc --noEmit`), nunca `import`.
 
+## 🛠️ O PROXY CAIU DE VERDADE (2026-08-22) — a regra órfã que travava o túnel
+
+**Desta vez estava mesmo fora**, e o painel dele acertou de novo: *"medida de 2 dias atrás — o
+proxy pode estar fora do ar"*.
+
+### O estrago, medido antes de mexer
+
+```
+BLOQUEIOS (403) POR DIA        UNIDADES COLETADAS POR DIA
+17/08      14  (com proxy)      18/08   226
+19/08   5.243  (proxy cai)      19/08   215
+20/08  10.134                   20/08   147
+21/08  29.196                   21/08    10
+22/08  12.511  (meio-dia)       22/08     1   ← praticamente parada
+```
+
+### ⚠️⚠️ A CAUSA: a limpeza apagava a regra do IP ERRADO
+
+O `wg0.conf` (gerado pelo `trocar-ip.sh`) tinha:
+
+```
+PostUp   = ip rule add from ${MEU_IP} table 100 priority 100
+PostDown = ip rule del from ${MEU_IP} table 100 priority 100
+```
+
+⚠️ **O script REESCREVE o arquivo com um IP interno novo a cada troca de servidor.** Ao descer, o
+`PostDown` lido era o do arquivo NOVO — tentava apagar a regra do IP novo, enquanto a que existia
+era a do IP velho. A regra velha ficava órfã. Quando a Mullvad reusava aquele IP, o `PostUp` batia
+em `RTNETLINK answers: File exists`, o `wg-quick` abortava e **apagava a própria interface**.
+
+💡 **E o conserto automático piorava:** o vigia detectava bloqueio e trocava de IP a cada 10
+minutos — caindo sempre na mesma pedra, em círculo, de 19/08 a 22/08.
+
+**Conserto:** limpar **POR TABELA**, que resolve qualquer resto seja de que IP for — e também
+ANTES de subir:
+```
+PreUp    = while ip rule del table 100 2>/dev/null; do :; done
+PostDown = while ip rule del table 100 2>/dev/null; do :; done
+```
+✅ **Testado com uma troca de IP real** (o que falhava): túnel seguiu `active`, saiu por IP novo,
+zero regra sobrando. Cópia de segurança em `/usr/local/bin/trocar-ip.sh.bak-22ago`.
+
+### 🚦 E o proxy estava SATURADO — `MaxClients 60` para 173 conexões
+
+Achado no caminho: os 6 coletores abriam **173 conexões simultâneas** contra um teto de **60**.
+Sintoma que quase me enganou: pelo proxy, 1 teste em 3 passava — parecia proxy instável, era fila.
+
+**Ajustado:** `MaxClients 60 → 300` e `Timeout 600 → 180` (conexão ociosa segurava vaga por 10
+minutos). 💡 O tinyproxy aqui roda em **um processo com threads leves** (6 MB no total), não um
+processo por cliente — por isso 300 cabe com folga em 1,2 GB livre. Depois: **5 testes de 5
+passaram**, carga 0,22. Cópia em `/etc/tinyproxy/tinyproxy.conf.bak-22ago`.
+
+### 💡 O MÉTODO QUE FECHOU O DIAGNÓSTICO (e a hipótese dele que ajudou)
+
+Ele perguntou: *"será que é a conta da VPN que parou?"* — hipótese certa de investigar, e ele mesmo
+conferiu que estava paga. Isso **eliminou a causa comercial** e sobrou a técnica.
+
+A escada que levou à resposta:
+1. `ping` + porta 8888 → **máquina viva**
+2. `curl` pelo proxy → **HTTP 500 "Unable to connect"** — o proxy responde, mas não sai
+3. Em Dallas: `ip link` → **nenhuma interface de VPN**
+4. `systemctl status wg-quick@wg0` → **failed**, com o `File exists` no log
+
+⚠️ **"Porta aberta" não é "funcionando".** A porta respondeu o tempo todo; quem não saía era o
+túnel atrás dela.
+
+### Acesso ao servidor de Dallas
+
+⚠️ `plink` **trava** conectando em Dallas (fica no prompt e estoura o tempo). Funciona com OpenSSH
++ `SSH_ASKPASS`, como já registrado para a VPS:
+`SSH_PW='...' SSH_ASKPASS=<script> SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh -o StrictHostKeyChecking=accept-new root@163.245.192.65`
+Senha em `servidores.txt` (fora do Git) e em Admin › Anotações.
+
 ## 🔁 O PROXY DE DALLAS SEMPRE FUNCIONOU — EU ERREI DUAS VEZES (2026-08-13)
 
 Afirmei duas vezes que a estrutura de proxy estava fora de operação. **Estava errado nas duas, e o painel dele estava certo o tempo todo.**
