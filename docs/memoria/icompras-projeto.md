@@ -105,6 +105,51 @@ cinco casos antes de usar.
 💡 **A mudança de mecanismo:** cada linha de `TROCAS` pode agora trazer um terceiro item com as
 marcas do `re` — sem ele, continua ignorando maiúscula, que é o certo para senha.
 
+## 🎯 DESTAQUES E BLOCOS TAMBÉM VIRARAM VENDÁVEIS (2026-08-22) — migração 064
+
+Ele pediu: *"Blocos de destaque e Destaques também futuramente vou monetizar, então mesma coisa:
+quero poder colocar o preço e ele incluir na conta do cliente, e também tem que ter vencimento"*.
+
+### ⚠️ O VENCIMENTO ERA O QUE MAIS FALTAVA
+
+Destaque e bloco **não tinham data nenhuma**. Uma vez ligados, ficavam no ar até alguém lembrar de
+desligar — e ninguém lembra. **Vendido por um mês, entregue para sempre.** Agora as duas consultas
+da home respeitam `starts_at`/`ends_at`; sem data continua valendo "sempre", que é o caso dos
+destaques do próprio site. **Testado:** dentro do período aparece, com fim ontem some sozinho.
+
+### O que a migração 064 fez
+
+`featured_product` e `category_block` ganharam `store_id`, `is_paid`, `starts_at`, `ends_at`.
+`pedido_item` ganhou `destaque_produto_id` e `bloco_id`.
+
+⚠️ **COLUNAS SEPARADAS, e não um par genérico (`ref_tipo` + `ref_id`).** O genérico parece mais
+elegante e perde o que mais importa: a **integridade**. Com coluna própria dá para ter chave
+estrangeira de verdade e `ON DELETE SET NULL` — apagar um destaque nunca apaga a linha da venda,
+mas também nunca deixa vínculo apontando para o nada.
+
+### ⚠️⚠️ LISTA FECHADA (ENUM) NÃO AVISA, SÓ NÃO GRAVA
+
+`preco_tabela.servico` era `ENUM('banner_categoria','banner_home','destaque','outro')`. Inserir
+`'bloco'` **passou sem erro** e gravou vazio, que a chave única então recusou **em silêncio** — a
+linha simplesmente não apareceu. O mesmo valia para `pedido_item.tipo`.
+💡 **Ampliar a lista ANTES de inserir o valor novo**, e conferir se a linha entrou de fato.
+
+### 💡 UM COMPONENTE DE VENDA PARA OS TRÊS
+
+`CamposDeVenda.tsx`: cliente, publicidade paga, período, duração e valor (com preço de tabela).
+Usado por Destaques, Blocos e no mesmo formato dos Banners. Repetir esse formulário em três telas
+era garantir que, na primeira mudança, duas ficassem para trás.
+
+`lancarNaConta()` foi generalizada: recebe `bannerId` **ou** `destaqueProdutoId` **ou** `blocoId`.
+
+### O painel de Vendas passou a contar os três
+
+"Vence em 7 dias" e "No ar sem cobrar" somam banner + destaque + bloco, e cada linha leva à tela
+certa. ⚠️ Um painel que ignorasse os dois novos **mostraria menos dívida do que existe** — pior que
+não ter painel.
+
+⏸️ **NÃO PUBLICADO.**
+
 ## 💰 O VALOR PASSOU A NASCER COM O BANNER (2026-08-22) — ideia dele, e certa
 
 Ele perguntou: *"a conta do cliente, um banner não tá vinculado ao banner que tá ativo. não era
