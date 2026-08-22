@@ -134,6 +134,37 @@ marca `(sem produto no site)` ao lado de quem ainda não tem — informação, n
 💡 **A lição que se repete:** o teste local achou o defeito porque os dados aqui são diferentes dos
 de produção. **Ambiente de teste com dados idênticos aos reais esconde esse tipo de erro.**
 
+### ⚠️⚠️ E O LEAD QUE COMPRA NÃO VIRAVA CLIENTE NA TELA
+
+Terceira correção do mesmo assunto, e a mais importante. Ele fechou o raciocínio:
+*"se eu escolhi um lead e ele virar cliente, ele tinha que tá na lista de clientes e não aparece"*.
+
+**A causa:** `getClients()` fazia **`JOIN subscription`** — a lista só mostrava quem assinou um
+**PLANO**. Quem compra um banner por US$ 100 é cliente igual, mas sumia da tela por nunca ter
+assinado nada.
+
+⚠️ **O sintoma era pior do que parece:** ele venderia publicidade, o dinheiro entraria na conta, e
+o cliente **não existiria** na tela de Clientes. A conta ficaria num lugar que ele não consegue
+abrir pela navegação normal.
+
+**Conserto:** `LEFT JOIN` + a mesma definição de cliente usada no seletor —
+`is_lead = 0` **OU** tem assinatura **OU** tem pedido. Assinantes ativos primeiro, depois quem
+vence antes, por último quem só comprou publicidade.
+
+✅ **Provado no banco de teste:** "Abudi Cell" e "Agatres" são leads (`is_lead=1`), sem assinatura,
+com 1 pedido cada — e passaram a aparecer na lista, com a ficha abrindo.
+
+💡 **AS TRÊS CORREÇÕES SEGUIDAS TÊM A MESMA RAIZ:** o sistema nasceu quando "cliente" só podia
+significar "assinante de plano". Ao acrescentar venda de publicidade, **essa definição ficou velha
+em três lugares diferentes** — o seletor, a ficha (`getClient`) e a lista (`getClients`). Ao
+introduzir uma forma nova de alguém virar cliente, procurar TODO lugar que define quem é cliente.
+
+### ⚠️ Erro repetido: crase dentro de crase
+
+Ao escrever o comentário SQL, usei `JOIN subscription` com crases **dentro de um template literal**
+— que é delimitado por crase e quebra ali. **Já tinha feito isso em 20/08.** Dentro de template
+literal, citar com aspas simples.
+
 ### ⚠️ E aí eu errei para o outro lado: despejei os LEADS
 
 Corrigi tirando o filtro de produto — e ele reparou na hora: *"na hora de buscar o cliente ele tá
