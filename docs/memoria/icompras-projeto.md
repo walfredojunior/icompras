@@ -105,6 +105,36 @@ cinco casos antes de usar.
 💡 **A mudança de mecanismo:** cada linha de `TROCAS` pode agora trazer um terceiro item com as
 marcas do `re` — sem ele, continua ignorando maiúscula, que é o certo para senha.
 
+## 🚫 NÃO RECEBER MAIS QUE O DEVIDO (2026-08-22)
+
+Pedido dele: *"não deixe receber mais do que o valor da conta"*.
+
+⚠️ **O estrago que isso evita:** um erro de digitação (100 em vez de 10) deixaria o pedido com saldo
+**negativo** — e a tela de Vendas passaria a mostrar **menos dívida do que existe**, porque o
+crédito de um cliente abateria o total geral. Um número de painel errado é pior que painel nenhum.
+
+**A trava está no servidor**, não só na tela: duas janelas abertas registrando ao mesmo tempo
+furariam um aviso de navegador.
+
+### Os quatro casos, todos testados
+
+```
+deve 60, tenta 100  ->  recusa: "tem US$ 60,00 em aberto — não dá para receber US$ 100,00"
+deve 60, paga 60    ->  aceita (fecha a conta)
+já quitado          ->  recusa: "já está quitado. Não há o que receber."
+pedido sem itens    ->  recusa: "lance o que foi vendido antes de receber"
+deve 600, paga 200  ->  aceita (parcial continua valendo)
+```
+
+💡 **A mensagem diz o que fazer**, não só que está errado: *"Se o cliente pagou a mais, lance o
+serviço extra como item antes"*. É o caminho certo — dinheiro a mais é venda que faltou registrar.
+
+⚠️ **Arredondar antes de comparar:** soma de centavos em ponto flutuante devolve 0.00000001 e
+recusaria um pagamento que fecha a conta exatamente.
+
+💡 **O campo já abre com o valor que falta preenchido** — o caso normal é receber a conta inteira, e
+digitar de novo um número que o sistema já conhece é justamente onde nasce o erro.
+
 ## 📅 DATAS, MOEDA E FORMA DE PAGAMENTO (2026-08-22)
 
 Pedido dele: *"na hora de pagar, lembre-se que a moeda é dólar; sobre data sempre mostre a data
