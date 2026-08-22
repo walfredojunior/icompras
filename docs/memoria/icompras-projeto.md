@@ -105,6 +105,35 @@ cinco casos antes de usar.
 💡 **A mudança de mecanismo:** cada linha de `TROCAS` pode agora trazer um terceiro item com as
 marcas do `re` — sem ele, continua ignorando maiúscula, que é o certo para senha.
 
+## ⚠️ A IMAGEM ERA PEDIDA ANTES DO ESPAÇO — defeito achado por pergunta dele (22/08/2026)
+
+Ele perguntou: *"não entendi como defino um banner por categoria ou na busca aparecer em qual parte
+da página"*. **A pergunta achou um defeito, não só uma confusão de tela.**
+
+**A ordem do formulário era:** título → publicidade paga → **IMAGEM** → onde aparece → categoria →
+espaço (topo/meio/fim) → datas.
+
+⚠️ **O envio da arte ajusta ao formato DO ESPAÇO** (858×375 padrão ou 818×137 faixa). Com a imagem
+no topo do formulário, ela era recortada para 858×375 — o padrão — **mesmo quando o destino era a
+faixa fina**. A arte saía no formato errado e só se descobria olhando o banner publicado.
+
+💡 **A lição: "pergunta de usuário confuso" costuma ser defeito de verdade.** Ele não estava
+perdido; a tela é que pedia as coisas fora de ordem. A ordem certa é a da DECISÃO — primeiro onde
+vai aparecer, depois a arte, porque a arte depende do lugar.
+
+### O que mudou
+
+1. **A imagem foi para o fim do formulário**, depois de escolher o espaço.
+2. **"Topo de uma categoria" virou "Páginas de categoria e busca"** — o nome antigo mentia desde que
+   passaram a existir três posições.
+3. **Os espaços viraram "1 · Topo", "2 · Meio", "3 · Fim"**, com um **desenho da página ao lado**
+   mostrando onde cada um cai, e a frase "cada uma aceita um banner por período".
+4. **O botão mostra "ocupado"** quando aquela posição já está vendida no período digitado — antes o
+   choque só vinha ao salvar.
+
+💡 **A regra, nas palavras dele, que ficou certa:** *"pode repetir 3 vezes mas não a mesma posição"*.
+A mesma categoria vende as três posições, para lojas diferentes, no mesmo mês.
+
 ## 🗂️ ORGANIZAÇÃO DA PARTE COMERCIAL (2026-08-21) — PRONTO NO LOCAL
 
 Depois de aprovar o resto ("ficou muito bom"), ele pediu para organizar cadastro de banners, preço
