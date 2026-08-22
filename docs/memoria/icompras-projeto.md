@@ -105,7 +105,7 @@ cinco casos antes de usar.
 💡 **A mudança de mecanismo:** cada linha de `TROCAS` pode agora trazer um terceiro item com as
 marcas do `re` — sem ele, continua ignorando maiúscula, que é o certo para senha.
 
-## 🏬 A LISTA DE CLIENTES VINHA VAZIA (2026-08-22) — e o filtro estava errado de fundo
+## 🏬 A LISTA DE CLIENTES: VAZIA, DEPOIS CHEIA DE GENTE ERRADA (2026-08-22) — e o filtro estava errado de fundo
 
 Ele disse: *"tô fazendo um banner e quero escolher um cliente, não aparece nenhum na lista"*.
 **Dois problemas de uma vez.**
@@ -133,6 +133,35 @@ marca `(sem produto no site)` ao lado de quem ainda não tem — informação, n
 
 💡 **A lição que se repete:** o teste local achou o defeito porque os dados aqui são diferentes dos
 de produção. **Ambiente de teste com dados idênticos aos reais esconde esse tipo de erro.**
+
+### ⚠️ E aí eu errei para o outro lado: despejei os LEADS
+
+Corrigi tirando o filtro de produto — e ele reparou na hora: *"na hora de buscar o cliente ele tá
+buscando as lojas que ainda nem tá como cliente"*. Certo de novo.
+
+```
+lojas ativas: 163
+  clientes:     7   ← is_lead = 0, ou com assinatura, ou com pedido
+  leads:      156   ← trazidos pelo coletor, nunca falaram com ele
+```
+
+💡 **Mas sumir com os leads também estaria errado: vender publicidade é justamente como um lead
+VIRA cliente.** A saída foi **dois grupos** no seletor:
+
+```
+Clientes
+  Loja Demo · Perfumaria Vitória …
+Lojas do catálogo (ainda não são clientes)
+  Cellshop  (sem produto no site) …
+```
+
+⚠️ **A definição de cliente ficou:** `is_lead = 0` **OU** tem assinatura **OU** já tem pedido. A
+terceira condição importa — quem comprou um banner uma vez é cliente, mesmo que tenha entrado como
+lead do coletor.
+
+💡 **Duas correções seguidas no mesmo campo, cada uma achada por ele.** Vale a regra: ao afrouxar um
+filtro, conferir **o que passou a entrar**, não só o que passou a aparecer.
+
 
 ## 🔎 "NÃO ACHEI ONDE DIGITAR O PREÇO" (2026-08-22) — a segunda pergunta que era defeito
 
